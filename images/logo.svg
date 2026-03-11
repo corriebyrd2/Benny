@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <path id="topArc" d="M 70,200 A 130,130 0 0,1 330,200" fill="none"/>
+    <path id="bottomArc" d="M 310,220 A 130,130 0 0,1 90,220" fill="none"/>
+  </defs>
+
+  <!-- Outer circle -->
+  <circle cx="200" cy="200" r="185" fill="none" stroke="#1a1a1a" stroke-width="8"/>
+  <circle cx="200" cy="200" r="165" fill="none" stroke="#1a1a1a" stroke-width="4"/>
+
+  <!-- Inner circle for dog face -->
+  <circle cx="200" cy="200" r="95" fill="none" stroke="#1a1a1a" stroke-width="4"/>
+
+  <!-- Top text: BENNY & THE PETS -->
+  <text font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="30" fill="#1a1a1a" letter-spacing="3">
+    <textPath href="#topArc" startOffset="50%" text-anchor="middle">BENNY &amp; THE PETS</textPath>
+  </text>
+
+  <!-- Bottom text: BOARDING -->
+  <text font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="30" fill="#1a1a1a" letter-spacing="5">
+    <textPath href="#bottomArc" startOffset="50%" text-anchor="middle">BOARDING</textPath>
+  </text>
+
+  <!-- Paw print left -->
+  <g transform="translate(72,195) scale(0.35)">
+    <!-- Paw pad -->
+    <ellipse cx="30" cy="50" rx="22" ry="18" fill="#1a1a1a"/>
+    <!-- Toes -->
+    <circle cx="10" cy="22" r="10" fill="#1a1a1a"/>
+    <circle cx="30" cy="15" r="10" fill="#1a1a1a"/>
+    <circle cx="50" cy="22" r="10" fill="#1a1a1a"/>
+  </g>
+
+  <!-- Paw print right -->
+  <g transform="translate(298,195) scale(0.35)">
+    <ellipse cx="30" cy="50" rx="22" ry="18" fill="#1a1a1a"/>
+    <circle cx="10" cy="22" r="10" fill="#1a1a1a"/>
+    <circle cx="30" cy="15" r="10" fill="#1a1a1a"/>
+    <circle cx="50" cy="22" r="10" fill="#1a1a1a"/>
+  </g>
+
+  <!-- Dog face -->
+  <g transform="translate(200,195)">
+    <!-- Head shape -->
+    <ellipse cx="0" cy="-10" rx="65" ry="60" fill="none" stroke="#1a1a1a" stroke-width="4"/>
+
+    <!-- Left ear -->
+    <path d="M -50,-45 C -70,-75 -55,-85 -35,-60" fill="#1a1a1a" stroke="#1a1a1a" stroke-width="3"/>
+    <!-- Right ear -->
+    <path d="M 50,-45 C 70,-75 55,-85 35,-60" fill="#1a1a1a" stroke="#1a1a1a" stroke-width="3"/>
+
+    <!-- Eyes -->
+    <ellipse cx="-22" cy="-20" rx="7" ry="8" fill="#1a1a1a"/>
+    <circle cx="-19" cy="-22" r="2.5" fill="white"/>
+    <ellipse cx="22" cy="-20" rx="7" ry="8" fill="#1a1a1a"/>
+    <circle cx="25" cy="-22" r="2.5" fill="white"/>
+
+    <!-- Eyebrows -->
+    <path d="M -32,-32 Q -22,-40 -12,-32" fill="none" stroke="#1a1a1a" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 12,-32 Q 22,-40 32,-32" fill="none" stroke="#1a1a1a" stroke-width="2.5" stroke-linecap="round"/>
+
+    <!-- Nose -->
+    <ellipse cx="0" cy="2" rx="12" ry="9" fill="#1a1a1a"/>
+    <ellipse cx="0" cy="0" rx="4" ry="2" fill="#444"/>
+
+    <!-- Mouth -->
+    <path d="M 0,11 C 0,11 -18,28 -25,18" fill="none" stroke="#1a1a1a" stroke-width="3" stroke-linecap="round"/>
+    <path d="M 0,11 C 0,11 18,28 25,18" fill="none" stroke="#1a1a1a" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Tongue -->
+    <ellipse cx="0" cy="25" rx="8" ry="12" fill="none" stroke="#1a1a1a" stroke-width="2.5"/>
+    <line x1="0" y1="18" x2="0" y2="36" stroke="#1a1a1a" stroke-width="1.5"/>
+
+    <!-- Cheek lines -->
+    <path d="M -35,-5 C -40,0 -38,5 -33,5" fill="none" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 35,-5 C 40,0 38,5 33,5" fill="none" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round"/>
+  </g>
+</svg>

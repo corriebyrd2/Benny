@@ -127,12 +127,24 @@ img {
   color: var(--dark);
   display: flex;
   align-items: center;
+  gap: 8px;
   gap: 4px;
 }
 
-.logo-paw {
-  font-size: 1.8rem;
-  animation: wiggle 2s ease-in-out infinite;
+.logo-img {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  transition: transform var(--transition);
+}
+
+.logo:hover .logo-img {
+  transform: scale(1.1) rotate(-5deg);
+}
+
+.logo-text {
+  display: flex;
+  align-items: center;
 }
 
 .logo-amp {
@@ -1008,6 +1020,17 @@ img {
 .footer-brand h3 {
   font-size: 1.4rem;
   margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.footer-logo-img {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: white;
+  padding: 2px;
 }
 
 .footer-brand p {

@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Benny and the Pets | Premium Dog Boarding</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Floating paw prints background -->
+  <div class="paw-prints" id="pawPrints" aria-hidden="true"></div>
+
+  <!-- Navigation -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-container">
+      <a href="#home" class="logo">
+        <span class="logo-paw">&#128062;</span> Benny<span class="logo-amp">&</span>the Pets
+      </a>
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
+        <span></span><span></span><span></span>
+      </button>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="#home">Home</a></li>
+        <li><a href="#about">About</a></li>
+        <li><a href="#services">Services</a></li>
+        <li><a href="#gallery">Gallery</a></li>
+        <li><a href="#testimonials">Happy Tails</a></li>
+        <li><a href="#contact" class="nav-cta">Book a Stay</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero" id="home">
+    <div class="hero-content">
+      <h1 class="hero-title">
+        Where Every Pup Gets the
+        <span class="highlight">Royal Treatment</span>
+        <span class="wiggle-emoji" aria-hidden="true">&#128054;</span>
+      </h1>
+      <p class="hero-subtitle">
+        Premium dog boarding with belly rubs, tail wags, and all the love your furry friend deserves. Run by Ben &mdash; dog lover extraordinaire!
+      </p>
+      <div class="hero-buttons">
+        <a href="#contact" class="btn btn-primary">Book a Stay &#127881;</a>
+        <a href="#services" class="btn btn-secondary">Our Services</a>
+      </div>
+      <div class="hero-stats">
+        <div class="stat">
+          <span class="stat-number" data-target="500">0</span>+
+          <span class="stat-label">Happy Dogs</span>
+        </div>
+        <div class="stat">
+          <span class="stat-number" data-target="12">0</span>+
+          <span class="stat-label">Years Experience</span>
+        </div>
+        <div class="stat">
+          <span class="stat-number" data-target="100">0</span>%
+          <span class="stat-label">Tail Wags</span>
+        </div>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="hero-dog-illustration">
+        <div class="bouncing-dog" aria-hidden="true">&#128021;</div>
+        <div class="dog-shadow"></div>
+      </div>
+    </div>
+    <div class="scroll-indicator" aria-hidden="true">
+      <span>Scroll Down</span>
+      <div class="scroll-arrow"></div>
+    </div>
+  </section>
+
+  <!-- About Section -->
+  <section class="about" id="about">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">Who We Are</span>
+        <h2>Meet Ben &amp; The Pack</h2>
+      </div>
+      <div class="about-grid">
+        <div class="about-image">
+          <div class="about-image-placeholder">
+            <span>&#129333;</span>
+            <p>Ben &amp; Friends</p>
+          </div>
+        </div>
+        <div class="about-content">
+          <h3>A Passion That Became a Calling</h3>
+          <p>
+            Hey there! I'm <strong>Ben</strong>, and I've been crazy about dogs since before I could walk.
+            What started as helping neighbors watch their pups turned into <strong>Benny and the Pets</strong> &mdash;
+            a boarding facility where dogs don't just stay, they <em>thrive</em>.
+          </p>
+          <p>
+            Every dog that walks through our doors becomes part of our pack. We believe in
+            spacious play areas, personalized attention, and yes &mdash; unlimited belly rubs.
+          </p>
+          <div class="about-features">
+            <div class="about-feature">
+              <span class="feature-icon">&#127793;</span>
+              <div>
+                <strong>Spacious Grounds</strong>
+                <p>Acres of safe, fenced play areas</p>
+              </div>
+            </div>
+            <div class="about-feature">
+              <span class="feature-icon">&#10084;&#65039;</span>
+              <div>
+                <strong>Genuine Love</strong>
+                <p>We treat every dog like our own</p>
+              </div>
+            </div>
+            <div class="about-feature">
+              <span class="feature-icon">&#127909;</span>
+              <div>
+                <strong>Pup Cams</strong>
+                <p>Watch your dog anytime, anywhere</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Services Section -->
+  <section class="services" id="services">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">What We Offer</span>
+        <h2>Tail-Wagging Services</h2>
+        <p class="section-desc">From overnight stays to doggy daycare, we've got your pup covered.</p>
+      </div>
+      <div class="services-grid">
+        <div class="service-card" data-tilt>
+          <div class="service-icon">&#127968;</div>
+          <h3>Overnight Boarding</h3>
+          <p>Cozy suites with bedtime stories (yes, really) and midnight check-ins. Your pup sleeps like royalty.</p>
+          <ul class="service-perks">
+            <li>Private suites</li>
+            <li>Evening walk included</li>
+            <li>Breakfast &amp; dinner</li>
+          </ul>
+          <span class="service-price">From $45/night</span>
+        </div>
+        <div class="service-card featured" data-tilt>
+          <div class="featured-badge">Most Popular</div>
+          <div class="service-icon">&#9728;&#65039;</div>
+          <h3>Doggy Daycare</h3>
+          <p>A full day of socialization, play, and structured activities. Your dog will come home happily exhausted!</p>
+          <ul class="service-perks">
+            <li>Supervised group play</li>
+            <li>Nap time included</li>
+            <li>Photo updates</li>
+          </ul>
+          <span class="service-price">From $30/day</span>
+        </div>
+        <div class="service-card" data-tilt>
+          <div class="service-icon">&#128704;</div>
+          <h3>Spa &amp; Grooming</h3>
+          <p>Bath time shouldn't be a battle. Our gentle groomers make every pup feel pampered and pretty.</p>
+          <ul class="service-perks">
+            <li>Bath &amp; blow-dry</li>
+            <li>Nail trimming</li>
+            <li>Coat brushing</li>
+          </ul>
+          <span class="service-price">From $35/session</span>
+        </div>
+        <div class="service-card" data-tilt>
+          <div class="service-icon">&#127939;</div>
+          <h3>Training Sessions</h3>
+          <p>Positive reinforcement training that makes learning fun. From basics to impressive tricks!</p>
+          <ul class="service-perks">
+            <li>1-on-1 sessions</li>
+            <li>Certified trainers</li>
+            <li>Progress reports</li>
+          </ul>
+          <span class="service-price">From $50/session</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Fun Interactive Section -->
+  <section class="fun-section" id="fun">
+    <div class="container">
+      <div class="section-header light">
+        <span class="section-tag">Interactive Fun</span>
+        <h2>Boop the Snoot! &#128055;</h2>
+        <p class="section-desc">Go ahead, give the pup some love! Click the dog to boop.</p>
+      </div>
+      <div class="boop-game">
+        <div class="boop-dog" id="boopDog">
+          <div class="boop-target">&#128054;</div>
+          <div class="boop-reaction" id="boopReaction"></div>
+        </div>
+        <div class="boop-counter">
+          <span>Boops given:</span>
+          <span class="boop-count" id="boopCount">0</span>
+        </div>
+        <div class="boop-milestones" id="boopMilestones"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Gallery Section -->
+  <section class="gallery" id="gallery">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">Our Guests</span>
+        <h2>The Puppy Parade &#128062;</h2>
+        <p class="section-desc">Just a few of our adorable guests having the time of their lives!</p>
+      </div>
+      <div class="gallery-grid">
+        <div class="gallery-item large">
+          <div class="gallery-placeholder" style="--hue: 30;">
+            <span>&#128054;</span><p>Max playing fetch</p>
+          </div>
+        </div>
+        <div class="gallery-item">
+          <div class="gallery-placeholder" style="--hue: 200;">
+            <span>&#128021;</span><p>Bella nap time</p>
+          </div>
+        </div>
+        <div class="gallery-item">
+          <div class="gallery-placeholder" style="--hue: 120;">
+            <span>&#128062;</span><p>Rocky's spa day</p>
+          </div>
+        </div>
+        <div class="gallery-item">
+          <div class="gallery-placeholder" style="--hue: 280;">
+            <span>&#128054;</span><p>Luna making friends</p>
+          </div>
+        </div>
+        <div class="gallery-item tall">
+          <div class="gallery-placeholder" style="--hue: 350;">
+            <span>&#128021;</span><p>Charlie's adventure</p>
+          </div>
+        </div>
+        <div class="gallery-item">
+          <div class="gallery-placeholder" style="--hue: 60;">
+            <span>&#128062;</span><p>Daisy loves treats</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Testimonials Section -->
+  <section class="testimonials" id="testimonials">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">Reviews</span>
+        <h2>Happy Tails &#128151;</h2>
+        <p class="section-desc">Don't just take our word for it &mdash; hear from our fur-family!</p>
+      </div>
+      <div class="testimonials-carousel" id="testimonialsCarousel">
+        <div class="testimonial-track" id="testimonialTrack">
+          <div class="testimonial-card">
+            <div class="testimonial-stars">&#11088;&#11088;&#11088;&#11088;&#11088;</div>
+            <p>"Our golden retriever Max literally <strong>drags us</strong> to Benny's door. He loves it here more than home. Should I be offended?"</p>
+            <div class="testimonial-author">
+              <div class="author-avatar">&#128105;</div>
+              <div>
+                <strong>Sarah M.</strong>
+                <span>Max's human</span>
+              </div>
+            </div>
+          </div>
+          <div class="testimonial-card">
+            <div class="testimonial-stars">&#11088;&#11088;&#11088;&#11088;&#11088;</div>
+            <p>"Ben sent me photos of my pup wearing a birthday hat at their doggy birthday party. I cried happy tears at work. 10/10."</p>
+            <div class="testimonial-author">
+              <div class="author-avatar">&#128104;</div>
+              <div>
+                <strong>Mike T.</strong>
+                <span>Buddy's dad</span>
+              </div>
+            </div>
+          </div>
+          <div class="testimonial-card">
+            <div class="testimonial-stars">&#11088;&#11088;&#11088;&#11088;&#11088;</div>
+            <p>"We have three huskies. THREE. Ben handles them like a pro and they come home tired and happy. This man is a wizard."</p>
+            <div class="testimonial-author">
+              <div class="author-avatar">&#128105;</div>
+              <div>
+                <strong>Jessica R.</strong>
+                <span>The Husky Trio's mom</span>
+              </div>
+            </div>
+          </div>
+          <div class="testimonial-card">
+            <div class="testimonial-stars">&#11088;&#11088;&#11088;&#11088;&#11088;</div>
+            <p>"My anxious rescue was terrified of everyone. After a week with Ben, she was playing with other dogs! Miracle worker!"</p>
+            <div class="testimonial-author">
+              <div class="author-avatar">&#128104;</div>
+              <div>
+                <strong>David K.</strong>
+                <span>Rosie's forever human</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="carousel-controls">
+          <button class="carousel-btn prev" id="carouselPrev" aria-label="Previous testimonial">&#8592;</button>
+          <div class="carousel-dots" id="carouselDots"></div>
+          <button class="carousel-btn next" id="carouselNext" aria-label="Next testimonial">&#8594;</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Contact / Booking Section -->
+  <section class="contact" id="contact">
+    <div class="container">
+      <div class="section-header light">
+        <span class="section-tag">Get In Touch</span>
+        <h2>Book Your Pup's Vacation! &#127890;</h2>
+        <p class="section-desc">Ready to give your dog the best stay ever? Let's make it happen!</p>
+      </div>
+      <div class="contact-grid">
+        <form class="contact-form" id="contactForm">
+          <div class="form-group">
+            <label for="ownerName">Your Name</label>
+            <input type="text" id="ownerName" name="ownerName" placeholder="Your name" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="email">Email</label>
+              <input type="email" id="email" name="email" placeholder="you@email.com" required>
+            </div>
+            <div class="form-group">
+              <label for="phone">Phone</label>
+              <input type="tel" id="phone" name="phone" placeholder="(555) 123-4567">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="dogName">Dog's Name</label>
+            <input type="text" id="dogName" name="dogName" placeholder="Your pup's name" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="service">Service</label>
+              <select id="service" name="service" required>
+                <option value="">Choose a service...</option>
+                <option value="boarding">Overnight Boarding</option>
+                <option value="daycare">Doggy Daycare</option>
+                <option value="grooming">Spa &amp; Grooming</option>
+                <option value="training">Training Sessions</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="dates">Preferred Dates</label>
+              <input type="text" id="dates" name="dates" placeholder="e.g., March 15-20">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="message">Tell Us About Your Pup</label>
+            <textarea id="message" name="message" rows="4" placeholder="Any special needs, favorite toys, or quirky habits we should know about?"></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary btn-full">
+            Send Booking Request &#128062;
+          </button>
+        </form>
+        <div class="contact-info">
+          <div class="info-card">
+            <span class="info-icon">&#128205;</span>
+            <h4>Visit Us</h4>
+            <p>123 Pawsome Lane<br>Dogtown, CA 90210</p>
+          </div>
+          <div class="info-card">
+            <span class="info-icon">&#128222;</span>
+            <h4>Call Us</h4>
+            <p>(555) BENNY-PET<br>(555) 236-6973</p>
+          </div>
+          <div class="info-card">
+            <span class="info-icon">&#128231;</span>
+            <h4>Email Us</h4>
+            <p>woof@bennyandthepets.com</p>
+          </div>
+          <div class="info-card">
+            <span class="info-icon">&#128336;</span>
+            <h4>Hours</h4>
+            <p>Mon-Sat: 7am - 7pm<br>Sun: 8am - 5pm</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <h3><span>&#128062;</span> Benny &amp; the Pets</h3>
+          <p>Where tails never stop wagging and every pup is family.</p>
+          <div class="social-links">
+            <a href="#" aria-label="Facebook" class="social-link">FB</a>
+            <a href="#" aria-label="Instagram" class="social-link">IG</a>
+            <a href="#" aria-label="TikTok" class="social-link">TT</a>
+          </div>
+        </div>
+        <div class="footer-links">
+          <h4>Quick Links</h4>
+          <ul>
+            <li><a href="#home">Home</a></li>
+            <li><a href="#about">About Ben</a></li>
+            <li><a href="#services">Services</a></li>
+            <li><a href="#gallery">Gallery</a></li>
+          </ul>
+        </div>
+        <div class="footer-links">
+          <h4>Services</h4>
+          <ul>
+            <li><a href="#services">Overnight Boarding</a></li>
+            <li><a href="#services">Doggy Daycare</a></li>
+            <li><a href="#services">Grooming</a></li>
+            <li><a href="#services">Training</a></li>
+          </ul>
+        </div>
+        <div class="footer-newsletter">
+          <h4>Join the Pack!</h4>
+          <p>Get pup tips and special offers in your inbox.</p>
+          <form class="newsletter-form" id="newsletterForm">
+            <input type="email" placeholder="Your email" required>
+            <button type="submit" class="btn btn-primary">Subscribe</button>
+          </form>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2026 Benny and the Pets. All rights reserved. Made with &#10084;&#65039; and lots of dog hair.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Success Modal -->
+  <div class="modal-overlay" id="successModal">
+    <div class="modal">
+      <div class="modal-icon">&#127881;</div>
+      <h3>Woof-tastic!</h3>
+      <p>Your booking request has been sent! We'll fetch back to you within 24 hours.</p>
+      <button class="btn btn-primary" id="modalClose">Got it!</button>
+    </div>
+  </div>
+
+  <script src="js/main.js"></script>
+</body>
+</html>

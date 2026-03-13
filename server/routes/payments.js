@@ -1,6 +1,6 @@
 const express = require('express');
 const { getDb } = require('../database');
-const { authenticateToken } = require('../auth');
+const { authenticateToken, requirePermission, logAudit } = require('../auth');
 
 const router = express.Router();
 
@@ -89,7 +89,7 @@ router.post('/confirm-payment', async (req, res) => {
 });
 
 // Admin: Send a payment link for a booking
-router.post('/send-payment-link', authenticateToken, async (req, res) => {
+router.post('/send-payment-link', authenticateToken, requirePermission('write'), async (req, res) => {
   const stripe = getStripe();
   if (!stripe) {
     return res.status(503).json({ error: 'Stripe is not configured. Please add your Stripe keys to the .env file.' });
@@ -125,6 +125,7 @@ router.post('/send-payment-link', authenticateToken, async (req, res) => {
       cancel_url: `${req.protocol}://${req.get('host')}/my-bookings?email=${encodeURIComponent(booking.email)}`
     });
 
+    logAudit(req.admin.id, req.admin.email, 'send_payment_link', 'payments', booking_id.toString(), 'success');
     res.json({ checkout_url: session.url, session_id: session.id });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -190,7 +191,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 });
 
 // Admin: Get Stripe config status
-router.get('/config', authenticateToken, (req, res) => {
+router.get('/config', authenticateToken, requirePermission('read'), (req, res) => {
   const key = process.env.STRIPE_SECRET_KEY;
   const pubKey = process.env.STRIPE_PUBLISHABLE_KEY;
   const configured = key && key !== 'sk_test_placeholder' && pubKey && pubKey !== 'pk_test_placeholder';

@@ -3,7 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { getDb } = require('../database');
-const { authenticateToken } = require('../auth');
+const { authenticateToken, requirePermission, logAudit } = require('../auth');
 
 const router = express.Router();
 
@@ -48,14 +48,14 @@ router.get('/', (req, res) => {
 });
 
 // Admin: Get all photos
-router.get('/all', authenticateToken, (req, res) => {
+router.get('/all', authenticateToken, requirePermission('read'), (req, res) => {
   const db = getDb();
   const photos = db.prepare('SELECT * FROM photos ORDER BY display_order ASC').all();
   res.json(photos);
 });
 
 // Admin: Upload a photo
-router.post('/', authenticateToken, upload.single('photo'), (req, res) => {
+router.post('/', authenticateToken, requirePermission('write'), upload.single('photo'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No photo file provided' });
   }
@@ -75,6 +75,7 @@ router.post('/', authenticateToken, upload.single('photo'), (req, res) => {
     show_on_homepage !== '0' ? 1 : 0
   );
 
+  logAudit(req.admin.id, req.admin.email, 'create', 'photos', result.lastInsertRowid.toString(), 'success');
   res.status(201).json({
     id: result.lastInsertRowid,
     filename: req.file.filename,
@@ -83,7 +84,7 @@ router.post('/', authenticateToken, upload.single('photo'), (req, res) => {
 });
 
 // Admin: Update photo metadata
-router.put('/:id', authenticateToken, (req, res) => {
+router.put('/:id', authenticateToken, requirePermission('write'), (req, res) => {
   const db = getDb();
   const { caption, layout, display_order, show_on_homepage } = req.body;
 
@@ -101,11 +102,12 @@ router.put('/:id', authenticateToken, (req, res) => {
     req.params.id
   );
 
+  logAudit(req.admin.id, req.admin.email, 'update', 'photos', req.params.id, 'success');
   res.json({ message: 'Photo updated' });
 });
 
 // Admin: Delete a photo
-router.delete('/:id', authenticateToken, (req, res) => {
+router.delete('/:id', authenticateToken, requirePermission('delete'), (req, res) => {
   const db = getDb();
   const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(req.params.id);
 
@@ -117,6 +119,7 @@ router.delete('/:id', authenticateToken, (req, res) => {
     db.prepare('DELETE FROM photos WHERE id = ?').run(req.params.id);
   }
 
+  logAudit(req.admin.id, req.admin.email, 'delete', 'photos', req.params.id, 'success');
   res.json({ message: 'Photo deleted' });
 });
 

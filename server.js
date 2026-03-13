@@ -51,8 +51,8 @@ app.get('/my-bookings', (req, res) => {
 });
 
 // Dashboard stats for admin
-const { authenticateToken } = require('./server/auth');
-app.get('/api/dashboard/stats', authenticateToken, (req, res) => {
+const { authenticateToken, requirePermission } = require('./server/auth');
+app.get('/api/dashboard/stats', authenticateToken, requirePermission('read'), (req, res) => {
   const { getDb } = require('./server/database');
   const db = getDb();
 

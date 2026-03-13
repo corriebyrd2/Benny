@@ -22,6 +22,19 @@ function initTables() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'admin',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      admin_id INTEGER,
+      admin_email TEXT,
+      action TEXT NOT NULL,
+      resource TEXT NOT NULL,
+      resource_id TEXT,
+      details TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'success',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -72,13 +85,19 @@ function initTables() {
     );
   `);
 
+  // Migrate: add role column to existing admins table if missing
+  const columns = db.prepare("PRAGMA table_info(admins)").all();
+  if (!columns.find(c => c.name === 'role')) {
+    db.exec("ALTER TABLE admins ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'");
+  }
+
   // Seed default admin if none exists
   const adminCount = db.prepare('SELECT COUNT(*) as count FROM admins').get();
   if (adminCount.count === 0) {
     const email = process.env.ADMIN_EMAIL || 'admin@bennyandthepets.com';
     const password = process.env.ADMIN_PASSWORD || 'changeme123';
     const hash = bcrypt.hashSync(password, 10);
-    db.prepare('INSERT INTO admins (email, password_hash) VALUES (?, ?)').run(email, hash);
+    db.prepare('INSERT INTO admins (email, password_hash, role) VALUES (?, ?, ?)').run(email, hash, 'admin');
   }
 
   // Seed default services if none exist

@@ -1,6 +1,6 @@
 const express = require('express');
 const { getDb } = require('../database');
-const { authenticateToken } = require('../auth');
+const { authenticateToken, requirePermission, logAudit } = require('../auth');
 
 const router = express.Router();
 
@@ -19,7 +19,7 @@ router.get('/', (req, res) => {
 });
 
 // Admin: Get all services (including inactive)
-router.get('/all', authenticateToken, (req, res) => {
+router.get('/all', authenticateToken, requirePermission('read'), (req, res) => {
   const db = getDb();
   const services = db.prepare('SELECT * FROM services ORDER BY display_order ASC').all();
   services.forEach(s => {
@@ -29,7 +29,7 @@ router.get('/all', authenticateToken, (req, res) => {
 });
 
 // Admin: Create a service
-router.post('/', authenticateToken, (req, res) => {
+router.post('/', authenticateToken, requirePermission('write'), (req, res) => {
   const db = getDb();
   const { name, description, icon, perks, price_cents, price_label, is_featured, display_order, stripe_price_id } = req.body;
 
@@ -44,11 +44,12 @@ router.post('/', authenticateToken, (req, res) => {
     stripe_price_id || ''
   );
 
+  logAudit(req.admin.id, req.admin.email, 'create', 'services', result.lastInsertRowid.toString(), 'success');
   res.status(201).json({ id: result.lastInsertRowid, message: 'Service created' });
 });
 
 // Admin: Update a service
-router.put('/:id', authenticateToken, (req, res) => {
+router.put('/:id', authenticateToken, requirePermission('write'), (req, res) => {
   const db = getDb();
   const { name, description, icon, perks, price_cents, price_label, is_featured, display_order, active, stripe_price_id } = req.body;
 
@@ -77,13 +78,15 @@ router.put('/:id', authenticateToken, (req, res) => {
     req.params.id
   );
 
+  logAudit(req.admin.id, req.admin.email, 'update', 'services', req.params.id, 'success');
   res.json({ message: 'Service updated' });
 });
 
 // Admin: Delete a service
-router.delete('/:id', authenticateToken, (req, res) => {
+router.delete('/:id', authenticateToken, requirePermission('delete'), (req, res) => {
   const db = getDb();
   db.prepare('DELETE FROM services WHERE id = ?').run(req.params.id);
+  logAudit(req.admin.id, req.admin.email, 'delete', 'services', req.params.id, 'success');
   res.json({ message: 'Service deleted' });
 });
 

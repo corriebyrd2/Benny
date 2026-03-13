@@ -1,6 +1,6 @@
 const express = require('express');
 const { getDb } = require('../database');
-const { authenticateToken } = require('../auth');
+const { authenticateToken, requirePermission, logAudit } = require('../auth');
 
 const router = express.Router();
 
@@ -37,7 +37,7 @@ router.post('/', (req, res) => {
 });
 
 // Admin: Get all bookings
-router.get('/', authenticateToken, (req, res) => {
+router.get('/', authenticateToken, requirePermission('read'), (req, res) => {
   const db = getDb();
   const { status, payment_status } = req.query;
 
@@ -65,7 +65,7 @@ router.get('/', authenticateToken, (req, res) => {
 });
 
 // Admin: Get single booking
-router.get('/:id', authenticateToken, (req, res) => {
+router.get('/:id', authenticateToken, requirePermission('read'), (req, res) => {
   const db = getDb();
   const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
 
@@ -77,7 +77,7 @@ router.get('/:id', authenticateToken, (req, res) => {
 });
 
 // Admin: Update booking status
-router.put('/:id', authenticateToken, (req, res) => {
+router.put('/:id', authenticateToken, requirePermission('write'), (req, res) => {
   const db = getDb();
   const { status, payment_status, amount_cents } = req.body;
 
@@ -90,13 +90,15 @@ router.put('/:id', authenticateToken, (req, res) => {
     WHERE id = ?
   `).run(status, payment_status, amount_cents, req.params.id);
 
+  logAudit(req.admin.id, req.admin.email, 'update', 'bookings', req.params.id, 'success');
   res.json({ message: 'Booking updated' });
 });
 
 // Admin: Delete booking
-router.delete('/:id', authenticateToken, (req, res) => {
+router.delete('/:id', authenticateToken, requirePermission('delete'), (req, res) => {
   const db = getDb();
   db.prepare('DELETE FROM bookings WHERE id = ?').run(req.params.id);
+  logAudit(req.admin.id, req.admin.email, 'delete', 'bookings', req.params.id, 'success');
   res.json({ message: 'Booking deleted' });
 });
 

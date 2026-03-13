@@ -565,11 +565,18 @@
         headers['Content-Type'] = 'application/json';
       }
       const res = await fetch(API + path, { ...options, headers });
-      if (res.status === 401 || res.status === 403) {
+      if (res.status === 401) {
         logout();
         throw new Error('Session expired');
       }
       const data = await res.json();
+      if (res.status === 403 && data.error === 'rbac_access_denied') {
+        throw new Error(`Access denied: ${data.message}`);
+      }
+      if (res.status === 403) {
+        logout();
+        throw new Error('Session expired');
+      }
       if (!res.ok) throw new Error(data.error || 'Request failed');
       return data;
     }

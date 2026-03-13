@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Bookings | Benny and the Pets</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* Booking Portal Styles */
+    .booking-portal {
+      min-height: 100vh;
+      background: var(--bg);
+      padding-top: 100px;
+      padding-bottom: 80px;
+    }
+
+    .portal-container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .portal-header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .portal-header .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--primary);
+      font-weight: 700;
+      font-size: 0.95rem;
+      margin-bottom: 20px;
+      transition: gap var(--transition);
+    }
+
+    .portal-header .back-link:hover {
+      gap: 10px;
+    }
+
+    .portal-header h1 {
+      font-size: clamp(2rem, 4vw, 2.8rem);
+      color: var(--dark);
+      margin-bottom: 8px;
+    }
+
+    .portal-header p {
+      color: var(--text-light);
+      font-size: 1.1rem;
+    }
+
+    /* Lookup Form */
+    .lookup-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 36px;
+      margin-bottom: 32px;
+    }
+
+    .lookup-form {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+
+    .lookup-form .field {
+      flex: 1;
+    }
+
+    .lookup-form label {
+      display: block;
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: var(--dark);
+      margin-bottom: 6px;
+    }
+
+    .lookup-form input {
+      width: 100%;
+      padding: 14px 18px;
+      border: 2px solid #e0e0e0;
+      border-radius: var(--radius-sm);
+      font-family: 'Nunito', sans-serif;
+      font-size: 1rem;
+      transition: border-color var(--transition);
+      background: var(--bg);
+    }
+
+    .lookup-form input:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .lookup-form .btn {
+      flex-shrink: 0;
+      padding: 14px 28px;
+    }
+
+    /* Bookings List */
+    .bookings-section {
+      display: none;
+    }
+
+    .bookings-section.visible {
+      display: block;
+    }
+
+    .bookings-count {
+      font-weight: 700;
+      color: var(--text-light);
+      margin-bottom: 16px;
+      font-size: 0.95rem;
+    }
+
+    .booking-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 28px;
+      margin-bottom: 16px;
+      border-left: 4px solid var(--secondary);
+      transition: transform var(--transition), box-shadow var(--transition);
+      cursor: pointer;
+    }
+
+    .booking-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .booking-card.status-confirmed {
+      border-left-color: #27AE60;
+    }
+
+    .booking-card.status-pending {
+      border-left-color: #F39C12;
+    }
+
+    .booking-card.status-completed {
+      border-left-color: var(--secondary);
+    }
+
+    .booking-card.status-cancelled {
+      border-left-color: #E74C3C;
+      opacity: 0.7;
+    }
+
+    .booking-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .booking-card-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .booking-card-title h3 {
+      font-size: 1.2rem;
+      color: var(--dark);
+    }
+
+    .booking-card-title .dog-icon {
+      font-size: 1.5rem;
+    }
+
+    .booking-card-badges {
+      display: flex;
+      gap: 8px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 14px;
+      border-radius: 50px;
+      font-size: 0.8rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-pending { background: #FFF3CD; color: #856404; }
+    .badge-confirmed { background: #D4EDDA; color: #155724; }
+    .badge-completed { background: #D1ECF1; color: #0C5460; }
+    .badge-cancelled { background: #F8D7DA; color: #721C24; }
+    .badge-paid { background: #D4EDDA; color: #155724; }
+    .badge-unpaid { background: #FFF3CD; color: #856404; }
+
+    .booking-card-details {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      color: var(--text-light);
+      font-size: 0.95rem;
+    }
+
+    .booking-card-details .detail-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .booking-card-details .detail-label {
+      font-size: 0.8rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-light);
+      opacity: 0.7;
+    }
+
+    .booking-card-details .detail-value {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    /* Booking Detail View */
+    .booking-detail {
+      display: none;
+    }
+
+    .booking-detail.visible {
+      display: block;
+    }
+
+    .detail-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--primary);
+      font-weight: 700;
+      cursor: pointer;
+      margin-bottom: 20px;
+      font-size: 0.95rem;
+      background: none;
+      border: none;
+      font-family: 'Nunito', sans-serif;
+      transition: gap var(--transition);
+    }
+
+    .detail-back:hover {
+      gap: 10px;
+    }
+
+    .detail-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .detail-hero {
+      background: linear-gradient(135deg, var(--dark) 0%, var(--dark-light) 100%);
+      color: var(--white);
+      padding: 32px 36px;
+    }
+
+    .detail-hero-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .detail-hero h2 {
+      font-size: 1.6rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .detail-hero .booking-id {
+      font-size: 0.9rem;
+      opacity: 0.7;
+      font-family: 'Nunito', sans-serif;
+      font-weight: 600;
+    }
+
+    .detail-body {
+      padding: 36px;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+
+    .detail-section h4 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-light);
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+
+    .detail-field {
+      margin-bottom: 14px;
+    }
+
+    .detail-field .field-label {
+      font-size: 0.8rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-light);
+      margin-bottom: 2px;
+    }
+
+    .detail-field .field-value {
+      font-weight: 600;
+      color: var(--text);
+      font-size: 1rem;
+    }
+
+    .detail-message {
+      background: var(--bg);
+      padding: 20px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 32px;
+    }
+
+    .detail-message h4 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-light);
+      margin-bottom: 8px;
+    }
+
+    .detail-message p {
+      color: var(--text);
+      font-style: italic;
+    }
+
+    /* Payment Section */
+    .payment-section {
+      background: linear-gradient(135deg, #f8f9ff, #f0f4ff);
+      border: 2px solid #e0e7ff;
+      border-radius: var(--radius);
+      padding: 28px;
+      margin-bottom: 24px;
+    }
+
+    .payment-section h4 {
+      font-size: 1.1rem;
+      color: var(--dark);
+      margin-bottom: 4px;
+    }
+
+    .payment-section .amount {
+      font-family: 'Fredoka One', cursive;
+      font-size: 2.2rem;
+      color: var(--primary);
+      margin: 12px 0;
+    }
+
+    .payment-section p {
+      color: var(--text-light);
+      font-size: 0.9rem;
+      margin-bottom: 16px;
+    }
+
+    .payment-paid {
+      background: linear-gradient(135deg, #f0fff4, #e6ffed);
+      border-color: #b7ebc9;
+    }
+
+    .payment-paid h4 { color: #155724; }
+    .payment-paid .amount { color: #27AE60; }
+
+    .detail-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    /* Empty / Loading States */
+    .empty-state {
+      text-align: center;
+      padding: 60px 24px;
+    }
+
+    .empty-state .empty-icon {
+      font-size: 4rem;
+      margin-bottom: 16px;
+    }
+
+    .empty-state h3 {
+      font-family: 'Fredoka One', cursive;
+      color: var(--dark);
+      margin-bottom: 8px;
+    }
+
+    .empty-state p {
+      color: var(--text-light);
+      max-width: 400px;
+      margin: 0 auto;
+    }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 24px;
+      height: 24px;
+      border: 3px solid #e0e0e0;
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Toast */
+    .toast-container {
+      position: fixed;
+      top: 24px;
+      right: 24px;
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toast {
+      background: var(--white);
+      padding: 14px 20px;
+      border-radius: var(--radius-sm);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      animation: toastIn 0.3s ease;
+      border-left: 4px solid #27AE60;
+    }
+
+    .toast.error {
+      border-left-color: #E74C3C;
+    }
+
+    @keyframes toastIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    /* Stripe Elements container */
+    #stripe-card-element {
+      padding: 14px;
+      border: 2px solid #e0e0e0;
+      border-radius: var(--radius-sm);
+      background: var(--white);
+      margin-bottom: 16px;
+      transition: border-color var(--transition);
+    }
+
+    #stripe-card-element.focused {
+      border-color: var(--primary);
+    }
+
+    #card-errors {
+      color: #E74C3C;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+      min-height: 20px;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .lookup-form {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .detail-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .booking-card-top {
+        flex-direction: column;
+      }
+
+      .detail-hero h2 {
+        font-size: 1.3rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .booking-card-details {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="navbar scrolled" id="navbar">
+    <div class="nav-container">
+      <a href="/" class="logo">
+        <img src="images/logo.svg" alt="Benny and the Pets logo" class="logo-img">
+        <span class="logo-text">Benny<span class="logo-amp">&</span>the Pets</span>
+      </a>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="/">Home</a></li>
+        <li><a href="/#services">Services</a></li>
+        <li><a href="/#gallery">Gallery</a></li>
+        <li><a href="/#contact" class="nav-cta">Book a Stay</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="booking-portal">
+    <div class="portal-container">
+      <!-- Header -->
+      <div class="portal-header">
+        <a href="/" class="back-link">&larr; Back to Home</a>
+        <h1>My Bookings &#128054;</h1>
+        <p>Look up your bookings and manage your pup's stays</p>
+      </div>
+
+      <!-- Lookup Form -->
+      <div class="lookup-card">
+        <form class="lookup-form" id="lookupForm">
+          <div class="field">
+            <label for="lookupEmail">Email Address</label>
+            <input type="email" id="lookupEmail" placeholder="Enter the email you used to book" required>
+          </div>
+          <button type="submit" class="btn btn-primary" id="lookupBtn">Find Bookings</button>
+        </form>
+      </div>
+
+      <!-- Bookings List -->
+      <div class="bookings-section" id="bookingsList">
+        <p class="bookings-count" id="bookingsCount"></p>
+        <div id="bookingsContainer"></div>
+      </div>
+
+      <!-- Booking Detail -->
+      <div class="booking-detail" id="bookingDetail"></div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-bottom" style="border-top: none;">
+        <p>&copy; 2026 Benny and the Pets. All rights reserved. Made with &#10084;&#65039; and lots of dog hair.</p>
+      </div>
+    </div>
+  </footer>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script>
+    let currentEmail = '';
+    let currentBookings = [];
+    let stripePublishableKey = null;
+
+    // --- Utilities ---
+    function showToast(message, isError = false) {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = 'toast' + (isError ? ' error' : '');
+      toast.innerHTML = `<span>${isError ? '&#10060;' : '&#9989;'}</span> ${esc(message)}`;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 4000);
+    }
+
+    function esc(text) {
+      const d = document.createElement('div');
+      d.textContent = text;
+      return d.innerHTML;
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '-';
+      return new Date(dateStr).toLocaleDateString('en-US', {
+        month: 'long', day: 'numeric', year: 'numeric'
+      });
+    }
+
+    function formatCents(cents) {
+      return '$' + (cents / 100).toFixed(2);
+    }
+
+    function badge(status) {
+      return `<span class="badge badge-${status}">${status}</span>`;
+    }
+
+    // --- Pre-fill from URL params ---
+    const params = new URLSearchParams(window.location.search);
+    const prefillEmail = params.get('email');
+    const prefillBooking = params.get('booking');
+    const paymentResult = params.get('payment');
+
+    if (prefillEmail) {
+      document.getElementById('lookupEmail').value = prefillEmail;
+    }
+
+    if (paymentResult === 'success') {
+      showToast('Payment successful! Your booking has been confirmed.');
+    } else if (paymentResult === 'cancelled') {
+      showToast('Payment was cancelled.', true);
+    }
+
+    // --- Fetch Stripe config ---
+    async function loadStripeConfig() {
+      try {
+        const res = await fetch('/api/payments/config/public');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.configured && data.publishable_key) {
+            stripePublishableKey = data.publishable_key;
+          }
+        }
+      } catch (e) {
+        // Stripe not available
+      }
+    }
+    loadStripeConfig();
+
+    // --- Lookup Form ---
+    document.getElementById('lookupForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('lookupEmail').value.trim();
+      if (!email) return;
+
+      currentEmail = email;
+      const btn = document.getElementById('lookupBtn');
+      btn.innerHTML = '<span class="loading-spinner"></span>';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/api/bookings/lookup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+
+        const bookings = await res.json();
+
+        if (!res.ok) {
+          showToast(bookings.error || 'Something went wrong', true);
+          return;
+        }
+
+        currentBookings = bookings;
+        renderBookingsList(bookings);
+
+        // If we have a specific booking to show, open it
+        if (prefillBooking) {
+          const targetBooking = bookings.find(b => b.id === parseInt(prefillBooking));
+          if (targetBooking) {
+            showBookingDetail(targetBooking.id);
+          }
+        }
+      } catch (err) {
+        showToast('Could not connect to server. Please try again.', true);
+      } finally {
+        btn.textContent = 'Find Bookings';
+        btn.disabled = false;
+      }
+    });
+
+    // Auto-submit if prefilled
+    if (prefillEmail) {
+      document.getElementById('lookupForm').dispatchEvent(new Event('submit'));
+    }
+
+    // --- Render Bookings List ---
+    function renderBookingsList(bookings) {
+      const section = document.getElementById('bookingsList');
+      const container = document.getElementById('bookingsContainer');
+      const count = document.getElementById('bookingsCount');
+
+      // Hide detail view
+      document.getElementById('bookingDetail').classList.remove('visible');
+
+      section.classList.add('visible');
+
+      if (bookings.length === 0) {
+        count.textContent = '';
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">&#128269;</div>
+            <h3>No Bookings Found</h3>
+            <p>We couldn't find any bookings with this email address. Double-check or <a href="/#contact" style="color:var(--primary);font-weight:700;">book your first stay</a>!</p>
+          </div>
+        `;
+        return;
+      }
+
+      count.textContent = `${bookings.length} booking${bookings.length !== 1 ? 's' : ''} found`;
+
+      container.innerHTML = bookings.map(b => `
+        <div class="booking-card status-${b.status}" onclick="showBookingDetail(${b.id})">
+          <div class="booking-card-top">
+            <div class="booking-card-title">
+              <span class="dog-icon">&#128054;</span>
+              <h3>${esc(b.dog_name)}'s ${esc(b.service_name)}</h3>
+            </div>
+            <div class="booking-card-badges">
+              ${badge(b.status)}
+              ${badge(b.payment_status)}
+            </div>
+          </div>
+          <div class="booking-card-details">
+            <div class="detail-item">
+              <span class="detail-label">Booking ID</span>
+              <span class="detail-value">#${b.id}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Dates</span>
+              <span class="detail-value">${esc(b.preferred_dates || 'Not specified')}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Amount</span>
+              <span class="detail-value">${formatCents(b.amount_cents)}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Booked On</span>
+              <span class="detail-value">${formatDate(b.created_at)}</span>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // --- Show Booking Detail ---
+    async function showBookingDetail(id) {
+      const detailEl = document.getElementById('bookingDetail');
+      const listEl = document.getElementById('bookingsList');
+
+      detailEl.innerHTML = '<div style="text-align:center;padding:40px;"><span class="loading-spinner"></span></div>';
+      detailEl.classList.add('visible');
+      listEl.classList.remove('visible');
+
+      try {
+        const res = await fetch(`/api/bookings/lookup/${id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: currentEmail })
+        });
+
+        if (!res.ok) {
+          showToast('Could not load booking details', true);
+          goBackToList();
+          return;
+        }
+
+        const b = await res.json();
+        renderBookingDetail(b);
+      } catch (err) {
+        showToast('Connection error', true);
+        goBackToList();
+      }
+    }
+
+    function renderBookingDetail(b) {
+      const detailEl = document.getElementById('bookingDetail');
+
+      const isPaid = b.payment_status === 'paid';
+      const isCancelled = b.status === 'cancelled';
+      const canPay = !isPaid && !isCancelled && b.amount_cents > 0;
+      const canCancel = !isCancelled && !isPaid && (b.status === 'pending' || b.status === 'confirmed');
+
+      let paymentHtml = '';
+      if (isPaid) {
+        paymentHtml = `
+          <div class="payment-section payment-paid">
+            <h4>&#9989; Payment Complete</h4>
+            <div class="amount">${formatCents(b.amount_cents)}</div>
+            <p>Thank you! Your payment has been received and your booking is confirmed.</p>
+          </div>
+        `;
+      } else if (canPay) {
+        paymentHtml = `
+          <div class="payment-section">
+            <h4>&#128179; Payment Required</h4>
+            <div class="amount">${formatCents(b.amount_cents)}</div>
+            <p>Complete your payment to confirm your booking. We accept all major credit and debit cards.</p>
+            <div id="paymentArea">
+              <button class="btn btn-primary" onclick="initiatePayment(${b.id})" id="payBtn">
+                Pay ${formatCents(b.amount_cents)} Now
+              </button>
+            </div>
+          </div>
+        `;
+      } else if (isCancelled) {
+        paymentHtml = `
+          <div class="payment-section" style="background:linear-gradient(135deg,#fff5f5,#ffe0e0);border-color:#fdd;">
+            <h4 style="color:#721C24;">&#10060; Booking Cancelled</h4>
+            <p style="margin-bottom:0;">This booking has been cancelled. <a href="/#contact" style="color:var(--primary);font-weight:700;">Book a new stay</a>.</p>
+          </div>
+        `;
+      }
+
+      detailEl.innerHTML = `
+        <button class="detail-back" onclick="goBackToList()">&larr; Back to all bookings</button>
+        <div class="detail-card">
+          <div class="detail-hero">
+            <div class="detail-hero-top">
+              <h2>&#128054; ${esc(b.dog_name)}'s ${esc(b.service_name)}</h2>
+              <div style="display:flex;gap:8px;">${badge(b.status)} ${badge(b.payment_status)}</div>
+            </div>
+            <span class="booking-id">Booking #${b.id} &bull; Booked on ${formatDate(b.created_at)}</span>
+          </div>
+          <div class="detail-body">
+            <div class="detail-grid">
+              <div class="detail-section">
+                <h4>Owner Information</h4>
+                <div class="detail-field">
+                  <div class="field-label">Name</div>
+                  <div class="field-value">${esc(b.owner_name)}</div>
+                </div>
+                <div class="detail-field">
+                  <div class="field-label">Email</div>
+                  <div class="field-value">${esc(b.email)}</div>
+                </div>
+                <div class="detail-field">
+                  <div class="field-label">Phone</div>
+                  <div class="field-value">${esc(b.phone || 'Not provided')}</div>
+                </div>
+              </div>
+              <div class="detail-section">
+                <h4>Booking Details</h4>
+                <div class="detail-field">
+                  <div class="field-label">Dog's Name</div>
+                  <div class="field-value">${esc(b.dog_name)}</div>
+                </div>
+                <div class="detail-field">
+                  <div class="field-label">Service</div>
+                  <div class="field-value">${esc(b.service_name)}</div>
+                </div>
+                <div class="detail-field">
+                  <div class="field-label">Preferred Dates</div>
+                  <div class="field-value">${esc(b.preferred_dates || 'Not specified')}</div>
+                </div>
+              </div>
+            </div>
+
+            ${b.message ? `
+              <div class="detail-message">
+                <h4>Special Notes</h4>
+                <p>${esc(b.message)}</p>
+              </div>
+            ` : ''}
+
+            ${paymentHtml}
+
+            <div class="detail-actions">
+              ${canCancel ? `<button class="btn btn-outline" onclick="cancelBooking(${b.id})">Cancel Booking</button>` : ''}
+              <a href="/#contact" class="btn btn-secondary">Book Another Stay</a>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function goBackToList() {
+      document.getElementById('bookingDetail').classList.remove('visible');
+      document.getElementById('bookingDetail').innerHTML = '';
+      renderBookingsList(currentBookings);
+    }
+
+    // --- Cancel Booking ---
+    async function cancelBooking(id) {
+      if (!confirm('Are you sure you want to cancel this booking? This cannot be undone.')) return;
+
+      try {
+        const res = await fetch(`/api/bookings/${id}/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: currentEmail })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          showToast(data.error || 'Could not cancel booking', true);
+          return;
+        }
+
+        showToast('Booking cancelled successfully');
+
+        // Refresh data
+        const refreshRes = await fetch('/api/bookings/lookup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: currentEmail })
+        });
+        currentBookings = await refreshRes.json();
+
+        // Refresh detail view
+        showBookingDetail(id);
+      } catch (err) {
+        showToast('Connection error. Please try again.', true);
+      }
+    }
+
+    // --- Payment ---
+    async function initiatePayment(bookingId) {
+      const payBtn = document.getElementById('payBtn');
+      payBtn.innerHTML = '<span class="loading-spinner"></span> Processing...';
+      payBtn.disabled = true;
+
+      try {
+        // Try to create a Stripe Checkout session via the payment link flow
+        const res = await fetch('/api/payments/create-checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            booking_id: bookingId,
+            success_url: window.location.origin + `/my-bookings?email=${encodeURIComponent(currentEmail)}&booking=${bookingId}&payment=success`,
+            cancel_url: window.location.origin + `/my-bookings?email=${encodeURIComponent(currentEmail)}&booking=${bookingId}&payment=cancelled`
+          })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          showToast(data.error || 'Payment service unavailable', true);
+          payBtn.textContent = `Pay ${formatCents(document.querySelector('.payment-section .amount').textContent.replace('$', '') * 100)} Now`;
+          payBtn.disabled = false;
+          return;
+        }
+
+        if (data.checkout_url) {
+          window.location.href = data.checkout_url;
+        }
+      } catch (err) {
+        showToast('Could not connect to payment service. Please try again.', true);
+        payBtn.textContent = 'Pay Now';
+        payBtn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>

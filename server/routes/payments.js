@@ -189,6 +189,72 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
   res.json({ received: true });
 });
 
+// Public: Create checkout session for customer payment
+router.post('/create-checkout', async (req, res) => {
+  const stripe = getStripe();
+  if (!stripe) {
+    return res.status(503).json({ error: 'Payment processing is not available at this time. Please contact us to arrange payment.' });
+  }
+
+  const { booking_id, success_url, cancel_url } = req.body;
+  if (!booking_id) {
+    return res.status(400).json({ error: 'Booking ID is required' });
+  }
+
+  const db = getDb();
+  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(booking_id);
+  if (!booking) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  if (booking.payment_status === 'paid') {
+    return res.status(400).json({ error: 'This booking is already paid' });
+  }
+
+  if (booking.status === 'cancelled') {
+    return res.status(400).json({ error: 'Cannot pay for a cancelled booking' });
+  }
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: booking.service_name,
+            description: `Booking for ${booking.dog_name} - Benny and the Pets`
+          },
+          unit_amount: booking.amount_cents
+        },
+        quantity: 1
+      }],
+      mode: 'payment',
+      customer_email: booking.email,
+      metadata: {
+        booking_id: booking.id.toString()
+      },
+      success_url: success_url || `${req.protocol}://${req.get('host')}/my-bookings?payment=success&booking=${booking.id}`,
+      cancel_url: cancel_url || `${req.protocol}://${req.get('host')}/my-bookings?payment=cancelled`
+    });
+
+    res.json({ checkout_url: session.url, session_id: session.id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Public: Get Stripe config (publishable key only, no secrets)
+router.get('/config/public', (req, res) => {
+  const key = process.env.STRIPE_SECRET_KEY;
+  const pubKey = process.env.STRIPE_PUBLISHABLE_KEY;
+  const configured = key && key !== 'sk_test_placeholder' && pubKey && pubKey !== 'pk_test_placeholder';
+  res.json({
+    configured,
+    publishable_key: configured ? pubKey : null
+  });
+});
+
 // Admin: Get Stripe config status
 router.get('/config', authenticateToken, (req, res) => {
   const key = process.env.STRIPE_SECRET_KEY;

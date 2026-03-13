@@ -45,6 +45,11 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
+// Customer booking portal route
+app.get('/my-bookings', (req, res) => {
+  res.sendFile(path.join(__dirname, 'booking.html'));
+});
+
 // Dashboard stats for admin
 const { authenticateToken } = require('./server/auth');
 app.get('/api/dashboard/stats', authenticateToken, (req, res) => {

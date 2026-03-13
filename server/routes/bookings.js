@@ -36,6 +36,66 @@ router.post('/', (req, res) => {
   });
 });
 
+// Public: Look up bookings by email
+router.post('/lookup', (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+
+  const db = getDb();
+  const bookings = db.prepare(
+    'SELECT id, owner_name, dog_name, service_name, preferred_dates, status, payment_status, amount_cents, created_at FROM bookings WHERE email = ? ORDER BY created_at DESC'
+  ).all(email);
+
+  res.json(bookings);
+});
+
+// Public: Get a single booking by id + email (for customer verification)
+router.post('/lookup/:id', (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+
+  const db = getDb();
+  const booking = db.prepare(
+    'SELECT id, owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, status, payment_status, stripe_payment_id, amount_cents, created_at FROM bookings WHERE id = ? AND email = ?'
+  ).get(req.params.id, email);
+
+  if (!booking) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  res.json(booking);
+});
+
+// Public: Cancel a booking (customer self-service, verified by email)
+router.post('/:id/cancel', (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+
+  const db = getDb();
+  const booking = db.prepare('SELECT * FROM bookings WHERE id = ? AND email = ?').get(req.params.id, email);
+
+  if (!booking) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  if (booking.status === 'cancelled') {
+    return res.status(400).json({ error: 'Booking is already cancelled' });
+  }
+
+  if (booking.payment_status === 'paid') {
+    return res.status(400).json({ error: 'Cannot cancel a paid booking online. Please contact us directly.' });
+  }
+
+  db.prepare("UPDATE bookings SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(req.params.id);
+  res.json({ message: 'Booking cancelled successfully' });
+});
+
 // Admin: Get all bookings
 router.get('/', authenticateToken, (req, res) => {
   const db = getDb();

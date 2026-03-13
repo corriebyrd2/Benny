@@ -360,6 +360,12 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       if (res.ok) {
+        const result = await res.json();
+        // Update the "View My Bookings" link with the customer's email
+        const viewLink = document.getElementById('viewBookingsLink');
+        if (viewLink) {
+          viewLink.href = `/my-bookings?email=${encodeURIComponent(formData.email)}&booking=${result.id}`;
+        }
         successModal.classList.add('active');
         contactForm.reset();
       } else {

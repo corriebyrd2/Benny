@@ -45,6 +45,11 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
+// Customer booking portal route
+app.get('/my-bookings', (req, res) => {
+  res.sendFile(path.join(__dirname, 'customer.html'));
+});
+
 // Dashboard stats for admin
 const { authenticateToken } = require('./server/auth');
 app.get('/api/dashboard/stats', authenticateToken, (req, res) => {
@@ -76,4 +81,5 @@ app.get('/api/dashboard/stats', authenticateToken, (req, res) => {
 app.listen(PORT, () => {
   console.log(`Benny and the Pets server running on http://localhost:${PORT}`);
   console.log(`Admin portal: http://localhost:${PORT}/admin`);
+  console.log(`Customer portal: http://localhost:${PORT}/my-bookings`);
 });

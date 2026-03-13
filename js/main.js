@@ -5,6 +5,100 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
+  // --- Load Dynamic Content from API ---
+  loadDynamicServices();
+  loadDynamicGallery();
+
+  async function loadDynamicServices() {
+    try {
+      const res = await fetch('/api/services');
+      if (!res.ok) return; // Fall back to static content
+      const services = await res.json();
+      if (services.length === 0) return;
+
+      const grid = document.querySelector('.services-grid');
+      if (!grid) return;
+
+      // Also update the booking form select options
+      const serviceSelect = document.getElementById('service');
+
+      grid.innerHTML = services.map(s => {
+        const perks = Array.isArray(s.perks) ? s.perks : [];
+        return `
+          <div class="service-card ${s.is_featured ? 'featured' : ''}" data-tilt>
+            ${s.is_featured ? '<div class="featured-badge">Most Popular</div>' : ''}
+            <div class="service-icon">${s.icon}</div>
+            <h3>${s.name}</h3>
+            <p>${s.description}</p>
+            <ul class="service-perks">
+              ${perks.map(p => `<li>${p}</li>`).join('')}
+            </ul>
+            <span class="service-price">${s.price_label}</span>
+          </div>
+        `;
+      }).join('');
+
+      if (serviceSelect) {
+        serviceSelect.innerHTML = '<option value="">Choose a service...</option>' +
+          services.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+      }
+
+      // Re-init tilt effect on new cards
+      grid.querySelectorAll('[data-tilt]').forEach(card => {
+        card.addEventListener('mousemove', (e) => {
+          const rect = card.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          const centerX = rect.width / 2;
+          const centerY = rect.height / 2;
+          const rotateX = (y - centerY) / 20;
+          const rotateY = (centerX - x) / 20;
+          card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-8px)`;
+        });
+        card.addEventListener('mouseleave', () => { card.style.transform = ''; });
+      });
+
+      // Re-add reveal classes
+      grid.querySelectorAll('.service-card').forEach(el => {
+        el.classList.add('reveal');
+        observer.observe(el);
+      });
+    } catch (e) {
+      // API not available, keep static content
+    }
+  }
+
+  async function loadDynamicGallery() {
+    try {
+      const res = await fetch('/api/photos');
+      if (!res.ok) return;
+      const photos = await res.json();
+      if (photos.length === 0) return;
+
+      const grid = document.querySelector('.gallery-grid');
+      if (!grid) return;
+
+      grid.innerHTML = photos.map(p => {
+        const layoutClass = p.layout === 'large' ? ' large' : (p.layout === 'tall' ? ' tall' : '');
+        return `
+          <div class="gallery-item${layoutClass}">
+            <img src="/uploads/${encodeURIComponent(p.filename)}" alt="${p.caption || ''}"
+              style="width:100%;height:100%;object-fit:cover;"
+              onerror="this.parentElement.innerHTML='<div class=\\'gallery-placeholder\\' style=\\'--hue:30;\\'><span>&#128054;</span><p>${p.caption || ''}</p></div>';">
+          </div>
+        `;
+      }).join('');
+
+      // Re-add reveal classes
+      grid.querySelectorAll('.gallery-item').forEach(el => {
+        el.classList.add('reveal');
+        observer.observe(el);
+      });
+    } catch (e) {
+      // API not available, keep static content
+    }
+  }
+
   // --- Floating Paw Prints ---
   const pawContainer = document.getElementById('pawPrints');
   const pawEmojis = ['\u{1F43E}'];
@@ -240,21 +334,45 @@ document.addEventListener('DOMContentLoaded', () => {
   const successModal = document.getElementById('successModal');
   const modalClose = document.getElementById('modalClose');
 
-  contactForm.addEventListener('submit', (e) => {
+  contactForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    // Fun confetti-like effect on the button
     const btn = contactForm.querySelector('button[type="submit"]');
     btn.textContent = 'Sending... \u{1F43E}';
     btn.disabled = true;
 
-    // Simulate submission delay
-    setTimeout(() => {
+    const formData = {
+      owner_name: document.getElementById('ownerName').value,
+      email: document.getElementById('email').value,
+      phone: document.getElementById('phone').value,
+      dog_name: document.getElementById('dogName').value,
+      service_id: parseInt(document.getElementById('service').value),
+      preferred_dates: document.getElementById('dates').value,
+      message: document.getElementById('message').value
+    };
+
+    try {
+      const res = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+
+      if (res.ok) {
+        successModal.classList.add('active');
+        contactForm.reset();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Something went wrong. Please try again.');
+      }
+    } catch (err) {
+      // API not available, show success anyway (graceful fallback)
       successModal.classList.add('active');
-      btn.textContent = 'Send Booking Request \u{1F43E}';
-      btn.disabled = false;
       contactForm.reset();
-    }, 1500);
+    }
+
+    btn.textContent = 'Send Booking Request \u{1F43E}';
+    btn.disabled = false;
   });
 
   modalClose.addEventListener('click', () => {

@@ -121,8 +121,8 @@ router.post('/send-payment-link', authenticateToken, async (req, res) => {
       metadata: {
         booking_id: booking.id.toString()
       },
-      success_url: `${req.protocol}://${req.get('host')}/?payment=success&booking=${booking.id}`,
-      cancel_url: `${req.protocol}://${req.get('host')}/?payment=cancelled`
+      success_url: `${req.protocol}://${req.get('host')}/my-bookings?email=${encodeURIComponent(booking.email)}&booking=${booking.id}`,
+      cancel_url: `${req.protocol}://${req.get('host')}/my-bookings?email=${encodeURIComponent(booking.email)}`
     });
 
     res.json({ checkout_url: session.url, session_id: session.id });

@@ -36,6 +36,42 @@ router.post('/', (req, res) => {
   });
 });
 
+// Public: Look up bookings by email
+router.post('/lookup', (req, res) => {
+  const db = getDb();
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+
+  const bookings = db.prepare(
+    'SELECT id, owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, status, payment_status, amount_cents, created_at, updated_at FROM bookings WHERE LOWER(email) = LOWER(?) ORDER BY created_at DESC'
+  ).all(email);
+
+  res.json(bookings);
+});
+
+// Public: Get a single booking by ID + email verification
+router.post('/customer/:id', (req, res) => {
+  const db = getDb();
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required for verification' });
+  }
+
+  const booking = db.prepare(
+    'SELECT id, owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, status, payment_status, amount_cents, stripe_payment_id, created_at, updated_at FROM bookings WHERE id = ? AND LOWER(email) = LOWER(?)'
+  ).get(req.params.id, email);
+
+  if (!booking) {
+    return res.status(404).json({ error: 'Booking not found or email does not match' });
+  }
+
+  res.json(booking);
+});
+
 // Admin: Get all bookings
 router.get('/', authenticateToken, (req, res) => {
   const db = getDb();

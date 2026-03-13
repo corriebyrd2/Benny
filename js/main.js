@@ -5,10 +5,7 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
-  // --- Load Dynamic Content from API ---
-  loadDynamicServices();
-  loadDynamicGallery();
-
+  // --- Dynamic Content Functions (called after observer is created) ---
   async function loadDynamicServices() {
     try {
       const res = await fetch('/api/services');
@@ -197,6 +194,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
 
   revealElements.forEach(el => observer.observe(el));
+
+  // --- Load Dynamic Content from API ---
+  loadDynamicServices();
+  loadDynamicGallery();
 
   // Counter observer
   const statSection = document.querySelector('.hero-stats');

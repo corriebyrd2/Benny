@@ -65,6 +65,16 @@ function initTables() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      phone TEXT DEFAULT '',
+      password_hash TEXT NOT NULL,
+      dog_name TEXT DEFAULT '',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS bookings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       owner_name TEXT NOT NULL,
@@ -81,9 +91,17 @@ function initTables() {
       amount_cents INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE SET NULL
+      customer_id INTEGER DEFAULT NULL,
+      FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE SET NULL,
+      FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
     );
   `);
+
+  // Migrate: add customer_id column to existing bookings table if missing
+  const bookingCols = db.prepare("PRAGMA table_info(bookings)").all();
+  if (!bookingCols.find(c => c.name === 'customer_id')) {
+    db.exec("ALTER TABLE bookings ADD COLUMN customer_id INTEGER DEFAULT NULL");
+  }
 
   // Migrate: add role column to existing admins table if missing
   const columns = db.prepare("PRAGMA table_info(admins)").all();

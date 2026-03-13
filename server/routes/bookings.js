@@ -1,6 +1,7 @@
 const express = require('express');
 const { getDb } = require('../database');
 const { authenticateToken, requirePermission, logAudit } = require('../auth');
+const { authenticateCustomer } = require('../customerAuth');
 
 const router = express.Router();
 
@@ -32,6 +33,52 @@ router.post('/', (req, res) => {
   res.status(201).json({
     id: result.lastInsertRowid,
     message: 'Booking request submitted',
+    amount_cents: service.price_cents
+  });
+});
+
+// Authenticated customer: Get my bookings
+router.get('/my', authenticateCustomer, (req, res) => {
+  const db = getDb();
+  const bookings = db.prepare(
+    'SELECT id, owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, status, payment_status, amount_cents, created_at, updated_at FROM bookings WHERE customer_id = ? ORDER BY created_at DESC'
+  ).all(req.customer.id);
+  res.json(bookings);
+});
+
+// Authenticated customer: Create a booking
+router.post('/customer-book', authenticateCustomer, (req, res) => {
+  const db = getDb();
+  const { dog_name, service_id, preferred_dates, message } = req.body;
+
+  if (!dog_name || !service_id) {
+    return res.status(400).json({ error: 'Dog name and service are required' });
+  }
+
+  const service = db.prepare('SELECT * FROM services WHERE id = ? AND active = 1').get(service_id);
+  if (!service) {
+    return res.status(400).json({ error: 'Invalid service selected' });
+  }
+
+  const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(req.customer.id);
+  if (!customer) {
+    return res.status(404).json({ error: 'Customer not found' });
+  }
+
+  const result = db.prepare(`
+    INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, customer_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    customer.name, customer.email, customer.phone || '',
+    dog_name, service_id, service.name,
+    preferred_dates || '', message || '',
+    service.price_cents, customer.id
+  );
+
+  res.status(201).json({
+    id: result.lastInsertRowid,
+    message: 'Booking request submitted successfully!',
+    service_name: service.name,
     amount_cents: service.price_cents
   });
 });

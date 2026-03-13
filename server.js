@@ -3,7 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
-const { loginAdmin } = require('./server/auth');
+const { loginAdmin, registerCustomer, loginCustomer } = require('./server/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -32,6 +32,48 @@ app.post('/api/auth/login', (req, res) => {
   }
 
   res.json(result);
+});
+
+// Customer auth routes
+app.post('/api/customer/register', (req, res) => {
+  const { name, email, phone, password } = req.body;
+
+  if (!name || !email || !password) {
+    return res.status(400).json({ error: 'Name, email, and password are required' });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
+  const result = registerCustomer(name, email, phone, password);
+  if (result.error) {
+    return res.status(409).json({ error: result.error });
+  }
+
+  res.status(201).json(result);
+});
+
+app.post('/api/customer/login', (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+
+  const result = loginCustomer(email, password);
+  if (!result) {
+    return res.status(401).json({ error: 'Invalid email or password' });
+  }
+
+  res.json(result);
+});
+
+app.get('/api/customer/profile', require('./server/auth').authenticateCustomer, (req, res) => {
+  const { getDb } = require('./server/database');
+  const db = getDb();
+  const customer = db.prepare('SELECT id, name, email, phone, created_at FROM customers WHERE id = ?').get(req.customer.id);
+  if (!customer) return res.status(404).json({ error: 'Customer not found' });
+  res.json(customer);
 });
 
 // API Routes

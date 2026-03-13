@@ -330,61 +330,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }, { passive: true });
 
-  // --- Contact Form ---
-  const contactForm = document.getElementById('contactForm');
+  // --- Modal ---
   const successModal = document.getElementById('successModal');
   const modalClose = document.getElementById('modalClose');
 
-  contactForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const btn = contactForm.querySelector('button[type="submit"]');
-    btn.textContent = 'Sending... \u{1F43E}';
-    btn.disabled = true;
-
-    const formData = {
-      owner_name: document.getElementById('ownerName').value,
-      email: document.getElementById('email').value,
-      phone: document.getElementById('phone').value,
-      dog_name: document.getElementById('dogName').value,
-      service_id: parseInt(document.getElementById('service').value),
-      preferred_dates: document.getElementById('dates').value,
-      message: document.getElementById('message').value
-    };
-
-    try {
-      const res = await fetch('/api/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-
-      if (res.ok) {
-        successModal.classList.add('active');
-        contactForm.reset();
-      } else {
-        const err = await res.json();
-        alert(err.error || 'Something went wrong. Please try again.');
-      }
-    } catch (err) {
-      // API not available, show success anyway (graceful fallback)
-      successModal.classList.add('active');
-      contactForm.reset();
-    }
-
-    btn.textContent = 'Send Booking Request \u{1F43E}';
-    btn.disabled = false;
-  });
-
-  modalClose.addEventListener('click', () => {
-    successModal.classList.remove('active');
-  });
-
-  successModal.addEventListener('click', (e) => {
-    if (e.target === successModal) {
+  if (modalClose) {
+    modalClose.addEventListener('click', () => {
       successModal.classList.remove('active');
-    }
-  });
+    });
+  }
+
+  if (successModal) {
+    successModal.addEventListener('click', (e) => {
+      if (e.target === successModal) {
+        successModal.classList.remove('active');
+      }
+    });
+  }
 
   // --- Newsletter Form ---
   const newsletterForm = document.getElementById('newsletterForm');

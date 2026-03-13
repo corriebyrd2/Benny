@@ -1,30 +1,36 @@
 const express = require('express');
 const { getDb } = require('../database');
-const { authenticateToken } = require('../auth');
+const { authenticateToken, authenticateCustomer } = require('../auth');
 
 const router = express.Router();
 
-// Public: Create a booking
-router.post('/', (req, res) => {
+// Customer: Create a booking (requires customer login)
+router.post('/', authenticateCustomer, (req, res) => {
   const db = getDb();
-  const { owner_name, email, phone, dog_name, service_id, preferred_dates, message } = req.body;
+  const { dog_name, service_id, preferred_dates, message } = req.body;
 
-  if (!owner_name || !email || !dog_name || !service_id) {
-    return res.status(400).json({ error: 'Missing required fields: owner_name, email, dog_name, service_id' });
+  // Get customer info from their account
+  const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(req.customer.id);
+  if (!customer) {
+    return res.status(400).json({ error: 'Customer account not found' });
+  }
+
+  if (!dog_name || !service_id) {
+    return res.status(400).json({ error: 'Missing required fields: dog_name, service_id' });
   }
 
   // Look up service
-  const service = db.prepare('SELECT * FROM services WHERE id = ?').get(service_id);
+  const service = db.prepare('SELECT * FROM services WHERE id = ? AND active = 1').get(service_id);
   if (!service) {
     return res.status(400).json({ error: 'Invalid service selected' });
   }
 
   const result = db.prepare(`
-    INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO bookings (customer_id, owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    owner_name, email, phone || '', dog_name,
-    service_id, service.name,
+    customer.id, customer.name, customer.email, customer.phone || '',
+    dog_name, service_id, service.name,
     preferred_dates || '', message || '',
     service.price_cents
   );
@@ -36,37 +42,25 @@ router.post('/', (req, res) => {
   });
 });
 
-// Public: Look up bookings by email
-router.post('/lookup', (req, res) => {
+// Customer: Get my bookings (requires customer login)
+router.get('/mine', authenticateCustomer, (req, res) => {
   const db = getDb();
-  const { email } = req.body;
-
-  if (!email) {
-    return res.status(400).json({ error: 'Email is required' });
-  }
-
   const bookings = db.prepare(
-    'SELECT id, owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, status, payment_status, amount_cents, created_at, updated_at FROM bookings WHERE LOWER(email) = LOWER(?) ORDER BY created_at DESC'
-  ).all(email);
+    'SELECT id, owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, status, payment_status, amount_cents, created_at, updated_at FROM bookings WHERE customer_id = ? ORDER BY created_at DESC'
+  ).all(req.customer.id);
 
   res.json(bookings);
 });
 
-// Public: Get a single booking by ID + email verification
-router.post('/customer/:id', (req, res) => {
+// Customer: Get a single booking detail (requires customer login)
+router.get('/mine/:id', authenticateCustomer, (req, res) => {
   const db = getDb();
-  const { email } = req.body;
-
-  if (!email) {
-    return res.status(400).json({ error: 'Email is required for verification' });
-  }
-
   const booking = db.prepare(
-    'SELECT id, owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, status, payment_status, amount_cents, stripe_payment_id, created_at, updated_at FROM bookings WHERE id = ? AND LOWER(email) = LOWER(?)'
-  ).get(req.params.id, email);
+    'SELECT id, owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, status, payment_status, amount_cents, stripe_payment_id, created_at, updated_at FROM bookings WHERE id = ? AND customer_id = ?'
+  ).get(req.params.id, req.customer.id);
 
   if (!booking) {
-    return res.status(404).json({ error: 'Booking not found or email does not match' });
+    return res.status(404).json({ error: 'Booking not found' });
   }
 
   res.json(booking);

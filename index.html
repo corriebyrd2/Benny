@@ -30,7 +30,7 @@
         <li><a href="#gallery">Gallery</a></li>
         <li><a href="#testimonials">Happy Tails</a></li>
         <li><a href="/my-bookings">My Bookings</a></li>
-        <li><a href="#contact" class="nav-cta">Book a Stay</a></li>
+        <li><a href="/my-bookings" class="nav-cta">Book a Stay</a></li>
       </ul>
     </div>
   </nav>
@@ -47,7 +47,7 @@
         Premium dog boarding with belly rubs, tail wags, and all the love your furry friend deserves. Run by Ben &mdash; dog lover extraordinaire!
       </p>
       <div class="hero-buttons">
-        <a href="#contact" class="btn btn-primary">Book a Stay &#127881;</a>
+        <a href="/my-bookings" class="btn btn-primary">Book a Stay &#127881;</a>
         <a href="#services" class="btn btn-secondary">Our Services</a>
       </div>
       <div class="hero-stats">
@@ -317,58 +317,20 @@
     </div>
   </section>
 
-  <!-- Contact / Booking Section -->
+  <!-- Contact Section -->
   <section class="contact" id="contact">
     <div class="container">
       <div class="section-header light">
         <span class="section-tag">Get In Touch</span>
-        <h2>Book Your Pup's Vacation! &#127890;</h2>
-        <p class="section-desc">Ready to give your dog the best stay ever? Let's make it happen!</p>
+        <h2>Contact Us &#127890;</h2>
+        <p class="section-desc">Have questions? Reach out to us! To book a stay, please log in to your account.</p>
       </div>
       <div class="contact-grid">
-        <form class="contact-form" id="contactForm">
-          <div class="form-group">
-            <label for="ownerName">Your Name</label>
-            <input type="text" id="ownerName" name="ownerName" placeholder="Your name" required>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="email">Email</label>
-              <input type="email" id="email" name="email" placeholder="you@email.com" required>
-            </div>
-            <div class="form-group">
-              <label for="phone">Phone</label>
-              <input type="tel" id="phone" name="phone" placeholder="(555) 123-4567">
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="dogName">Dog's Name</label>
-            <input type="text" id="dogName" name="dogName" placeholder="Your pup's name" required>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="service">Service</label>
-              <select id="service" name="service" required>
-                <option value="">Choose a service...</option>
-                <option value="boarding">Overnight Boarding</option>
-                <option value="daycare">Doggy Daycare</option>
-                <option value="grooming">Spa &amp; Grooming</option>
-                <option value="training">Training Sessions</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="dates">Preferred Dates</label>
-              <input type="text" id="dates" name="dates" placeholder="e.g., March 15-20">
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="message">Tell Us About Your Pup</label>
-            <textarea id="message" name="message" rows="4" placeholder="Any special needs, favorite toys, or quirky habits we should know about?"></textarea>
-          </div>
-          <button type="submit" class="btn btn-primary btn-full">
-            Send Booking Request &#128062;
-          </button>
-        </form>
+        <div class="contact-booking-cta">
+          <h3>Ready to Book?</h3>
+          <p>Log in to your account to make a booking request for your pup.</p>
+          <a href="/my-bookings" class="btn btn-primary">Log In to Book &#128062;</a>
+        </div>
         <div class="contact-info">
           <div class="info-card">
             <span class="info-icon">&#128205;</span>
@@ -442,16 +404,6 @@
     </div>
   </footer>
 
-  <!-- Success Modal -->
-  <div class="modal-overlay" id="successModal">
-    <div class="modal">
-      <div class="modal-icon">&#127881;</div>
-      <h3>Woof-tastic!</h3>
-      <p>Your booking request has been sent! We'll fetch back to you within 24 hours.</p>
-      <a href="/my-bookings" class="btn btn-secondary" style="margin-bottom:12px;display:inline-flex;">View My Bookings</a>
-      <button class="btn btn-primary" id="modalClose">Got it!</button>
-    </div>
-  </div>
 
   <script src="js/main.js"></script>
 </body>

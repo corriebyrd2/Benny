@@ -924,6 +924,18 @@ img {
   box-shadow: var(--shadow-lg);
 }
 
+.contact-booking-cta {
+  background: var(--white);
+  padding: 40px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
 .form-group {
   margin-bottom: 20px;
 }

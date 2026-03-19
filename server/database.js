@@ -95,6 +95,14 @@ function initTables() {
       FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE SET NULL,
       FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
     );
+
+    CREATE TABLE IF NOT EXISTS number_counters (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      current_value INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Migrate: add customer_id column to existing bookings table if missing

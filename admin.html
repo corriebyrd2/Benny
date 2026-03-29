@@ -203,6 +203,7 @@
     .badge-cancelled { background: #F8D7DA; color: #721C24; }
     .badge-paid { background: #D4EDDA; color: #155724; }
     .badge-unpaid { background: #FFF3CD; color: #856404; }
+    .badge-requested { background: #CCE5FF; color: #004085; }
 
     /* Section panels */
     .panel { display: none; }
@@ -780,6 +781,7 @@
               </select>
               <select id="editPaymentStatus" style="padding:8px 12px; border:2px solid #e0e0e0; border-radius:6px;">
                 <option value="unpaid" ${b.payment_status === 'unpaid' ? 'selected' : ''}>Unpaid</option>
+                <option value="requested" ${b.payment_status === 'requested' ? 'selected' : ''}>Requested</option>
                 <option value="paid" ${b.payment_status === 'paid' ? 'selected' : ''}>Paid</option>
               </select>
             </div>
@@ -788,7 +790,7 @@
 
         const footer = `
           <button class="btn btn-danger btn-sm" onclick="deleteBooking(${b.id})">Delete</button>
-          <button class="btn btn-success btn-sm" onclick="sendPaymentLink(${b.id})">Send Payment Link</button>
+          ${b.payment_status !== 'paid' ? `<button class="btn btn-success btn-sm" onclick="requestPayment(${b.id})">Request Payment</button>` : ''}
           <button class="btn btn-primary btn-sm" onclick="updateBooking(${b.id})">Save Changes</button>
         `;
 
@@ -823,6 +825,20 @@
         closeModal();
         loadBookings();
         loadDashboard();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
+    async function requestPayment(id) {
+      try {
+        await apiCall('/api/payments/request-payment', {
+          method: 'POST',
+          body: JSON.stringify({ booking_id: id })
+        });
+        showToast('Payment requested — customer will see it in their dashboard');
+        closeModal();
+        loadBookings();
       } catch (err) {
         showToast(err.message, true);
       }

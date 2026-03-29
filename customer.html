@@ -550,6 +550,30 @@
     .badge-cancelled { background: #FADBD8; color: #922B21; }
     .badge-paid { background: #D5F5E3; color: #1E8449; }
     .badge-unpaid { background: #FADBD8; color: #922B21; }
+    .badge-requested { background: #CCE5FF; color: #004085; }
+
+    .payment-requested-banner {
+      background: linear-gradient(135deg, #CCE5FF, #E3F0FF);
+      border: 2px solid #80BDFF;
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .payment-requested-banner .banner-text {
+      font-weight: 700;
+      color: #004085;
+      font-size: 0.9rem;
+    }
+
+    .booking-card.payment-requested {
+      border-left-color: #007BFF;
+      box-shadow: 0 4px 20px rgba(0, 123, 255, 0.15);
+    }
 
     .booking-card-details {
       display: grid;
@@ -785,6 +809,7 @@
 
     .payment-section .payment-status-text.paid { color: var(--success); }
     .payment-section .payment-status-text.unpaid { color: var(--warning); }
+    .payment-section .payment-status-text.requested { color: #004085; }
 
     /* Success message */
     .booking-success {
@@ -1291,13 +1316,26 @@
     }
 
     function getPaymentBadge(status) {
-      return status === 'paid'
-        ? '<span class="badge badge-paid">Paid</span>'
-        : '<span class="badge badge-unpaid">Unpaid</span>';
+      if (status === 'paid') return '<span class="badge badge-paid">Paid</span>';
+      if (status === 'requested') return '<span class="badge badge-requested">Payment Due</span>';
+      return '<span class="badge badge-unpaid">Unpaid</span>';
     }
 
     function authHeaders() {
+      if (!token) {
+        logout();
+        throw new Error('Not logged in');
+      }
       return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+    }
+
+    async function safeJson(res) {
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new Error('Server returned an unexpected response. Please try again.');
+      }
     }
 
     function formatPreferredDates() {
@@ -1513,11 +1551,12 @@
           body: JSON.stringify(bookingBody)
         });
 
-        const data = await res.json();
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
-          throw new Error(data.error || 'Booking failed');
+          const errData = await safeJson(res).catch(() => ({}));
+          throw new Error(errData.error || 'Booking failed');
         }
+        const data = await safeJson(res);
 
         // Show success
         document.getElementById('bookingFormCard').style.display = 'none';
@@ -1554,7 +1593,7 @@
           if (res.status === 401 || res.status === 403) { logout(); return; }
           throw new Error('Failed to load bookings');
         }
-        bookings = await res.json();
+        bookings = await safeJson(res);
         renderBookings(container);
       } catch (err) {
         container.innerHTML = `<div class="empty-state"><div class="empty-icon">&#9888;&#65039;</div><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
@@ -1580,7 +1619,7 @@
           <span class="badge" style="background:var(--accent);color:var(--dark);padding:6px 16px;font-size:0.85rem;">${bookings.length} booking${bookings.length !== 1 ? 's' : ''}</span>
         </div>
       ` + bookings.map(booking => `
-        <div class="booking-card status-${booking.status}" onclick="openDetail(${booking.id})">
+        <div class="booking-card status-${booking.status}${booking.payment_status === 'requested' ? ' payment-requested' : ''}" onclick="openDetail(${booking.id})">
           <div class="booking-card-header">
             <div class="booking-card-title">
               <span class="dog-emoji">&#128054;</span>
@@ -1609,13 +1648,19 @@
               <span class="detail-value">${formatDate(booking.created_at)}</span>
             </div>
           </div>
+          ${booking.payment_status === 'requested' ? `
+            <div class="payment-requested-banner">
+              <span class="banner-text">&#128179; Payment of ${formatAmount(booking.amount_cents)} is due for this booking</span>
+              <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); initiatePayment(${booking.id})">Pay Now</button>
+            </div>
+          ` : ''}
           <div class="booking-card-footer">
             <div class="badges">
               ${getStatusBadge(booking.status)}
               ${getPaymentBadge(booking.payment_status)}
             </div>
             <div class="actions">
-              ${booking.payment_status !== 'paid' && booking.status !== 'cancelled' ? `
+              ${booking.payment_status === 'requested' ? `
                 <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); initiatePayment(${booking.id})">Pay Now</button>
               ` : ''}
               <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openDetail(${booking.id})">View Details</button>
@@ -1686,10 +1731,14 @@
           <h3>Payment</h3>
           <div class="amount">${formatAmount(booking.amount_cents)}</div>
           <div class="payment-status-text ${booking.payment_status}">
-            ${booking.payment_status === 'paid' ? 'Payment Complete' : 'Payment Pending'}
+            ${booking.payment_status === 'paid' ? 'Payment Complete' : booking.payment_status === 'requested' ? 'Payment Requested' : 'Payment Pending'}
           </div>
-          ${booking.payment_status !== 'paid' && booking.status !== 'cancelled' ? `
-            <button class="btn btn-primary" onclick="initiatePayment(${booking.id})">Continue to Payment</button>
+          ${booking.payment_status === 'requested' && booking.status !== 'cancelled' ? `
+            <p style="color:#004085;font-weight:700;font-size:0.9rem;margin-bottom:12px;">The team has requested payment for this booking.</p>
+            <button class="btn btn-primary" onclick="initiatePayment(${booking.id})">Pay Now — ${formatAmount(booking.amount_cents)}</button>
+          ` : ''}
+          ${booking.payment_status === 'unpaid' && booking.status !== 'cancelled' ? `
+            <p style="color:var(--text-light);font-weight:600;font-size:0.9rem;">Payment will be requested when your booking is confirmed.</p>
           ` : ''}
           ${booking.payment_status === 'paid' ? '<p style="color:var(--success);font-weight:700;font-size:0.9rem;">Thank you for your payment!</p>' : ''}
         </div>
@@ -1706,9 +1755,9 @@
     // --- Payment ---
     async function initiatePayment(bookingId) {
       try {
-        const res = await fetch('/api/payments/create-payment-intent', {
+        const res = await fetch('/api/payments/customer-checkout', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders(),
           body: JSON.stringify({ booking_id: bookingId })
         });
 
@@ -1717,13 +1766,14 @@
             showToast('Online payment is not yet configured. Please contact us to arrange payment.', 'error');
             return;
           }
-          const err = await res.json();
-          throw new Error(err.error || 'Payment failed');
+          const errData = await safeJson(res).catch(() => ({}));
+          throw new Error(errData.error || 'Payment failed');
         }
 
-        const data = await res.json();
-        showToast('Payment initiated! Amount: ' + formatAmount(data.amount), 'success');
-        showToast('Please contact Benny and the Pets to complete your payment.', 'success');
+        const data = await safeJson(res);
+        if (data.checkout_url) {
+          window.location.href = data.checkout_url;
+        }
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -1737,7 +1787,7 @@
           if (res.status === 401 || res.status === 403) { logout(); return; }
           throw new Error('Failed to load dogs');
         }
-        dogs = await res.json();
+        dogs = await safeJson(res);
         renderDogSelector();
       } catch (err) {
         console.error('Failed to load dogs:', err);
@@ -1870,11 +1920,12 @@
         const url = editId ? '/api/dogs/' + editId : '/api/dogs';
         const method = editId ? 'PUT' : 'POST';
         const res = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) });
-        const data = await res.json();
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
-          throw new Error(data.error || 'Failed to save dog');
+          const errData = await safeJson(res).catch(() => ({}));
+          throw new Error(errData.error || 'Failed to save dog');
         }
+        const data = await safeJson(res);
 
         showToast(editId ? 'Dog profile updated!' : 'Dog profile added!', 'success');
         hideDogForm();
@@ -1897,8 +1948,8 @@
         const res = await fetch('/api/dogs/' + id, { method: 'DELETE', headers: authHeaders() });
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
-          const data = await res.json();
-          throw new Error(data.error || 'Failed to delete dog');
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to delete dog');
         }
         showToast('Dog removed from profile', 'success');
         await loadDogs();
@@ -1911,6 +1962,19 @@
     // --- Init ---
     initDatePickers();
     checkAuth();
+
+    // Handle return from Stripe checkout
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('payment') === 'success') {
+      setTimeout(() => {
+        showToast('Payment successful! Thank you.', 'success');
+        switchPanel('bookings');
+      }, 500);
+      window.history.replaceState({}, '', '/my-bookings');
+    } else if (urlParams.get('payment') === 'cancelled') {
+      setTimeout(() => showToast('Payment was cancelled.', 'error'), 500);
+      window.history.replaceState({}, '', '/my-bookings');
+    }
   </script>
 </body>
 </html>

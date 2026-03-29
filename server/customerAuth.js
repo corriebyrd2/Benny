@@ -46,8 +46,15 @@ function registerCustomer(name, email, password, phone, dogName) {
   ).run(name, email.toLowerCase(), phone || '', hash, dogName || '');
 
   const customer = { id: result.lastInsertRowid, email: email.toLowerCase(), name };
+
+  // Create initial dog profile if dog name provided
+  if (dogName) {
+    db.prepare('INSERT INTO dogs (customer_id, name) VALUES (?, ?)').run(result.lastInsertRowid, dogName);
+  }
+
+  const dogs = db.prepare('SELECT * FROM dogs WHERE customer_id = ? ORDER BY created_at ASC').all(result.lastInsertRowid);
   const token = generateCustomerToken(customer);
-  return { token, customer: { id: customer.id, email: customer.email, name, phone: phone || '', dog_name: dogName || '' } };
+  return { token, customer: { id: customer.id, email: customer.email, name, phone: phone || '', dog_name: dogName || '', dogs } };
 }
 
 function loginCustomer(email, password) {
@@ -62,6 +69,7 @@ function loginCustomer(email, password) {
     return null;
   }
 
+  const dogs = db.prepare('SELECT * FROM dogs WHERE customer_id = ? ORDER BY created_at ASC').all(customer.id);
   const token = generateCustomerToken(customer);
   return {
     token,
@@ -70,7 +78,8 @@ function loginCustomer(email, password) {
       email: customer.email,
       name: customer.name,
       phone: customer.phone,
-      dog_name: customer.dog_name
+      dog_name: customer.dog_name,
+      dogs
     }
   };
 }

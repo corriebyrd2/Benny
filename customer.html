@@ -1653,6 +1653,11 @@
               <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); initiatePayment(${booking.id})">Pay Now</button>
             </div>
           ` : ''}
+          ${booking.status === 'cancelled' && booking.cancel_reason ? `
+            <div style="background:#FADBD8;border:1px solid #F5C6CB;border-radius:8px;padding:10px 14px;margin-top:12px;">
+              <span style="font-weight:700;color:#922B21;font-size:0.85rem;">Cancelled: ${escapeHtml(booking.cancel_reason)}</span>
+            </div>
+          ` : ''}
           <div class="booking-card-footer">
             <div class="badges">
               ${getStatusBadge(booking.status)}
@@ -1708,6 +1713,7 @@
           <div class="status-timeline"><h3>Booking Status</h3>
             <div style="background:#FADBD8;padding:14px 20px;border-radius:var(--radius-sm);text-align:center;">
               <span style="font-weight:800;color:#922B21;">This booking has been cancelled.</span>
+              ${booking.cancel_reason ? `<p style="color:#922B21;margin-top:8px;font-weight:600;font-size:0.9rem;">Reason: ${escapeHtml(booking.cancel_reason)}</p>` : ''}
             </div>
           </div>
         `;

@@ -124,6 +124,11 @@ function initTables() {
     db.exec("ALTER TABLE bookings ADD COLUMN customer_id INTEGER DEFAULT NULL");
   }
 
+  // Migrate: add cancel_reason column to bookings table if missing
+  if (!bookingCols.find(c => c.name === 'cancel_reason')) {
+    db.exec("ALTER TABLE bookings ADD COLUMN cancel_reason TEXT DEFAULT ''");
+  }
+
   // Migrate: add role column to existing admins table if missing
   const columns = db.prepare("PRAGMA table_info(admins)").all();
   if (!columns.find(c => c.name === 'role')) {

@@ -1551,12 +1551,11 @@
           body: JSON.stringify(bookingBody)
         });
 
+        const data = await safeJson(res);
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
-          const errData = await safeJson(res).catch(() => ({}));
-          throw new Error(errData.error || 'Booking failed');
+          throw new Error(data.error || 'Booking failed');
         }
-        const data = await safeJson(res);
 
         // Show success
         document.getElementById('bookingFormCard').style.display = 'none';
@@ -1761,16 +1760,15 @@
           body: JSON.stringify({ booking_id: bookingId })
         });
 
+        const data = await safeJson(res);
         if (!res.ok) {
           if (res.status === 503) {
             showToast('Online payment is not yet configured. Please contact us to arrange payment.', 'error');
             return;
           }
-          const errData = await safeJson(res).catch(() => ({}));
-          throw new Error(errData.error || 'Payment failed');
+          throw new Error(data.error || 'Payment failed');
         }
 
-        const data = await safeJson(res);
         if (data.checkout_url) {
           window.location.href = data.checkout_url;
         }
@@ -1920,12 +1918,11 @@
         const url = editId ? '/api/dogs/' + editId : '/api/dogs';
         const method = editId ? 'PUT' : 'POST';
         const res = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) });
+        const data = await safeJson(res);
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
-          const errData = await safeJson(res).catch(() => ({}));
-          throw new Error(errData.error || 'Failed to save dog');
+          throw new Error(data.error || 'Failed to save dog');
         }
-        const data = await safeJson(res);
 
         showToast(editId ? 'Dog profile updated!' : 'Dog profile added!', 'success');
         hideDogForm();

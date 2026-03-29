@@ -20,6 +20,12 @@ router.post('/', authenticateCustomer, (req, res) => {
     return res.status(400).json({ error: 'Dog name is required' });
   }
 
+  // Verify customer exists
+  const customer = db.prepare('SELECT id FROM customers WHERE id = ?').get(req.customer.id);
+  if (!customer) {
+    return res.status(401).json({ error: 'Customer not found. Please log out and log in again.' });
+  }
+
   const result = db.prepare(
     'INSERT INTO dogs (customer_id, name, breed, weight, age, notes) VALUES (?, ?, ?, ?, ?, ?)'
   ).run(req.customer.id, name.trim(), breed || '', weight || '', age || '', notes || '');

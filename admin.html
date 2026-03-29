@@ -92,6 +92,10 @@
     .btn-danger:hover { background: #c0392b; }
     .btn-outline { background: transparent; border: 2px solid #ddd; color: var(--text); }
     .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+    .btn-warning { background: #F39C12; color: var(--white); }
+    .btn-warning:hover { background: #D68910; }
+    .btn-info { background: #3498DB; color: var(--white); }
+    .btn-info:hover { background: #2980B9; }
     .btn-sm { padding: 8px 16px; font-size: 0.85rem; }
     .btn-full { width: 100%; justify-content: center; }
 
@@ -756,8 +760,30 @@
     async function viewBooking(id) {
       try {
         const b = await apiCall(`/api/bookings/${id}`);
+
+        // Current state banner
+        let stateBanner = '';
+        if (b.status === 'cancelled') {
+          stateBanner = `
+            <div style="background:#F8D7DA;border:1px solid #F5C6CB;border-radius:8px;padding:14px;margin-bottom:16px;">
+              <strong style="color:#721C24;">Cancelled</strong>
+              ${b.cancel_reason ? `<p style="margin-top:6px;color:#721C24;font-size:0.9rem;">${escapeHtml(b.cancel_reason)}</p>` : ''}
+            </div>`;
+        } else if (b.status === 'completed' && b.payment_status === 'paid') {
+          stateBanner = `
+            <div style="background:#D4EDDA;border:1px solid #C3E6CB;border-radius:8px;padding:14px;margin-bottom:16px;">
+              <strong style="color:#155724;">Completed & Paid</strong>
+            </div>`;
+        } else {
+          stateBanner = `
+            <div style="display:flex;gap:8px;margin-bottom:16px;">
+              ${statusBadge(b.status)} ${statusBadge(b.payment_status)}
+            </div>`;
+        }
+
         const body = `
           <div style="display:grid; gap:16px;">
+            ${stateBanner}
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
               <div><strong>Booking ID:</strong> #${b.id}</div>
               <div><strong>Date:</strong> ${formatDate(b.created_at)}</div>
@@ -768,47 +794,111 @@
               <div><strong>Service:</strong> ${escapeHtml(b.service_name)}</div>
               <div><strong>Dates:</strong> ${escapeHtml(b.preferred_dates || '-')}</div>
               <div><strong>Amount:</strong> ${formatCents(b.amount_cents)}</div>
-              <div><strong>Payment:</strong> ${statusBadge(b.payment_status)}</div>
             </div>
             ${b.message ? `<div><strong>Message:</strong><p style="margin-top:4px;color:var(--text-light)">${escapeHtml(b.message)}</p></div>` : ''}
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <label style="font-weight:700; width:100%;">Update Status:</label>
-              <select id="editBookingStatus" style="padding:8px 12px; border:2px solid #e0e0e0; border-radius:6px;">
-                <option value="pending" ${b.status === 'pending' ? 'selected' : ''}>Pending</option>
-                <option value="confirmed" ${b.status === 'confirmed' ? 'selected' : ''}>Confirmed</option>
-                <option value="completed" ${b.status === 'completed' ? 'selected' : ''}>Completed</option>
-                <option value="cancelled" ${b.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
-              </select>
-              <select id="editPaymentStatus" style="padding:8px 12px; border:2px solid #e0e0e0; border-radius:6px;">
-                <option value="unpaid" ${b.payment_status === 'unpaid' ? 'selected' : ''}>Unpaid</option>
-                <option value="requested" ${b.payment_status === 'requested' ? 'selected' : ''}>Requested</option>
-                <option value="paid" ${b.payment_status === 'paid' ? 'selected' : ''}>Paid</option>
-              </select>
+            <div id="cancelReasonSection" style="display:none;">
+              <label style="font-weight:700;display:block;margin-bottom:6px;">Reason for cancellation:</label>
+              <textarea id="cancelReasonInput" style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:6px;font-family:inherit;font-size:0.9rem;min-height:60px;resize:vertical;" placeholder="Enter reason (visible to customer)..."></textarea>
             </div>
           </div>
         `;
 
-        const footer = `
-          <button class="btn btn-danger btn-sm" onclick="deleteBooking(${b.id})">Delete</button>
-          ${b.payment_status !== 'paid' ? `<button class="btn btn-success btn-sm" onclick="requestPayment(${b.id})">Request Payment</button>` : ''}
-          <button class="btn btn-primary btn-sm" onclick="updateBooking(${b.id})">Save Changes</button>
-        `;
-
-        openModal('Booking Details', body, footer);
+        // Build action buttons based on current state
+        const actions = getBookingActions(b);
+        openModal('Booking Details', body, actions);
       } catch (err) {
         showToast('Failed to load booking details', true);
       }
     }
 
-    async function updateBooking(id) {
+    function getBookingActions(b) {
+      const isFinal = b.status === 'cancelled' || (b.status === 'completed' && b.payment_status === 'paid');
+
+      if (isFinal) {
+        return `<button class="btn btn-danger btn-sm" onclick="deleteBooking(${b.id})">Delete Record</button>`;
+      }
+
+      let buttons = [];
+
+      // Cancel — always available if not already cancelled/completed
+      buttons.push(`<button class="btn btn-danger btn-sm" onclick="showCancelForm(${b.id})">Cancel Request</button>`);
+
+      // Approve — available for pending bookings
+      if (b.status === 'pending') {
+        buttons.push(`<button class="btn btn-success btn-sm" onclick="approveBooking(${b.id})">Approve & Request Payment</button>`);
+      }
+
+      // Request Payment — available for confirmed bookings that are unpaid
+      if (b.status === 'confirmed' && (b.payment_status === 'unpaid' || b.payment_status === 'requested')) {
+        buttons.push(`<button class="btn btn-info btn-sm" onclick="sendPaymentRequest(${b.id})">Send Payment Request</button>`);
+      }
+
+      // Complete & Paid — available for confirmed bookings
+      if (b.status === 'confirmed' || b.status === 'pending') {
+        buttons.push(`<button class="btn btn-warning btn-sm" onclick="completeBooking(${b.id})">Complete & Mark Paid</button>`);
+      }
+
+      return buttons.join('\n');
+    }
+
+    function showCancelForm(id) {
+      const section = document.getElementById('cancelReasonSection');
+      section.style.display = 'block';
+      document.getElementById('cancelReasonInput').focus();
+      // Replace footer with confirm/back buttons
+      document.getElementById('modalFooter').innerHTML = `
+        <button class="btn btn-outline btn-sm" onclick="viewBooking(${id})">Back</button>
+        <button class="btn btn-danger btn-sm" onclick="confirmCancel(${id})">Confirm Cancellation</button>
+      `;
+    }
+
+    async function confirmCancel(id) {
       try {
-        const status = document.getElementById('editBookingStatus').value;
-        const payment_status = document.getElementById('editPaymentStatus').value;
-        await apiCall(`/api/bookings/${id}`, {
-          method: 'PUT',
-          body: JSON.stringify({ status, payment_status })
+        const reason = document.getElementById('cancelReasonInput').value.trim();
+        await apiCall(`/api/bookings/${id}/cancel`, {
+          method: 'POST',
+          body: JSON.stringify({ reason })
         });
-        showToast('Booking updated');
+        showToast('Booking cancelled');
+        closeModal();
+        loadBookings();
+        loadDashboard();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
+    async function approveBooking(id) {
+      try {
+        await apiCall(`/api/bookings/${id}/approve`, { method: 'POST' });
+        showToast('Booking approved — payment requested from customer');
+        closeModal();
+        loadBookings();
+        loadDashboard();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
+    async function sendPaymentRequest(id) {
+      try {
+        await apiCall('/api/payments/request-payment', {
+          method: 'POST',
+          body: JSON.stringify({ booking_id: id })
+        });
+        showToast('Payment request sent to customer');
+        closeModal();
+        loadBookings();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
+    async function completeBooking(id) {
+      if (!confirm('Mark this booking as completed and paid?')) return;
+      try {
+        await apiCall(`/api/bookings/${id}/complete`, { method: 'POST' });
+        showToast('Booking marked as completed & paid');
         closeModal();
         loadBookings();
         loadDashboard();
@@ -818,47 +908,13 @@
     }
 
     async function deleteBooking(id) {
-      if (!confirm('Are you sure you want to delete this booking?')) return;
+      if (!confirm('Permanently delete this booking record?')) return;
       try {
         await apiCall(`/api/bookings/${id}`, { method: 'DELETE' });
         showToast('Booking deleted');
         closeModal();
         loadBookings();
         loadDashboard();
-      } catch (err) {
-        showToast(err.message, true);
-      }
-    }
-
-    async function requestPayment(id) {
-      try {
-        await apiCall('/api/payments/request-payment', {
-          method: 'POST',
-          body: JSON.stringify({ booking_id: id })
-        });
-        showToast('Payment requested — customer will see it in their dashboard');
-        closeModal();
-        loadBookings();
-      } catch (err) {
-        showToast(err.message, true);
-      }
-    }
-
-    async function sendPaymentLink(id) {
-      try {
-        const data = await apiCall('/api/payments/send-payment-link', {
-          method: 'POST',
-          body: JSON.stringify({ booking_id: id })
-        });
-        if (data.checkout_url) {
-          openModal('Payment Link', `
-            <p>Share this payment link with the customer:</p>
-            <input type="text" value="${escapeHtml(data.checkout_url)}" readonly
-              style="width:100%;padding:10px;margin:12px 0;border:2px solid #e0e0e0;border-radius:6px;font-size:0.85rem;"
-              onclick="this.select()">
-            <button class="btn btn-sm btn-primary" onclick="navigator.clipboard.writeText('${data.checkout_url}');showToast('Link copied!')">Copy Link</button>
-          `, '');
-        }
       } catch (err) {
         showToast(err.message, true);
       }
@@ -1196,9 +1252,9 @@
             <td>${statusBadge(b.payment_status)}</td>
             <td><small>${escapeHtml(b.stripe_payment_id || '-')}</small></td>
             <td>
-              ${b.payment_status !== 'paid' && config.configured ?
-                `<button class="btn btn-sm btn-success" onclick="sendPaymentLink(${b.id})">Send Link</button>` :
-                (b.payment_status === 'paid' ? '<span style="color:var(--success);font-weight:700;">Paid</span>' : '-')
+              ${b.payment_status === 'paid' ?
+                '<span style="color:var(--success);font-weight:700;">Paid</span>' :
+                `<button class="btn btn-sm btn-success" onclick="sendPaymentRequest(${b.id})">Request Payment</button>`
               }
             </td>
           </tr>

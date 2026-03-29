@@ -186,6 +186,68 @@ router.put('/:id', authenticateToken, requirePermission('write'), (req, res) => 
   res.json({ message: 'Booking updated' });
 });
 
+// Admin: Approve booking (confirms + auto-requests payment)
+router.post('/:id/approve', authenticateToken, requirePermission('write'), (req, res) => {
+  const db = getDb();
+  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
+  if (!booking) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  db.prepare(`
+    UPDATE bookings SET
+      status = 'confirmed',
+      payment_status = 'requested',
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(req.params.id);
+
+  logAudit(req.admin.id, req.admin.email, 'approve', 'bookings', req.params.id, 'success');
+  res.json({ message: 'Booking approved and payment requested' });
+});
+
+// Admin: Cancel booking with reason
+router.post('/:id/cancel', authenticateToken, requirePermission('write'), (req, res) => {
+  const db = getDb();
+  const { reason } = req.body;
+
+  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
+  if (!booking) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  db.prepare(`
+    UPDATE bookings SET
+      status = 'cancelled',
+      cancel_reason = ?,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(reason || '', req.params.id);
+
+  logAudit(req.admin.id, req.admin.email, 'cancel', 'bookings', req.params.id, reason || '');
+  res.json({ message: 'Booking cancelled' });
+});
+
+// Admin: Mark booking as completed and paid
+router.post('/:id/complete', authenticateToken, requirePermission('write'), (req, res) => {
+  const db = getDb();
+  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
+  if (!booking) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  db.prepare(`
+    UPDATE bookings SET
+      status = 'completed',
+      payment_status = 'paid',
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(req.params.id);
+
+  logAudit(req.admin.id, req.admin.email, 'complete', 'bookings', req.params.id, 'success');
+  res.json({ message: 'Booking marked as completed and paid' });
+});
+
 // Admin: Delete booking
 router.delete('/:id', authenticateToken, requirePermission('delete'), (req, res) => {
   const db = getDb();

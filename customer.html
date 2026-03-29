@@ -797,6 +797,86 @@
       box-shadow: var(--shadow);
     }
 
+    /* Dog Cards */
+    .dog-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      margin-bottom: 16px;
+      border-left: 5px solid var(--secondary);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      transition: all var(--transition);
+    }
+
+    .dog-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .dog-card-info { flex: 1; }
+
+    .dog-card-info h3 {
+      font-size: 1.2rem;
+      color: var(--dark);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dog-card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      font-size: 0.9rem;
+      color: var(--text-light);
+    }
+
+    .dog-card-meta span { font-weight: 600; }
+    .dog-card-meta strong { color: var(--dark); }
+
+    .dog-card-notes {
+      margin-top: 8px;
+      font-size: 0.9rem;
+      color: var(--text-light);
+      font-style: italic;
+    }
+
+    .dog-card-actions {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .btn-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 2px solid #e0e0e0;
+      background: var(--white);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      transition: all var(--transition);
+    }
+
+    .btn-icon:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .btn-icon.delete:hover {
+      border-color: var(--danger);
+      color: var(--danger);
+      background: #FADBD8;
+    }
+
     .empty-state .empty-icon { font-size: 4rem; margin-bottom: 16px; }
 
     .empty-state h3 {
@@ -969,6 +1049,7 @@
       <div class="dash-tabs">
         <button class="dash-tab active" data-panel="book">Book a Service</button>
         <button class="dash-tab" data-panel="bookings">My Bookings</button>
+        <button class="dash-tab" data-panel="dogs">My Dogs</button>
       </div>
 
       <!-- Book a Service Panel -->
@@ -994,13 +1075,24 @@
             </div>
             <div class="form-row">
               <div class="form-group">
-                <label for="bookDogName">Dog's Name</label>
-                <input type="text" id="bookDogName" placeholder="Benny" required>
+                <label for="bookDogSelect">Select Dog</label>
+                <select id="bookDogSelect" onchange="onDogSelectChange()">
+                  <option value="">-- Select a dog --</option>
+                  <option value="__new__">+ Enter a different name</option>
+                </select>
+                <input type="text" id="bookDogName" placeholder="Enter dog's name" style="display:none;margin-top:8px;" required>
               </div>
               <div class="form-group">
-                <label for="bookDates">Preferred Dates</label>
-                <input type="text" id="bookDates" placeholder="e.g. March 20-22, 2026">
+                <label for="bookDateStart">Start Date</label>
+                <input type="date" id="bookDateStart">
               </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="bookDateEnd">End Date (optional)</label>
+                <input type="date" id="bookDateEnd">
+              </div>
+              <div></div>
             </div>
             <div class="form-group">
               <label for="bookMessage">Special Requests (optional)</label>
@@ -1014,6 +1106,53 @@
       <!-- My Bookings Panel -->
       <div class="dash-panel" id="panelBookings">
         <div id="bookingsListContainer"></div>
+      </div>
+
+      <!-- My Dogs Panel -->
+      <div class="dash-panel" id="panelDogs">
+        <div class="booking-form-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+            <h2>My Dogs</h2>
+            <button class="btn btn-primary btn-sm" onclick="showAddDogForm()">+ Add Dog</button>
+          </div>
+          <div id="dogsList"></div>
+        </div>
+
+        <div class="booking-form-card" id="dogFormCard" style="display:none;">
+          <h2 id="dogFormTitle">Add a Dog</h2>
+          <form id="dogForm" onsubmit="saveDog(event)">
+            <input type="hidden" id="dogFormId">
+            <div class="form-error" id="dogFormError"></div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="dogFormName">Name *</label>
+                <input type="text" id="dogFormName" required placeholder="Benny">
+              </div>
+              <div class="form-group">
+                <label for="dogFormBreed">Breed</label>
+                <input type="text" id="dogFormBreed" placeholder="Golden Retriever">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="dogFormWeight">Weight</label>
+                <input type="text" id="dogFormWeight" placeholder="e.g. 45 lbs">
+              </div>
+              <div class="form-group">
+                <label for="dogFormAge">Age</label>
+                <input type="text" id="dogFormAge" placeholder="e.g. 3 years">
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="dogFormNotes">Notes</label>
+              <textarea id="dogFormNotes" placeholder="Allergies, medications, special needs..."></textarea>
+            </div>
+            <div style="display:flex;gap:12px;">
+              <button type="submit" class="btn btn-primary" id="dogFormBtn">Save Dog</button>
+              <button type="button" class="btn btn-outline" onclick="hideDogForm()">Cancel</button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   </div>
@@ -1045,6 +1184,7 @@
     let customer = JSON.parse(localStorage.getItem('customerData') || 'null');
     let bookings = [];
     let services = [];
+    let dogs = [];
 
     // DOM refs
     const authSection = document.getElementById('authSection');
@@ -1079,6 +1219,7 @@
       document.querySelector(`.dash-tab[data-panel="${panel}"]`).classList.add('active');
       document.getElementById('panel' + panel.charAt(0).toUpperCase() + panel.slice(1)).classList.add('active');
       if (panel === 'bookings') loadBookings();
+      if (panel === 'dogs') renderDogsList();
     }
 
     // --- Toast ---
@@ -1127,6 +1268,30 @@
       return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
     }
 
+    function formatPreferredDates() {
+      const start = document.getElementById('bookDateStart').value;
+      const end = document.getElementById('bookDateEnd').value;
+      if (!start) return '';
+      const fmt = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      return end && end !== start ? fmt(start) + ' - ' + fmt(end) : fmt(start);
+    }
+
+    function initDatePickers() {
+      const today = new Date().toISOString().split('T')[0];
+      const startInput = document.getElementById('bookDateStart');
+      const endInput = document.getElementById('bookDateEnd');
+      startInput.min = today;
+      endInput.min = today;
+      startInput.addEventListener('change', () => {
+        if (startInput.value) {
+          endInput.min = startInput.value;
+          if (endInput.value && endInput.value < startInput.value) {
+            endInput.value = startInput.value;
+          }
+        }
+      });
+    }
+
     // --- Auth Check ---
     function checkAuth() {
       if (token && customer) {
@@ -1151,13 +1316,8 @@
       navUserName.textContent = customer.name;
       welcomeText.textContent = 'Welcome back, ' + customer.name + '!';
 
-      // Pre-fill dog name if known
-      const dogInput = document.getElementById('bookDogName');
-      if (customer.dog_name && !dogInput.value) {
-        dogInput.value = customer.dog_name;
-      }
-
       loadServices();
+      loadDogs();
     }
 
     function logout() {
@@ -1293,15 +1453,32 @@
       bookBtn.innerHTML = '<span class="loading-spinner"></span>';
 
       try {
+        const dogSelect = document.getElementById('bookDogSelect');
+        const dogVal = dogSelect.value;
+        let bookingBody = {
+          service_id: parseInt(serviceId),
+          preferred_dates: formatPreferredDates(),
+          message: document.getElementById('bookMessage').value.trim()
+        };
+
+        if (dogVal === '__new__' || dogVal === '') {
+          const dogName = document.getElementById('bookDogName').value.trim();
+          if (!dogName) {
+            bookingError.textContent = 'Please enter a dog name or select a saved dog';
+            bookingError.classList.add('visible');
+            bookBtn.disabled = false;
+            bookBtn.textContent = 'Submit Booking Request';
+            return;
+          }
+          bookingBody.dog_name = dogName;
+        } else {
+          bookingBody.dog_id = parseInt(dogVal);
+        }
+
         const res = await fetch('/api/bookings/customer-book', {
           method: 'POST',
           headers: authHeaders(),
-          body: JSON.stringify({
-            dog_name: document.getElementById('bookDogName').value.trim(),
-            service_id: parseInt(serviceId),
-            preferred_dates: document.getElementById('bookDates').value.trim(),
-            message: document.getElementById('bookMessage').value.trim()
-          })
+          body: JSON.stringify(bookingBody)
         });
 
         const data = await res.json();
@@ -1331,9 +1508,7 @@
       document.getElementById('bookingForm').reset();
       document.getElementById('selectedService').value = '';
       document.querySelectorAll('.service-option').forEach(el => el.classList.remove('selected'));
-      if (customer.dog_name) {
-        document.getElementById('bookDogName').value = customer.dog_name;
-      }
+      renderDogSelector();
     }
 
     // --- Load Bookings ---
@@ -1522,7 +1697,187 @@
       }
     }
 
+    // --- Dogs ---
+    async function loadDogs() {
+      try {
+        const res = await fetch('/api/dogs', { headers: authHeaders() });
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) { logout(); return; }
+          throw new Error('Failed to load dogs');
+        }
+        dogs = await res.json();
+        renderDogSelector();
+      } catch (err) {
+        console.error('Failed to load dogs:', err);
+      }
+    }
+
+    function renderDogSelector() {
+      const select = document.getElementById('bookDogSelect');
+      const nameInput = document.getElementById('bookDogName');
+      const options = dogs.map(d => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('');
+
+      if (dogs.length === 0) {
+        select.innerHTML = '<option value="">-- No dogs saved --</option><option value="__new__">+ Enter a dog name</option>';
+        select.value = '__new__';
+        nameInput.style.display = 'block';
+        nameInput.required = true;
+      } else {
+        select.innerHTML = '<option value="">-- Select a dog --</option>' + options + '<option value="__new__">+ Enter a different name</option>';
+        if (dogs.length === 1) {
+          select.value = dogs[0].id;
+          nameInput.style.display = 'none';
+          nameInput.required = false;
+        } else {
+          nameInput.style.display = 'none';
+          nameInput.required = false;
+        }
+      }
+    }
+
+    function onDogSelectChange() {
+      const val = document.getElementById('bookDogSelect').value;
+      const nameInput = document.getElementById('bookDogName');
+      if (val === '__new__' || val === '') {
+        nameInput.style.display = 'block';
+        nameInput.required = true;
+        nameInput.value = '';
+        nameInput.focus();
+      } else {
+        nameInput.style.display = 'none';
+        nameInput.required = false;
+      }
+    }
+
+    function renderDogsList() {
+      const container = document.getElementById('dogsList');
+      if (dogs.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state" style="box-shadow:none;padding:40px 24px;">
+            <div class="empty-icon">&#128054;</div>
+            <h3>No Dogs Yet</h3>
+            <p>Add your dog's profile to make booking easier!</p>
+            <button class="btn btn-primary" onclick="showAddDogForm()">Add Your First Dog</button>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = dogs.map(d => `
+        <div class="dog-card">
+          <div class="dog-card-info">
+            <h3>&#128054; ${escapeHtml(d.name)}</h3>
+            <div class="dog-card-meta">
+              ${d.breed ? `<span><strong>Breed:</strong> ${escapeHtml(d.breed)}</span>` : ''}
+              ${d.weight ? `<span><strong>Weight:</strong> ${escapeHtml(d.weight)}</span>` : ''}
+              ${d.age ? `<span><strong>Age:</strong> ${escapeHtml(d.age)}</span>` : ''}
+            </div>
+            ${d.notes ? `<div class="dog-card-notes">${escapeHtml(d.notes)}</div>` : ''}
+          </div>
+          <div class="dog-card-actions">
+            <button class="btn-icon" onclick="showEditDogForm(${d.id})" title="Edit">&#9998;</button>
+            <button class="btn-icon delete" onclick="deleteDog(${d.id})" title="Delete">&#128465;</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function showAddDogForm() {
+      document.getElementById('dogFormId').value = '';
+      document.getElementById('dogFormTitle').textContent = 'Add a Dog';
+      document.getElementById('dogFormName').value = '';
+      document.getElementById('dogFormBreed').value = '';
+      document.getElementById('dogFormWeight').value = '';
+      document.getElementById('dogFormAge').value = '';
+      document.getElementById('dogFormNotes').value = '';
+      document.getElementById('dogFormBtn').textContent = 'Add Dog';
+      document.getElementById('dogFormError').classList.remove('visible');
+      document.getElementById('dogFormCard').style.display = 'block';
+      document.getElementById('dogFormName').focus();
+    }
+
+    function showEditDogForm(id) {
+      const dog = dogs.find(d => d.id === id);
+      if (!dog) return;
+      document.getElementById('dogFormId').value = dog.id;
+      document.getElementById('dogFormTitle').textContent = 'Edit ' + dog.name;
+      document.getElementById('dogFormName').value = dog.name;
+      document.getElementById('dogFormBreed').value = dog.breed || '';
+      document.getElementById('dogFormWeight').value = dog.weight || '';
+      document.getElementById('dogFormAge').value = dog.age || '';
+      document.getElementById('dogFormNotes').value = dog.notes || '';
+      document.getElementById('dogFormBtn').textContent = 'Save Changes';
+      document.getElementById('dogFormError').classList.remove('visible');
+      document.getElementById('dogFormCard').style.display = 'block';
+      document.getElementById('dogFormName').focus();
+    }
+
+    function hideDogForm() {
+      document.getElementById('dogFormCard').style.display = 'none';
+    }
+
+    async function saveDog(e) {
+      e.preventDefault();
+      const dogFormError = document.getElementById('dogFormError');
+      dogFormError.classList.remove('visible');
+      const dogFormBtn = document.getElementById('dogFormBtn');
+      const editId = document.getElementById('dogFormId').value;
+
+      const body = {
+        name: document.getElementById('dogFormName').value.trim(),
+        breed: document.getElementById('dogFormBreed').value.trim(),
+        weight: document.getElementById('dogFormWeight').value.trim(),
+        age: document.getElementById('dogFormAge').value.trim(),
+        notes: document.getElementById('dogFormNotes').value.trim()
+      };
+
+      dogFormBtn.disabled = true;
+      dogFormBtn.innerHTML = '<span class="loading-spinner"></span>';
+
+      try {
+        const url = editId ? '/api/dogs/' + editId : '/api/dogs';
+        const method = editId ? 'PUT' : 'POST';
+        const res = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) });
+        const data = await res.json();
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) { logout(); return; }
+          throw new Error(data.error || 'Failed to save dog');
+        }
+
+        showToast(editId ? 'Dog profile updated!' : 'Dog profile added!', 'success');
+        hideDogForm();
+        await loadDogs();
+        renderDogsList();
+      } catch (err) {
+        dogFormError.textContent = err.message;
+        dogFormError.classList.add('visible');
+      } finally {
+        dogFormBtn.disabled = false;
+        dogFormBtn.textContent = editId ? 'Save Changes' : 'Add Dog';
+      }
+    }
+
+    async function deleteDog(id) {
+      const dog = dogs.find(d => d.id === id);
+      if (!confirm('Remove ' + (dog ? dog.name : 'this dog') + ' from your profile?')) return;
+
+      try {
+        const res = await fetch('/api/dogs/' + id, { method: 'DELETE', headers: authHeaders() });
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) { logout(); return; }
+          const data = await res.json();
+          throw new Error(data.error || 'Failed to delete dog');
+        }
+        showToast('Dog removed from profile', 'success');
+        await loadDogs();
+        renderDogsList();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
     // --- Init ---
+    initDatePickers();
     checkAuth();
   </script>
 </body>

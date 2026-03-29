@@ -103,6 +103,19 @@ function initTables() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS dogs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      breed TEXT DEFAULT '',
+      weight TEXT DEFAULT '',
+      age TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+    );
   `);
 
   // Migrate: add customer_id column to existing bookings table if missing
@@ -115,6 +128,16 @@ function initTables() {
   const columns = db.prepare("PRAGMA table_info(admins)").all();
   if (!columns.find(c => c.name === 'role')) {
     db.exec("ALTER TABLE admins ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'");
+  }
+
+  // Migrate: seed dogs from existing customer dog_name data
+  const customersWithDogs = db.prepare("SELECT id, dog_name FROM customers WHERE dog_name IS NOT NULL AND dog_name != ''").all();
+  const existingDogCustomers = db.prepare("SELECT DISTINCT customer_id FROM dogs").all().map(r => r.customer_id);
+  const insertDog = db.prepare("INSERT INTO dogs (customer_id, name) VALUES (?, ?)");
+  for (const c of customersWithDogs) {
+    if (!existingDogCustomers.includes(c.id)) {
+      insertDog.run(c.id, c.dog_name);
+    }
   }
 
   // Seed default admin if none exists

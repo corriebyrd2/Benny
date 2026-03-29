@@ -77,7 +77,8 @@ app.get('/api/customer/profile', authenticateCustomer, (req, res) => {
   if (!customer) {
     return res.status(404).json({ error: 'Customer not found' });
   }
-  res.json(customer);
+  const dogs = db.prepare('SELECT * FROM dogs WHERE customer_id = ? ORDER BY created_at ASC').all(req.customer.id);
+  res.json({ ...customer, dogs });
 });
 
 // API Routes
@@ -85,6 +86,7 @@ app.use('/api/services', require('./server/routes/services'));
 app.use('/api/photos', require('./server/routes/photos'));
 app.use('/api/bookings', require('./server/routes/bookings'));
 app.use('/api/payments', require('./server/routes/payments'));
+app.use('/api/dogs', require('./server/routes/dogs'));
 
 // Admin portal route
 app.get('/admin', (req, res) => {

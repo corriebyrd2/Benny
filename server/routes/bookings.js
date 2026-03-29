@@ -49,9 +49,18 @@ router.get('/my', authenticateCustomer, (req, res) => {
 // Authenticated customer: Create a booking
 router.post('/customer-book', authenticateCustomer, (req, res) => {
   const db = getDb();
-  const { dog_name, service_id, preferred_dates, message } = req.body;
+  const { dog_name, dog_id, service_id, preferred_dates, message } = req.body;
 
-  if (!dog_name || !service_id) {
+  let resolvedDogName = dog_name;
+  if (dog_id) {
+    const dog = db.prepare('SELECT * FROM dogs WHERE id = ? AND customer_id = ?').get(dog_id, req.customer.id);
+    if (!dog) {
+      return res.status(400).json({ error: 'Dog not found' });
+    }
+    resolvedDogName = dog.name;
+  }
+
+  if (!resolvedDogName || !service_id) {
     return res.status(400).json({ error: 'Dog name and service are required' });
   }
 
@@ -70,7 +79,7 @@ router.post('/customer-book', authenticateCustomer, (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     customer.name, customer.email, customer.phone || '',
-    dog_name, service_id, service.name,
+    resolvedDogName, service_id, service.name,
     preferred_dates || '', message || '',
     service.price_cents, customer.id
   );

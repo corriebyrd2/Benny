@@ -1322,7 +1322,20 @@
     }
 
     function authHeaders() {
+      if (!token) {
+        logout();
+        throw new Error('Not logged in');
+      }
       return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+    }
+
+    async function safeJson(res) {
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new Error('Server returned an unexpected response. Please try again.');
+      }
     }
 
     function formatPreferredDates() {
@@ -1538,11 +1551,12 @@
           body: JSON.stringify(bookingBody)
         });
 
-        const data = await res.json();
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
-          throw new Error(data.error || 'Booking failed');
+          const errData = await safeJson(res).catch(() => ({}));
+          throw new Error(errData.error || 'Booking failed');
         }
+        const data = await safeJson(res);
 
         // Show success
         document.getElementById('bookingFormCard').style.display = 'none';
@@ -1579,7 +1593,7 @@
           if (res.status === 401 || res.status === 403) { logout(); return; }
           throw new Error('Failed to load bookings');
         }
-        bookings = await res.json();
+        bookings = await safeJson(res);
         renderBookings(container);
       } catch (err) {
         container.innerHTML = `<div class="empty-state"><div class="empty-icon">&#9888;&#65039;</div><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
@@ -1752,11 +1766,11 @@
             showToast('Online payment is not yet configured. Please contact us to arrange payment.', 'error');
             return;
           }
-          const data = await res.json();
-          throw new Error(data.error || 'Payment failed');
+          const errData = await safeJson(res).catch(() => ({}));
+          throw new Error(errData.error || 'Payment failed');
         }
 
-        const data = await res.json();
+        const data = await safeJson(res);
         if (data.checkout_url) {
           window.location.href = data.checkout_url;
         }
@@ -1773,7 +1787,7 @@
           if (res.status === 401 || res.status === 403) { logout(); return; }
           throw new Error('Failed to load dogs');
         }
-        dogs = await res.json();
+        dogs = await safeJson(res);
         renderDogSelector();
       } catch (err) {
         console.error('Failed to load dogs:', err);
@@ -1906,11 +1920,12 @@
         const url = editId ? '/api/dogs/' + editId : '/api/dogs';
         const method = editId ? 'PUT' : 'POST';
         const res = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) });
-        const data = await res.json();
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
-          throw new Error(data.error || 'Failed to save dog');
+          const errData = await safeJson(res).catch(() => ({}));
+          throw new Error(errData.error || 'Failed to save dog');
         }
+        const data = await safeJson(res);
 
         showToast(editId ? 'Dog profile updated!' : 'Dog profile added!', 'success');
         hideDogForm();
@@ -1933,8 +1948,8 @@
         const res = await fetch('/api/dogs/' + id, { method: 'DELETE', headers: authHeaders() });
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
-          const data = await res.json();
-          throw new Error(data.error || 'Failed to delete dog');
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to delete dog');
         }
         showToast('Dog removed from profile', 'success');
         await loadDogs();

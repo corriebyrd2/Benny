@@ -1083,9 +1083,16 @@
                 <input type="text" id="bookDogName" placeholder="Enter dog's name" style="display:none;margin-top:8px;" required>
               </div>
               <div class="form-group">
-                <label for="bookDates">Preferred Dates</label>
-                <input type="text" id="bookDates" placeholder="e.g. March 20-22, 2026">
+                <label for="bookDateStart">Start Date</label>
+                <input type="date" id="bookDateStart">
               </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="bookDateEnd">End Date (optional)</label>
+                <input type="date" id="bookDateEnd">
+              </div>
+              <div></div>
             </div>
             <div class="form-group">
               <label for="bookMessage">Special Requests (optional)</label>
@@ -1261,6 +1268,30 @@
       return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
     }
 
+    function formatPreferredDates() {
+      const start = document.getElementById('bookDateStart').value;
+      const end = document.getElementById('bookDateEnd').value;
+      if (!start) return '';
+      const fmt = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      return end && end !== start ? fmt(start) + ' - ' + fmt(end) : fmt(start);
+    }
+
+    function initDatePickers() {
+      const today = new Date().toISOString().split('T')[0];
+      const startInput = document.getElementById('bookDateStart');
+      const endInput = document.getElementById('bookDateEnd');
+      startInput.min = today;
+      endInput.min = today;
+      startInput.addEventListener('change', () => {
+        if (startInput.value) {
+          endInput.min = startInput.value;
+          if (endInput.value && endInput.value < startInput.value) {
+            endInput.value = startInput.value;
+          }
+        }
+      });
+    }
+
     // --- Auth Check ---
     function checkAuth() {
       if (token && customer) {
@@ -1426,7 +1457,7 @@
         const dogVal = dogSelect.value;
         let bookingBody = {
           service_id: parseInt(serviceId),
-          preferred_dates: document.getElementById('bookDates').value.trim(),
+          preferred_dates: formatPreferredDates(),
           message: document.getElementById('bookMessage').value.trim()
         };
 
@@ -1846,6 +1877,7 @@
     }
 
     // --- Init ---
+    initDatePickers();
     checkAuth();
   </script>
 </body>

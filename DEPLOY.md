@@ -1,17 +1,16 @@
-# Deployment Guide — Railway + Squarespace
+# Deployment Guide — Railway
 
 This app is a Node.js/Express server with SQLite, file uploads, and Stripe
-payments. Railway hosts the app and database; Squarespace serves the marketing
-site and links to the Railway-hosted customer/admin portals.
+payments. Railway hosts everything: the marketing homepage, the customer
+booking portal, the admin portal, and the API — all on a single domain.
 
 ---
 
 ## 1. Prerequisites
 
 - A Railway account (https://railway.com)
-- A Stripe account (test mode first)
-- The Squarespace site (marketing pages)
-- A custom domain for the app, e.g. `app.bennyandthepets.com`
+- A Stripe account (test mode first, live mode at go-live)
+- A custom domain, e.g. `bennyandthepets.com`
 
 ---
 
@@ -27,7 +26,7 @@ site and links to the Railway-hosted customer/admin portals.
 Railway containers have ephemeral filesystems. Without a volume, the SQLite
 database and uploaded photos are wiped on every redeploy.
 
-1. In the service → **Settings → Volumes → New Volume**.
+1. Service → **Settings → Volumes → New Volume**.
 2. Mount path: `/data`
 3. Size: start with 1 GB (plenty for SQLite + photos).
 
@@ -43,10 +42,9 @@ In the service → **Variables** tab, add:
 | `JWT_SECRET` | Generate a strong random string (see below) |
 | `ADMIN_EMAIL` | The owner's email for the first admin login |
 | `ADMIN_PASSWORD` | A strong password for the first admin login |
-| `FRONTEND_ORIGIN` | Comma-separated Squarespace origins (see §7) |
 | `DB_PATH` | `/data/benny.db` |
 | `UPLOAD_DIR` | `/data/uploads` |
-| `STRIPE_SECRET_KEY` | Your `sk_test_...` (switch to `sk_live_...` later) |
+| `STRIPE_SECRET_KEY` | Your `sk_test_...` (switch to `sk_live_...` at go-live) |
 | `STRIPE_PUBLISHABLE_KEY` | Your `pk_test_...` / `pk_live_...` |
 | `STRIPE_WEBHOOK_SECRET` | Fill in after step 6 |
 
@@ -57,73 +55,50 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
 `PORT` is set by Railway automatically — do **not** override it.
 
+`FRONTEND_ORIGIN` is **not needed** since the frontend and API share the same
+origin. Leave it unset.
+
 ## 5. Deploy and attach a custom domain
 
 1. Trigger a deploy. Watch the logs for `Benny and the Pets server listening`.
-2. **Settings → Domains → Custom Domain** → add `app.bennyandthepets.com`.
-3. Create the CNAME record Railway shows you in your DNS provider.
+2. **Settings → Domains → Custom Domain** → add your domain
+   (e.g. `bennyandthepets.com` and/or `www.bennyandthepets.com`).
+3. Create the CNAME/ALIAS records Railway shows in your DNS provider.
 4. Railway issues a TLS cert automatically (HTTPS is enforced).
+
+### Public URLs
+
+Once the domain is live:
+
+| Page | URL |
+| --- | --- |
+| Marketing homepage | `https://bennyandthepets.com/` |
+| Customer booking portal | `https://bennyandthepets.com/my-bookings` |
+| Admin portal | `https://bennyandthepets.com/admin` |
 
 ## 6. Configure the Stripe webhook
 
-1. In the Stripe dashboard → **Developers → Webhooks → Add endpoint**.
-2. Endpoint URL: `https://app.bennyandthepets.com/api/payments/webhook`
-3. Events to send:
+1. Stripe dashboard → **Developers → Webhooks → Add endpoint**.
+2. Endpoint URL: `https://bennyandthepets.com/api/payments/webhook`
+3. Events:
    - `checkout.session.completed`
    - `payment_intent.succeeded`
-4. After creation, reveal the **Signing secret** and paste it into Railway as
+4. Reveal the **Signing secret** and paste it into Railway as
    `STRIPE_WEBHOOK_SECRET`. Redeploy.
 
-Test from the Stripe dashboard's "Send test webhook" button; the Railway logs
+Test from the Stripe dashboard's "Send test webhook" button; Railway logs
 should show a 200 response.
-
-## 7. Wire the Squarespace marketing site
-
-The cleanest pattern is: Squarespace for marketing pages, Railway for the app.
-Link visitors from Squarespace into the Railway portals.
-
-### 7a. Link buttons on Squarespace
-
-- **Book / Customer portal button** → `https://app.bennyandthepets.com/my-bookings`
-- **Admin login** (footer link, usually hidden) → `https://app.bennyandthepets.com/admin`
-
-### 7b. FRONTEND_ORIGIN
-
-Set on Railway to the origins the customer portal may be embedded from or
-called cross-origin from. Typical value:
-
-```
-https://bennyandthepets.com,https://www.bennyandthepets.com
-```
-
-If you do not embed the app in Squarespace and only link to it, CORS is still
-worth locking down. Leave blank temporarily if you hit CORS issues and need
-to debug, but restore it before go-live.
-
-### 7c. (Optional) Embed the booking form on Squarespace
-
-If the client wants the booking form to appear inside a Squarespace page:
-
-1. Add a **Code Block** in Squarespace.
-2. Paste an iframe:
-   ```html
-   <iframe src="https://app.bennyandthepets.com/my-bookings"
-           style="width:100%;height:1400px;border:0;" loading="lazy"></iframe>
-   ```
-3. If Squarespace's frame-ancestors policy blocks it, you may need to expose a
-   dedicated lighter booking page. Ask for a follow-up if this is required.
 
 ---
 
-## 8. First-run checklist
+## 7. First-run checklist
 
 After the first successful deploy:
 
-1. Hit `https://app.bennyandthepets.com/admin`, log in with `ADMIN_EMAIL` /
-   `ADMIN_PASSWORD`, then **change the admin password** inside the app if that
-   feature exists — or rotate the env var and redeploy.
-2. Upload a few photos; verify they appear at `/uploads/<filename>`.
-3. Create a test booking from `/my-bookings`, request a payment link from the
+1. Hit `/admin`, log in with `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+2. Upload a few photos; verify they render on the homepage and at
+   `/uploads/<filename>`.
+3. Create a test booking from `/my-bookings`, send a payment link from the
    admin panel, pay with Stripe's test card `4242 4242 4242 4242`. Verify the
    booking flips to `paid` and the webhook logged 200.
 4. Redeploy once (push any commit). Confirm the booking and photo survive the
@@ -131,16 +106,15 @@ After the first successful deploy:
 
 ---
 
-## 9. Going live
+## 8. Going live
 
-1. Switch Stripe from test mode to live mode; replace `STRIPE_SECRET_KEY`,
-   `STRIPE_PUBLISHABLE_KEY`, and create a **new** webhook endpoint (live mode
-   has separate signing secrets). Update `STRIPE_WEBHOOK_SECRET`.
+1. Switch Stripe from test to live mode; replace `STRIPE_SECRET_KEY` and
+   `STRIPE_PUBLISHABLE_KEY`, then create a **new** webhook endpoint (live mode
+   has its own signing secret). Update `STRIPE_WEBHOOK_SECRET`.
 2. Verify `NODE_ENV=production` so the env validator enforces strong secrets.
-3. Set up a backup cron (see §10).
-4. Link from the live Squarespace site.
+3. Set up backups (see §9).
 
-## 10. Backups (SQLite)
+## 9. Backups (SQLite)
 
 SQLite on the mounted volume survives redeploys but is still a single file on
 one machine. Options, cheapest first:
@@ -153,7 +127,7 @@ one machine. Options, cheapest first:
 
 ---
 
-## 11. Known limitations / future work
+## 10. Known limitations / future work
 
 - No email notifications (booking confirmed, payment received). Add nodemailer
   + a transactional provider (Postmark / Resend) when needed.

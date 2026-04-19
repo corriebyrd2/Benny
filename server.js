@@ -199,6 +199,7 @@ app.use('/api/payments', require('./server/routes/payments'));
 app.use('/api/dogs', require('./server/routes/dogs'));
 app.use('/api/subscribe', subscribeLimiter, require('./server/routes/subscribers'));
 app.use('/api/campaigns', require('./server/routes/campaigns'));
+app.use('/api/settings', require('./server/routes/settings'));
 
 if (TEST_MODE) {
   app.use('/api/__test__', require('./server/testHarness').buildRouter());

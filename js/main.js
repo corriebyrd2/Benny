@@ -261,6 +261,69 @@ document.addEventListener('DOMContentLoaded', () => {
 
   revealElements.forEach(el => observer.observe(el));
 
+  async function loadSiteSettings() {
+    try {
+      const res = await fetch('/api/settings');
+      if (!res.ok) return;
+      const s = await res.json();
+      applySettings(s);
+    } catch (e) {
+      // API not available, keep static content
+    }
+  }
+
+  function applySettings(s) {
+    const brand = s.business_name;
+    const addressHtml = [s.contact_address_line1, s.contact_address_line2]
+      .filter(Boolean).map(escapeText).join('<br>');
+    const phoneHtml = [s.contact_phone_display, s.contact_phone_secondary]
+      .filter(Boolean).map(escapeText).join('<br>');
+    const hoursHtml = [s.hours_weekday, s.hours_weekend]
+      .filter(Boolean).map(escapeText).join('<br>');
+
+    // data-setting → replaces textContent (or innerHTML for composed strings)
+    const textMap = {
+      brand: brand,
+      footer_tagline: s.footer_tagline
+    };
+    const htmlMap = {
+      address: addressHtml,
+      phone: phoneHtml,
+      hours: hoursHtml,
+      email: s.contact_email ? escapeText(s.contact_email) : null
+    };
+
+    document.querySelectorAll('[data-setting]').forEach(el => {
+      const key = el.getAttribute('data-setting');
+      if (key in textMap && textMap[key]) {
+        el.textContent = textMap[key];
+      } else if (key in htmlMap && htmlMap[key]) {
+        el.innerHTML = htmlMap[key];
+      }
+    });
+
+    // data-setting-href → updates anchor href; hides link when empty.
+    document.querySelectorAll('[data-setting-href]').forEach(el => {
+      const key = el.getAttribute('data-setting-href');
+      const url = s[key];
+      if (url) {
+        el.setAttribute('href', url);
+        el.style.display = '';
+      } else {
+        el.style.display = 'none';
+      }
+    });
+
+    // Update document title to reflect brand.
+    if (brand) document.title = `${brand} | Premium Dog Boarding`;
+  }
+
+  function escapeText(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
   // --- Load Dynamic Content from API ---
   loadDynamicServices();
   loadDynamicGallery();

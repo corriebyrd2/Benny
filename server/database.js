@@ -94,6 +94,29 @@ async function seed() {
     console.log('[seed] created initial admin');
   }
 
+  // Default company info — inserted only on first run; the admin can edit these
+  // through the Settings panel afterwards.
+  const defaultSettings = {
+    business_name: 'Benny and the Pets',
+    footer_tagline: 'Where tails never stop wagging and every pup is family.',
+    contact_address_line1: '123 Pawsome Lane',
+    contact_address_line2: 'Dogtown, CA 90210',
+    contact_phone_display: '(555) BENNY-PET',
+    contact_phone_secondary: '(555) 236-6973',
+    contact_email: 'woof@bennyandthepets.com',
+    hours_weekday: 'Mon-Sat: 7am - 7pm',
+    hours_weekend: 'Sun: 8am - 5pm',
+    facebook_url: 'https://www.facebook.com/profile.php?id=61563336148397',
+    instagram_url: '',
+    tiktok_url: ''
+  };
+  for (const [key, value] of Object.entries(defaultSettings)) {
+    await pool.query(
+      'INSERT INTO site_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING',
+      [key, value]
+    );
+  }
+
   const { rows: serviceRows } = await pool.query('SELECT COUNT(*)::int AS count FROM services');
   if (serviceRows[0].count === 0) {
     const seeds = [

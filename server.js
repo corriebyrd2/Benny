@@ -56,6 +56,10 @@ validateEnv();
 // Behind Railway's proxy — required for correct req.protocol, req.ip, and secure cookies.
 app.set('trust proxy', 1);
 
+// Disable ETag on app-level responses so JSON API responses never return 304.
+// express.static keeps its own ETag handling for cacheable assets.
+app.set('etag', false);
+
 // Security headers. CSP is disabled because admin.html/customer.html use extensive
 // inline scripts/styles that a strict CSP would break.
 app.use(helmet({

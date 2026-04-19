@@ -17,6 +17,16 @@ if (API_KEY && FROM_EMAIL) {
   console.warn('[email] SendGrid not configured — notifications will be skipped. Set SENDGRID_API_KEY and SENDGRID_FROM_EMAIL.');
 }
 
+// Marketing Contacts uses the v3 API directly (separate from Mail Send) and
+// requires the API key to have the "Marketing" permission. It also needs at
+// least one list id if new subscribers should land on a specific list — a
+// blank SENDGRID_MARKETING_LIST_IDS still uploads contacts to the All Contacts
+// pool but leaves them unattached, which is the usual cause of "I subscribed
+// but my email isn't on the list" reports.
+if (API_KEY && MARKETING_LIST_IDS.length === 0) {
+  console.warn('[email] SENDGRID_MARKETING_LIST_IDS is empty — new subscribers will be added to All Contacts but NOT to any marketing list (e.g. "Join the Pack"). Set SENDGRID_MARKETING_LIST_IDS to the list UUID(s).');
+}
+
 // Default transport calls SendGrid. Tests can override via setTransport().
 let transport = {
   async send(msg) {
@@ -43,7 +53,10 @@ async function sgFetch(path, { method, body } = {}) {
   });
   const text = await res.text().catch(() => '');
   if (!res.ok) {
-    throw new Error(`SendGrid ${res.status}: ${text.slice(0, 300)}`);
+    const err = new Error(`SendGrid ${res.status} ${path}: ${text.slice(0, 500)}`);
+    err.status = res.status;
+    err.body = text;
+    throw err;
   }
   return text ? JSON.parse(text) : {};
 }
@@ -51,14 +64,19 @@ async function sgFetch(path, { method, body } = {}) {
 let marketingTransport = {
   async addContact({ email, listIds }) {
     if (!API_KEY) return { status: 'skipped', reason: 'not_configured' };
-    await sgFetch('/v3/marketing/contacts', {
+    const result = await sgFetch('/v3/marketing/contacts', {
       method: 'PUT',
       body: {
         list_ids: listIds && listIds.length ? listIds : undefined,
         contacts: [{ email }]
       }
     });
-    return { status: 'accepted' };
+    return {
+      status: 'accepted',
+      jobId: result.job_id || null,
+      listIds: listIds && listIds.length ? listIds : [],
+      attachedToList: Boolean(listIds && listIds.length)
+    };
   },
 
   // Creates a SingleSend and schedules it to go out immediately. Returns the
@@ -100,9 +118,12 @@ async function addMarketingContact({ email }) {
       email,
       listIds: MARKETING_LIST_IDS
     });
+    if (result.status === 'accepted' && !result.attachedToList) {
+      console.warn('[email] marketing contact accepted but no list attached (SENDGRID_MARKETING_LIST_IDS is empty):', email);
+    }
     return result;
   } catch (err) {
-    console.error('[email] marketing contact sync failed:', email, '→', err.message);
+    console.error('[email] marketing contact sync failed:', email, '→', err.status || '', err.message);
     return { status: 'failed', error: err.message };
   }
 }

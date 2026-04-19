@@ -482,9 +482,15 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ email, source: 'homepage' })
       });
 
+      const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
         throw new Error(body.error || 'Subscription failed');
+      }
+
+      if (body.sendgrid_status && body.sendgrid_status !== 'accepted') {
+        console.warn('[newsletter] email captured but SendGrid sync status:', body.sendgrid_status);
+      } else if (body.sendgrid_status === 'accepted' && body.sendgrid_attached_to_list === false) {
+        console.warn('[newsletter] contact accepted by SendGrid but not attached to a marketing list — check SENDGRID_MARKETING_LIST_IDS on the server');
       }
 
       btn.textContent = 'Subscribed! \u{1F389}';

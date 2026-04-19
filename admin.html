@@ -238,6 +238,28 @@
       font-size: 3rem;
     }
 
+    .section-group { margin-bottom: 32px; }
+    .section-group-header {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #eee;
+    }
+    .section-group-header h2 {
+      font-size: 1.15rem; color: var(--dark); display: flex; align-items: center; gap: 10px;
+    }
+    .section-group-header .section-hint {
+      color: var(--text-light); font-size: 0.85rem; font-weight: 600;
+    }
+    .section-group .empty-slot {
+      padding: 20px; background: #FAFBFD; border: 2px dashed #d8dee6;
+      border-radius: var(--radius-sm); color: var(--text-light); font-size: 0.9rem;
+      text-align: center;
+    }
+    .section-badge {
+      display: inline-block; padding: 2px 10px; border-radius: 50px;
+      font-size: 0.7rem; font-weight: 800; text-transform: uppercase;
+      background: var(--accent); color: var(--dark);
+    }
+
     /* Service management cards */
     .service-mgmt-grid {
       display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -370,7 +392,7 @@
           <span class="nav-icon">&#128736;</span> Services
         </a>
         <a href="#" data-panel="photos">
-          <span class="nav-icon">&#128247;</span> Photos
+          <span class="nav-icon">&#128247;</span> Homepage Photos
         </a>
         <a href="#" data-panel="payments">
           <span class="nav-icon">&#128179;</span> Payments
@@ -487,11 +509,16 @@
       <!-- Photos Panel -->
       <div class="panel" id="panel-photos">
         <div class="page-header">
-          <h1>Gallery Photos</h1>
+          <h1>Homepage Photos</h1>
           <button class="btn btn-primary btn-sm" id="addPhotoBtn">+ Upload Photo</button>
         </div>
-        <div class="photo-grid" id="photosGrid">
-          <div style="text-align:center; color: var(--text-light); grid-column: 1/-1; padding: 40px;">Loading...</div>
+        <p style="color:var(--text-light); margin-bottom:24px; max-width:760px;">
+          Each homepage section below has a picture placeholder. Upload or edit photos and assign them
+          to a section — Hero (the banner area), About (the &quot;Meet Ben&quot; image), or Gallery (the
+          Puppy Parade grid).
+        </p>
+        <div id="photosBySection">
+          <div style="text-align:center; color: var(--text-light); padding: 40px;">Loading...</div>
         </div>
       </div>
 
@@ -1053,43 +1080,83 @@
     }
 
     // --- Photos ---
+    // Homepage sections that have picture placeholders. Keep in sync with
+    // server/routes/photos.js (ALLOWED_SECTIONS) and the homepage template.
+    const HOMEPAGE_SECTIONS = [
+      { key: 'hero', label: 'Hero Banner', icon: '\u{1F436}',
+        hint: 'Top of the homepage, next to the headline. Shows one photo.' },
+      { key: 'about', label: 'About Section', icon: '\u{1F9D1}\u200D\u{1F91D}\u200D\u{1F9D1}',
+        hint: 'The "Meet Ben & The Pack" image. Shows one photo.' },
+      { key: 'gallery', label: 'Gallery Grid', icon: '\u{1F5BC}\u{FE0F}',
+        hint: 'The "Puppy Parade" grid. Shows all photos assigned here.' }
+    ];
+
+    function sectionLabel(key) {
+      const s = HOMEPAGE_SECTIONS.find(x => x.key === key);
+      return s ? s.label : key;
+    }
+
+    function renderPhotoCard(p) {
+      const section = p.section || 'gallery';
+      return `
+        <div class="photo-card">
+          <img src="/uploads/${encodeURIComponent(p.filename)}" alt="${escapeHtml(p.caption)}" loading="lazy"
+            onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+          <div class="photo-placeholder" style="display:none;">&#128247;</div>
+          <div class="photo-card-body">
+            <p><span class="section-badge">${escapeHtml(sectionLabel(section))}</span></p>
+            <p>${escapeHtml(p.caption || 'No caption')}</p>
+            <p><small>Layout: ${escapeHtml(p.layout)} | ${p.show_on_homepage ? 'On homepage' : 'Hidden'}</small></p>
+            <div class="photo-card-actions">
+              <button class="btn btn-sm btn-outline" onclick="editPhoto(${p.id})">Edit</button>
+              <button class="btn btn-sm btn-danger" onclick="deletePhoto(${p.id})">Delete</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     async function loadPhotos() {
       try {
         const photos = await apiCall('/api/photos/all');
-        const grid = document.getElementById('photosGrid');
+        const container = document.getElementById('photosBySection');
 
-        if (photos.length === 0) {
-          grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
-            <div class="empty-icon">&#128247;</div>
-            <h3>No Photos</h3>
-            <p>Upload photos to display on your homepage gallery.</p>
-          </div>`;
-          return;
-        }
+        container.innerHTML = HOMEPAGE_SECTIONS.map(section => {
+          const sectionPhotos = photos.filter(p => (p.section || 'gallery') === section.key);
+          const body = sectionPhotos.length === 0
+            ? `<div class="empty-slot">No photo assigned to this section yet.
+                 <button class="btn btn-sm btn-outline" style="margin-left:12px;"
+                   onclick="openPhotoUploadForm('${section.key}')">+ Upload for ${escapeHtml(section.label)}</button>
+               </div>`
+            : `<div class="photo-grid">${sectionPhotos.map(renderPhotoCard).join('')}</div>`;
 
-        grid.innerHTML = photos.map(p => `
-          <div class="photo-card">
-            <img src="/uploads/${encodeURIComponent(p.filename)}" alt="${escapeHtml(p.caption)}" loading="lazy"
-              onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
-            <div class="photo-placeholder" style="display:none;">&#128247;</div>
-            <div class="photo-card-body">
-              <p>${escapeHtml(p.caption || 'No caption')}</p>
-              <p><small>Layout: ${escapeHtml(p.layout)} | ${p.show_on_homepage ? 'On homepage' : 'Hidden'}</small></p>
-              <div class="photo-card-actions">
-                <button class="btn btn-sm btn-outline" onclick="editPhoto(${p.id})">Edit</button>
-                <button class="btn btn-sm btn-danger" onclick="deletePhoto(${p.id})">Delete</button>
+          return `
+            <div class="section-group">
+              <div class="section-group-header">
+                <h2><span>${section.icon}</span> ${escapeHtml(section.label)}</h2>
+                <span class="section-hint">${escapeHtml(section.hint)}</span>
               </div>
+              ${body}
             </div>
-          </div>
-        `).join('');
+          `;
+        }).join('');
       } catch (err) {
         showToast('Failed to load photos', true);
       }
     }
 
-    document.getElementById('addPhotoBtn').addEventListener('click', () => {
+    function openPhotoUploadForm(defaultSection = 'gallery') {
+      const sectionOptions = HOMEPAGE_SECTIONS.map(s =>
+        `<option value="${s.key}" ${s.key === defaultSection ? 'selected' : ''}>${escapeHtml(s.label)}</option>`
+      ).join('');
+
       const body = `
         <form id="photoUploadForm" enctype="multipart/form-data">
+          <div class="form-field">
+            <label>Homepage Section</label>
+            <select id="photoSection">${sectionOptions}</select>
+            <small style="color:var(--text-light);">Which placeholder on the homepage this photo replaces.</small>
+          </div>
           <div class="form-field">
             <label>Photo File</label>
             <input type="file" id="photoFile" accept="image/jpeg,image/png,image/webp,image/gif" required
@@ -1100,7 +1167,7 @@
             <input type="text" id="photoCaption" placeholder="Max playing fetch">
           </div>
           <div class="form-field">
-            <label>Layout</label>
+            <label>Layout (Gallery only)</label>
             <select id="photoLayout">
               <option value="normal">Normal</option>
               <option value="large">Large (2x2)</option>
@@ -1119,7 +1186,9 @@
 
       openModal('Upload Photo', body,
         '<button class="btn btn-primary" onclick="uploadPhoto()">Upload</button>');
-    });
+    }
+
+    document.getElementById('addPhotoBtn').addEventListener('click', () => openPhotoUploadForm('gallery'));
 
     async function uploadPhoto() {
       const fileInput = document.getElementById('photoFile');
@@ -1134,6 +1203,7 @@
       formData.append('layout', document.getElementById('photoLayout').value);
       formData.append('display_order', document.getElementById('photoOrder').value);
       formData.append('show_on_homepage', document.getElementById('photoHomepage').checked ? '1' : '0');
+      formData.append('section', document.getElementById('photoSection').value);
 
       try {
         await apiCall('/api/photos', { method: 'POST', body: formData });
@@ -1151,14 +1221,23 @@
         const p = photos.find(ph => ph.id === id);
         if (!p) return;
 
+        const currentSection = p.section || 'gallery';
+        const sectionOptions = HOMEPAGE_SECTIONS.map(s =>
+          `<option value="${s.key}" ${s.key === currentSection ? 'selected' : ''}>${escapeHtml(s.label)}</option>`
+        ).join('');
+
         const body = `
           <form>
+            <div class="form-field">
+              <label>Homepage Section</label>
+              <select id="editPhotoSection">${sectionOptions}</select>
+            </div>
             <div class="form-field">
               <label>Caption</label>
               <input type="text" id="editPhotoCaption" value="${escapeHtml(p.caption)}">
             </div>
             <div class="form-field">
-              <label>Layout</label>
+              <label>Layout (Gallery only)</label>
               <select id="editPhotoLayout">
                 <option value="normal" ${p.layout === 'normal' ? 'selected' : ''}>Normal</option>
                 <option value="large" ${p.layout === 'large' ? 'selected' : ''}>Large (2x2)</option>
@@ -1190,7 +1269,8 @@
             caption: document.getElementById('editPhotoCaption').value,
             layout: document.getElementById('editPhotoLayout').value,
             display_order: parseInt(document.getElementById('editPhotoOrder').value),
-            show_on_homepage: document.getElementById('editPhotoHomepage').checked
+            show_on_homepage: document.getElementById('editPhotoHomepage').checked,
+            section: document.getElementById('editPhotoSection').value
           })
         });
         showToast('Photo updated');

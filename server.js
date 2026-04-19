@@ -186,6 +186,7 @@ app.use('/api/photos', require('./server/routes/photos'));
 app.use('/api/bookings', require('./server/routes/bookings'));
 app.use('/api/payments', require('./server/routes/payments'));
 app.use('/api/dogs', require('./server/routes/dogs'));
+app.use('/api/settings', require('./server/routes/settings'));
 
 if (TEST_MODE) {
   app.use('/api/__test__', require('./server/testHarness').buildRouter());

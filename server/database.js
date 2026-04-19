@@ -112,4 +112,4 @@ async function init() {
   await seed();
 }
 
-module.exports = { pool, query, getClient, init };
+module.exports = { pool, query, getClient, init, seed };

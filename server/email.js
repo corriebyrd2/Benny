@@ -14,6 +14,18 @@ if (API_KEY && FROM_EMAIL) {
   console.warn('[email] SendGrid not configured — notifications will be skipped. Set SENDGRID_API_KEY and SENDGRID_FROM_EMAIL.');
 }
 
+// Default transport calls SendGrid. Tests can override via setTransport().
+let transport = {
+  async send(msg) {
+    if (!configured) return;
+    await sgMail.send(msg);
+  }
+};
+
+function setTransport(t) {
+  transport = t;
+}
+
 function formatMoney(cents) {
   return `$${(Number(cents || 0) / 100).toFixed(2)}`;
 }
@@ -52,18 +64,14 @@ function customerPortalLink() {
 }
 
 async function send({ to, subject, html, text }) {
-  if (!configured) {
-    console.log(`[email] skipped (SendGrid not configured): ${subject} → ${to}`);
-    return;
-  }
   if (!to) {
     console.warn(`[email] skipped (no recipient): ${subject}`);
     return;
   }
   try {
-    await sgMail.send({
+    await transport.send({
       to,
-      from: { email: FROM_EMAIL, name: FROM_NAME },
+      from: { email: FROM_EMAIL || 'noreply@example.test', name: FROM_NAME },
       subject,
       text,
       html
@@ -239,6 +247,7 @@ async function sendPaymentReceivedToOwner({ booking }) {
 }
 
 module.exports = {
+  setTransport,
   sendNewBookingToOwner,
   sendBookingReceivedToCustomer,
   sendBookingApprovedToCustomer,

@@ -14,6 +14,13 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const IS_PROD = NODE_ENV === 'production';
+const TEST_MODE = process.env.TEST_MODE === '1';
+
+// Install the test harness BEFORE feature modules load so email/Stripe
+// overrides are in place when routes require('./email') / ('./stripeClient').
+if (TEST_MODE) {
+  require('./server/testHarness').install();
+}
 
 // Validate required env vars in production; fail fast instead of booting with defaults.
 function validateEnv() {
@@ -111,6 +118,7 @@ const registerLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many registration attempts. Try again in an hour.' }
 });
+app.locals.limiters = { authLimiter, registerLimiter };
 
 // Admin auth
 app.post('/api/auth/login', authLimiter, async (req, res) => {
@@ -175,6 +183,10 @@ app.use('/api/photos', require('./server/routes/photos'));
 app.use('/api/bookings', require('./server/routes/bookings'));
 app.use('/api/payments', require('./server/routes/payments'));
 app.use('/api/dogs', require('./server/routes/dogs'));
+
+if (TEST_MODE) {
+  app.use('/api/__test__', require('./server/testHarness').buildRouter());
+}
 
 // Dashboard stats for admin
 const { authenticateToken, requirePermission } = require('./server/auth');

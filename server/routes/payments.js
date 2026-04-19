@@ -3,16 +3,9 @@ const { query } = require('../database');
 const { authenticateToken, requirePermission, logAudit } = require('../auth');
 const { authenticateCustomer } = require('../customerAuth');
 const mailer = require('../email');
+const { getStripe } = require('../stripeClient');
 
 const router = express.Router();
-
-function getStripe() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key || key === 'sk_test_placeholder') {
-    return null;
-  }
-  return require('stripe')(key);
-}
 
 // Public: Create a payment intent for a booking
 router.post('/create-payment-intent', async (req, res) => {
@@ -271,10 +264,10 @@ router.post('/webhook', async (req, res) => {
 router.get('/config', authenticateToken, requirePermission('read'), (req, res) => {
   const key = process.env.STRIPE_SECRET_KEY;
   const pubKey = process.env.STRIPE_PUBLISHABLE_KEY;
-  const configured = key && key !== 'sk_test_placeholder' && pubKey && pubKey !== 'pk_test_placeholder';
+  const isConfigured = !!(key && key !== 'sk_test_placeholder' && pubKey && pubKey !== 'pk_test_placeholder');
   res.json({
-    configured,
-    publishable_key: configured ? pubKey : null
+    configured: isConfigured,
+    publishable_key: isConfigured ? pubKey : null
   });
 });
 

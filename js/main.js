@@ -65,7 +65,49 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function loadDynamicHomepagePhotos() {
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function setContactField(id, value) {
+    const el = document.getElementById(id);
+    if (!el || !value) return;
+    el.innerHTML = value.split(/\r?\n/).map(escapeHtml).join('<br>');
+  }
+
+  async function loadDynamicSettings() {
+    try {
+      const res = await fetch('/api/settings');
+      if (!res.ok) return;
+      const s = await res.json();
+
+      setContactField('contactAddress', s.contact_address);
+      setContactField('contactPhone', s.contact_phone);
+      setContactField('contactEmail', s.contact_email);
+      setContactField('contactHours', s.contact_hours);
+
+      const socialMap = {
+        facebook: s.social_facebook_url,
+        instagram: s.social_instagram_url,
+        tiktok: s.social_tiktok_url
+      };
+      document.querySelectorAll('[data-social]').forEach(link => {
+        const url = socialMap[link.getAttribute('data-social')];
+        if (url && url.trim()) {
+          link.href = url.trim();
+          link.style.display = '';
+        } else {
+          link.style.display = 'none';
+        }
+      });
+    } catch (e) {
+      // API not available, keep static content
+    }
+  }
+
+  async function loadDynamicGallery() {
     try {
       const res = await fetch('/api/photos');
       if (!res.ok) return;
@@ -284,8 +326,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Load Dynamic Content from API ---
   loadDynamicServices();
-  loadDynamicHomepagePhotos();
-  loadSiteSettings();
+  loadDynamicGallery();
+  loadDynamicSettings();
 
   // Counter observer
   const statSection = document.querySelector('.hero-stats');
@@ -422,17 +464,43 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Newsletter Form ---
   const newsletterForm = document.getElementById('newsletterForm');
 
-  newsletterForm.addEventListener('submit', (e) => {
+  newsletterForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const input = newsletterForm.querySelector('input[type="email"]');
     const btn = newsletterForm.querySelector('button');
     const originalText = btn.textContent;
-    btn.textContent = 'Subscribed! \u{1F389}';
-    btn.style.background = 'var(--secondary)';
-    newsletterForm.reset();
-    setTimeout(() => {
-      btn.textContent = originalText;
+    const email = (input?.value || '').trim();
+    if (!email) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Subscribing...';
+
+    try {
+      const res = await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, source: 'homepage' })
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Subscription failed');
+      }
+
+      btn.textContent = 'Subscribed! \u{1F389}';
+      btn.style.background = 'var(--secondary)';
+      newsletterForm.reset();
+    } catch (err) {
+      btn.textContent = 'Try again';
       btn.style.background = '';
-    }, 3000);
+      console.error('[newsletter]', err);
+    } finally {
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = originalText;
+        btn.style.background = '';
+      }, 3000);
+    }
   });
 
   // --- Service Card Tilt Effect ---

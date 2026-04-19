@@ -56,6 +56,10 @@ validateEnv();
 // Behind Railway's proxy — required for correct req.protocol, req.ip, and secure cookies.
 app.set('trust proxy', 1);
 
+// Disable ETag on app-level responses so JSON API responses never return 304.
+// express.static keeps its own ETag handling for cacheable assets.
+app.set('etag', false);
+
 // Security headers. CSP is disabled because admin.html/customer.html use extensive
 // inline scripts/styles that a strict CSP would break.
 app.use(helmet({
@@ -121,7 +125,14 @@ const registerLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many registration attempts. Try again in an hour.' }
 });
-app.locals.limiters = { authLimiter, registerLimiter };
+const subscribeLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many subscribe attempts. Try again in an hour.' }
+});
+app.locals.limiters = { authLimiter, registerLimiter, subscribeLimiter };
 
 // Admin auth
 app.post('/api/auth/login', authLimiter, async (req, res) => {
@@ -186,6 +197,8 @@ app.use('/api/photos', require('./server/routes/photos'));
 app.use('/api/bookings', require('./server/routes/bookings'));
 app.use('/api/payments', require('./server/routes/payments'));
 app.use('/api/dogs', require('./server/routes/dogs'));
+app.use('/api/subscribe', subscribeLimiter, require('./server/routes/subscribers'));
+app.use('/api/campaigns', require('./server/routes/campaigns'));
 app.use('/api/settings', require('./server/routes/settings'));
 
 if (TEST_MODE) {

@@ -400,6 +400,11 @@
         <a href="#" data-panel="payments">
           <span class="nav-icon">&#128179;</span> Payments
         </a>
+        <a href="#" data-panel="campaigns">
+          <span class="nav-icon">&#128231;</span> Campaigns
+        <a href="#" data-panel="settings">
+          <span class="nav-icon">&#9881;&#65039;</span> Settings
+        </a>
       </nav>
       <div class="sidebar-footer">
         <a href="#" id="logoutBtn">&#128682; Sign Out</a>
@@ -599,6 +604,48 @@
             <button type="submit" class="btn btn-primary">Save Company Info</button>
           </div>
         </form>
+      <!-- Campaigns Panel -->
+      <div class="panel" id="panel-campaigns">
+        <div class="page-header">
+          <h1>Email Campaigns</h1>
+          <span class="btn btn-outline btn-sm" id="campaignAudience" style="cursor:default;">Loading audience...</span>
+        </div>
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <h3>Send a one-off email</h3>
+          </div>
+          <div class="card-body">
+            <p style="color:var(--text-light); margin-bottom:16px;">
+              Composes a SendGrid Single Send and delivers it to everyone on the
+              <strong>Join the Pack</strong> list immediately. For richer templates,
+              previews, or scheduling use
+              <a href="https://mc.sendgrid.com/single-sends" target="_blank" rel="noopener">SendGrid's Marketing UI</a>.
+            </p>
+            <form id="campaignForm" style="display:flex; flex-direction:column; gap:12px;">
+              <label>
+                <div style="font-weight:600; margin-bottom:4px;">Subject</div>
+                <input type="text" id="campaignSubject" maxlength="200" required
+                       style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px;">
+              </label>
+              <label>
+                <div style="font-weight:600; margin-bottom:4px;">HTML body</div>
+                <textarea id="campaignHtml" rows="12" required
+                          placeholder="&lt;p&gt;Hey pack!&lt;/p&gt;"
+                          style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; font-family:monospace; font-size:13px;"></textarea>
+              </label>
+              <label>
+                <div style="font-weight:600; margin-bottom:4px;">Plain-text fallback <span style="color:var(--text-light); font-weight:400;">(optional)</span></div>
+                <textarea id="campaignPlain" rows="4"
+                          style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px;"></textarea>
+              </label>
+              <div style="display:flex; gap:10px;">
+                <button type="button" class="btn btn-outline" id="campaignPreviewBtn">Preview</button>
+                <button type="submit" class="btn btn-primary" id="campaignSendBtn">Send to the Pack</button>
+              </div>
+            </form>
+            <div id="campaignPreview" style="display:none; margin-top:20px; padding:16px; border:1px solid var(--border); border-radius:8px; background:#fff;"></div>
+          </div>
+        </div>
       </div>
 
       <!-- Payments Panel -->
@@ -630,6 +677,64 @@
             </table>
           </div>
         </div>
+      </div>
+
+      <!-- Settings Panel -->
+      <div class="panel" id="panel-settings">
+        <div class="page-header">
+          <h1>Site Settings</h1>
+        </div>
+        <form id="settingsForm">
+          <div class="card" style="margin-bottom:20px;">
+            <div class="card-header"><h3>Contact Us</h3></div>
+            <div class="card-body">
+              <p style="color:var(--text-light);margin-bottom:16px;font-size:0.9rem;">
+                These details appear in the Contact Us section on the public homepage. Use a new line to split onto multiple lines (e.g. street and city).
+              </p>
+              <div class="form-field">
+                <label for="setting-contact_address">Address</label>
+                <textarea id="setting-contact_address" data-setting="contact_address" rows="2" placeholder="123 Pawsome Lane&#10;Dogtown, CA 90210"></textarea>
+              </div>
+              <div class="form-field">
+                <label for="setting-contact_phone">Phone</label>
+                <textarea id="setting-contact_phone" data-setting="contact_phone" rows="2" placeholder="(555) 236-6973"></textarea>
+              </div>
+              <div class="form-field">
+                <label for="setting-contact_email">Email</label>
+                <input type="email" id="setting-contact_email" data-setting="contact_email" placeholder="woof@bennyandthepets.com">
+              </div>
+              <div class="form-field">
+                <label for="setting-contact_hours">Hours</label>
+                <textarea id="setting-contact_hours" data-setting="contact_hours" rows="2" placeholder="Mon-Sat: 7am - 7pm&#10;Sun: 8am - 5pm"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:20px;">
+            <div class="card-header"><h3>Social Links</h3></div>
+            <div class="card-body">
+              <p style="color:var(--text-light);margin-bottom:16px;font-size:0.9rem;">
+                Leave a URL blank to hide that social icon on the homepage footer.
+              </p>
+              <div class="form-field">
+                <label for="setting-social_facebook_url">Facebook URL</label>
+                <input type="url" id="setting-social_facebook_url" data-setting="social_facebook_url" placeholder="https://www.facebook.com/...">
+              </div>
+              <div class="form-field">
+                <label for="setting-social_instagram_url">Instagram URL</label>
+                <input type="url" id="setting-social_instagram_url" data-setting="social_instagram_url" placeholder="https://www.instagram.com/...">
+              </div>
+              <div class="form-field">
+                <label for="setting-social_tiktok_url">TikTok URL</label>
+                <input type="url" id="setting-social_tiktok_url" data-setting="social_tiktok_url" placeholder="https://www.tiktok.com/@...">
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button type="submit" class="btn btn-primary">Save Settings</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
@@ -799,6 +904,8 @@
         case 'photos': loadPhotos(); break;
         case 'settings': loadSettings(); break;
         case 'payments': loadPayments(); break;
+        case 'campaigns': loadCampaigns(); break;
+        case 'settings': loadSettings(); break;
       }
     }
 
@@ -1454,6 +1561,88 @@
         showToast('Failed to load payments', true);
       }
     }
+
+    // --- Campaigns ---
+    async function loadCampaigns() {
+      const audience = document.getElementById('campaignAudience');
+      audience.textContent = 'Loading audience...';
+      try {
+        const stats = await apiCall('/api/campaigns/stats');
+        audience.textContent = `${stats.subscriberCount} subscriber${stats.subscriberCount === 1 ? '' : 's'}`;
+      } catch (err) {
+        audience.textContent = 'Audience unavailable';
+      }
+    }
+
+    document.getElementById('campaignPreviewBtn').addEventListener('click', () => {
+      const html = document.getElementById('campaignHtml').value;
+      const preview = document.getElementById('campaignPreview');
+      if (!html.trim()) {
+        preview.style.display = 'none';
+        return;
+      }
+      preview.innerHTML = html;
+      preview.style.display = 'block';
+    });
+
+    document.getElementById('campaignForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const subject = document.getElementById('campaignSubject').value.trim();
+      const html = document.getElementById('campaignHtml').value.trim();
+      const plain = document.getElementById('campaignPlain').value.trim();
+      if (!subject || !html) return;
+
+      const audienceText = document.getElementById('campaignAudience').textContent;
+      if (!confirm(`Send "${subject}" to ${audienceText}?\n\nThis goes out immediately and cannot be unsent.`)) return;
+
+      const btn = document.getElementById('campaignSendBtn');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      try {
+        const result = await apiCall('/api/campaigns', {
+          method: 'POST',
+          body: JSON.stringify({ subject, html, plain })
+        });
+        showToast(`Campaign scheduled (${result.id || 'queued'})`);
+        document.getElementById('campaignForm').reset();
+        document.getElementById('campaignPreview').style.display = 'none';
+      } catch (err) {
+        showToast(err.message || 'Failed to send campaign', true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send to the Pack';
+      }
+    });
+
+    // --- Settings ---
+    async function loadSettings() {
+      try {
+        const settings = await apiCall('/api/settings/all');
+        document.querySelectorAll('[data-setting]').forEach(input => {
+          const key = input.getAttribute('data-setting');
+          input.value = settings[key] || '';
+        });
+      } catch (err) {
+        showToast('Failed to load settings', true);
+      }
+    }
+
+    document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {};
+      document.querySelectorAll('[data-setting]').forEach(input => {
+        payload[input.getAttribute('data-setting')] = input.value.trim();
+      });
+      try {
+        await apiCall('/api/settings', {
+          method: 'PUT',
+          body: JSON.stringify(payload)
+        });
+        showToast('Settings saved');
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    });
 
     // --- Init ---
     if (token) {

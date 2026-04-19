@@ -19,6 +19,8 @@
       <a href="#home" class="logo">
         <img src="images/logo.svg" alt="Benny and the Pets logo" class="logo-img">
         <span class="logo-text" data-setting="brand">Benny<span class="logo-amp">&</span>the Pets</span>
+        <img src="images/bennyandthepets.png" alt="Benny and the Pets logo" class="logo-img">
+        <span class="logo-text">Benny<span class="logo-amp">&</span>the Pets</span>
       </a>
       <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
         <span></span><span></span><span></span>
@@ -336,21 +338,25 @@
             <span class="info-icon">&#128205;</span>
             <h4>Visit Us</h4>
             <p data-setting="address">123 Pawsome Lane<br>Dogtown, CA 90210</p>
+            <p id="contactAddress">123 Pawsome Lane<br>Dogtown, CA 90210</p>
           </div>
           <div class="info-card">
             <span class="info-icon">&#128222;</span>
             <h4>Call Us</h4>
             <p data-setting="phone">(555) BENNY-PET<br>(555) 236-6973</p>
+            <p id="contactPhone">(555) BENNY-PET<br>(555) 236-6973</p>
           </div>
           <div class="info-card">
             <span class="info-icon">&#128231;</span>
             <h4>Email Us</h4>
             <p data-setting="email">woof@bennyandthepets.com</p>
+            <p id="contactEmail">woof@bennyandthepets.com</p>
           </div>
           <div class="info-card">
             <span class="info-icon">&#128336;</span>
             <h4>Hours</h4>
             <p data-setting="hours">Mon-Sat: 7am - 7pm<br>Sun: 8am - 5pm</p>
+            <p id="contactHours">Mon-Sat: 7am - 7pm<br>Sun: 8am - 5pm</p>
           </div>
         </div>
       </div>
@@ -368,6 +374,12 @@
             <a href="https://www.facebook.com/profile.php?id=61563336148397" aria-label="Facebook" class="social-link" data-setting-href="facebook_url">FB</a>
             <a href="#" aria-label="Instagram" class="social-link" data-setting-href="instagram_url">IG</a>
             <a href="#" aria-label="TikTok" class="social-link" data-setting-href="tiktok_url">TT</a>
+          <h3><img src="images/bennyandthepets.png" alt="Benny and the Pets logo" class="footer-logo-img"> Benny &amp; the Pets</h3>
+          <p>Where tails never stop wagging and every pup is family.</p>
+          <div class="social-links" id="socialLinks">
+            <a href="https://www.facebook.com/profile.php?id=61563336148397" aria-label="Facebook" class="social-link" data-social="facebook" target="_blank" rel="noopener">FB</a>
+            <a href="#" aria-label="Instagram" class="social-link" data-social="instagram" target="_blank" rel="noopener" style="display:none;">IG</a>
+            <a href="#" aria-label="TikTok" class="social-link" data-social="tiktok" target="_blank" rel="noopener" style="display:none;">TT</a>
           </div>
         </div>
         <div class="footer-links">
@@ -396,6 +408,7 @@
             <input type="email" placeholder="Your email" required>
             <button type="submit" class="btn btn-primary">Subscribe</button>
           </form>
+          <p class="newsletter-consent">By subscribing you agree to receive marketing emails. Unsubscribe anytime.</p>
         </div>
       </div>
       <div class="footer-bottom">

@@ -37,6 +37,28 @@ async function runMigrations() {
     )
   `);
 
+  // Reconcile deployments whose schema was created before schema_migrations
+  // tracking existed (e.g. via the legacy 001_initial.sql bootstrap). If a
+  // migration's characteristic table is already present, mark it applied.
+  const preExisting = [
+    { migration: '0001_init.sql', table: 'admins' },
+    { migration: '001_initial.sql', table: 'admins' },
+    { migration: '0002_settings.sql', table: 'settings' },
+    { migration: '0002_subscribers.sql', table: 'subscribers' }
+  ];
+  for (const { migration, table } of preExisting) {
+    const { rows } = await pool.query(
+      "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1",
+      [table]
+    );
+    if (rows.length) {
+      await pool.query(
+        'INSERT INTO schema_migrations (name) VALUES ($1) ON CONFLICT DO NOTHING',
+        [migration]
+      );
+    }
+  }
+
   const dir = path.join(__dirname, 'migrations');
   const files = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).sort();
 

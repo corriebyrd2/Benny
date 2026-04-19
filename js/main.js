@@ -114,28 +114,52 @@ document.addEventListener('DOMContentLoaded', () => {
       const photos = await res.json();
       if (photos.length === 0) return;
 
-      const grid = document.querySelector('.gallery-grid');
-      if (!grid) return;
+      // Backward-compat: treat photos missing a section as 'gallery'.
+      const bySection = (name) => photos.filter(p => (p.section || 'gallery') === name);
 
-      grid.innerHTML = photos.map(p => {
-        const layoutClass = p.layout === 'large' ? ' large' : (p.layout === 'tall' ? ' tall' : '');
-        return `
-          <div class="gallery-item${layoutClass}">
-            <img src="/uploads/${encodeURIComponent(p.filename)}" alt="${p.caption || ''}"
-              style="width:100%;height:100%;object-fit:cover;"
-              onerror="this.parentElement.innerHTML='<div class=\\'gallery-placeholder\\' style=\\'--hue:30;\\'><span>&#128054;</span><p>${p.caption || ''}</p></div>';">
-          </div>
-        `;
-      }).join('');
-
-      // Re-add reveal classes
-      grid.querySelectorAll('.gallery-item').forEach(el => {
-        el.classList.add('reveal');
-        observer.observe(el);
-      });
+      renderGallery(bySection('gallery'));
+      renderSingleSectionPhoto('heroVisual', bySection('hero')[0]);
+      renderSingleSectionPhoto('aboutImage', bySection('about')[0]);
     } catch (e) {
       // API not available, keep static content
     }
+  }
+
+  function renderGallery(photos) {
+    const grid = document.querySelector('.gallery-grid');
+    if (!grid || photos.length === 0) return;
+
+    grid.innerHTML = photos.map(p => {
+      const layoutClass = p.layout === 'large' ? ' large' : (p.layout === 'tall' ? ' tall' : '');
+      return `
+        <div class="gallery-item${layoutClass}">
+          <img src="/uploads/${encodeURIComponent(p.filename)}" alt="${p.caption || ''}"
+            style="width:100%;height:100%;object-fit:cover;"
+            onerror="this.parentElement.innerHTML='<div class=\\'gallery-placeholder\\' style=\\'--hue:30;\\'><span>&#128054;</span><p>${p.caption || ''}</p></div>';">
+        </div>
+      `;
+    }).join('');
+
+    grid.querySelectorAll('.gallery-item').forEach(el => {
+      el.classList.add('reveal');
+      observer.observe(el);
+    });
+  }
+
+  function renderSingleSectionPhoto(containerId, photo) {
+    if (!photo) return;
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    // Hero keeps its container free-sized; about-image uses the same 4/5 aspect
+    // ratio the placeholder already enforces so the surrounding grid stays stable.
+    const styles = containerId === 'aboutImage'
+      ? 'width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:16px;display:block;box-shadow:0 10px 30px rgba(0,0,0,0.12);'
+      : 'max-width:100%;max-height:500px;object-fit:contain;display:block;border-radius:16px;';
+
+    container.innerHTML = `
+      <img src="/uploads/${encodeURIComponent(photo.filename)}" alt="${photo.caption || ''}" style="${styles}">
+    `;
   }
 
   // --- Floating Paw Prints ---
@@ -377,17 +401,43 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Newsletter Form ---
   const newsletterForm = document.getElementById('newsletterForm');
 
-  newsletterForm.addEventListener('submit', (e) => {
+  newsletterForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const input = newsletterForm.querySelector('input[type="email"]');
     const btn = newsletterForm.querySelector('button');
     const originalText = btn.textContent;
-    btn.textContent = 'Subscribed! \u{1F389}';
-    btn.style.background = 'var(--secondary)';
-    newsletterForm.reset();
-    setTimeout(() => {
-      btn.textContent = originalText;
+    const email = (input?.value || '').trim();
+    if (!email) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Subscribing...';
+
+    try {
+      const res = await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, source: 'homepage' })
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Subscription failed');
+      }
+
+      btn.textContent = 'Subscribed! \u{1F389}';
+      btn.style.background = 'var(--secondary)';
+      newsletterForm.reset();
+    } catch (err) {
+      btn.textContent = 'Try again';
       btn.style.background = '';
-    }, 3000);
+      console.error('[newsletter]', err);
+    } finally {
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = originalText;
+        btn.style.background = '';
+      }, 3000);
+    }
   });
 
   // --- Service Card Tilt Effect ---

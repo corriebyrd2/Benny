@@ -121,7 +121,14 @@ const registerLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many registration attempts. Try again in an hour.' }
 });
-app.locals.limiters = { authLimiter, registerLimiter };
+const subscribeLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many subscribe attempts. Try again in an hour.' }
+});
+app.locals.limiters = { authLimiter, registerLimiter, subscribeLimiter };
 
 // Admin auth
 app.post('/api/auth/login', authLimiter, async (req, res) => {
@@ -186,7 +193,7 @@ app.use('/api/photos', require('./server/routes/photos'));
 app.use('/api/bookings', require('./server/routes/bookings'));
 app.use('/api/payments', require('./server/routes/payments'));
 app.use('/api/dogs', require('./server/routes/dogs'));
-app.use('/api/settings', require('./server/routes/settings'));
+app.use('/api/subscribe', subscribeLimiter, require('./server/routes/subscribers'));
 
 if (TEST_MODE) {
   app.use('/api/__test__', require('./server/testHarness').buildRouter());

@@ -67,8 +67,7 @@ router.put('/:id', authenticateCustomer, async (req, res) => {
     ]
   );
 
-    res.json({ message: 'Dog profile updated' });
-  } catch (err) { next(err); }
+  res.json({ message: 'Dog profile updated' });
 });
 
 // Delete a dog profile
@@ -82,8 +81,7 @@ router.delete('/:id', authenticateCustomer, async (req, res) => {
     return res.status(404).json({ error: 'Dog not found' });
   }
 
-    res.json({ message: 'Dog profile deleted' });
-  } catch (err) { next(err); }
+  res.json({ message: 'Dog profile deleted' });
 });
 
 module.exports = router;

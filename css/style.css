@@ -1132,6 +1132,13 @@ img {
   font-size: 0.85rem;
 }
 
+.newsletter-consent {
+  margin-top: 10px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
 .footer-bottom {
   text-align: center;
   padding: 20px 0;

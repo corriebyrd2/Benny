@@ -1083,12 +1083,12 @@
     // Homepage sections that have picture placeholders. Keep in sync with
     // server/routes/photos.js (ALLOWED_SECTIONS) and the homepage template.
     const HOMEPAGE_SECTIONS = [
-      { key: 'hero', label: 'Hero Banner', icon: '\u{1F436}',
-        hint: 'Top of the homepage, next to the headline. Shows one photo.' },
-      { key: 'about', label: 'About Section', icon: '\u{1F9D1}\u200D\u{1F91D}\u200D\u{1F9D1}',
-        hint: 'The "Meet Ben & The Pack" image. Shows one photo.' },
-      { key: 'gallery', label: 'Gallery Grid', icon: '\u{1F5BC}\u{FE0F}',
-        hint: 'The "Puppy Parade" grid. Shows all photos assigned here.' }
+      { key: 'hero', label: 'Hero Banner (top of homepage)', icon: '\u{1F436}',
+        hint: 'Replaces the bouncing dog next to "Where Every Pup Gets the Royal Treatment".' },
+      { key: 'about', label: 'Meet Ben & The Pack ("Ben & Friends" photo)', icon: '\u{1F9D1}\u200D\u{1F91D}\u200D\u{1F9D1}',
+        hint: 'Replaces the "Ben & Friends" placeholder in the About section.' },
+      { key: 'gallery', label: 'Puppy Parade Gallery', icon: '\u{1F5BC}\u{FE0F}',
+        hint: 'All photos here fill the gallery grid further down the page.' }
     ];
 
     function sectionLabel(key) {
@@ -1124,9 +1124,10 @@
         container.innerHTML = HOMEPAGE_SECTIONS.map(section => {
           const sectionPhotos = photos.filter(p => (p.section || 'gallery') === section.key);
           const body = sectionPhotos.length === 0
-            ? `<div class="empty-slot">No photo assigned to this section yet.
-                 <button class="btn btn-sm btn-outline" style="margin-left:12px;"
-                   onclick="openPhotoUploadForm('${section.key}')">+ Upload for ${escapeHtml(section.label)}</button>
+            ? `<div class="empty-slot">
+                 <p style="margin-bottom:10px;">No photo assigned to this section yet.</p>
+                 <button class="btn btn-sm btn-primary"
+                   onclick="openPhotoUploadForm('${section.key}')">+ Upload photo for this section</button>
                </div>`
             : `<div class="photo-grid">${sectionPhotos.map(renderPhotoCard).join('')}</div>`;
 

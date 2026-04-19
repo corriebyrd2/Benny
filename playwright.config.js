@@ -1,0 +1,66 @@
+// Playwright config for Benny and the Pets E2E tests.
+//
+// Requires E2E_DATABASE_URL (a Neon branch connection string) in the
+// environment. Loads .env.test if present. Runs a single worker, serial,
+// because all specs share one Neon branch and reset the DB between specs.
+
+const { defineConfig } = require('@playwright/test');
+const path = require('path');
+
+require('dotenv').config({ path: path.join(__dirname, '.env.test') });
+
+if (!process.env.E2E_DATABASE_URL) {
+  throw new Error(
+    'E2E_DATABASE_URL is required (a Neon branch connection string). ' +
+    'See TESTING.md.'
+  );
+}
+
+const PORT = process.env.E2E_PORT || '3901';
+const BASE_URL = `http://127.0.0.1:${PORT}`;
+
+module.exports = defineConfig({
+  testDir: './e2e',
+  fullyParallel: false,
+  workers: 1,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 1 : 0,
+  reporter: process.env.CI ? [['github'], ['list']] : 'list',
+  timeout: 30_000,
+  expect: { timeout: 5_000 },
+  use: {
+    baseURL: BASE_URL,
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure'
+  },
+  webServer: {
+    command: 'node server.js',
+    url: `${BASE_URL}/healthz`,
+    timeout: 60_000,
+    reuseExistingServer: !process.env.CI,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    env: {
+      NODE_ENV: 'test',
+      TEST_MODE: '1',
+      PORT,
+      NEON_DATABASE_URL: process.env.E2E_DATABASE_URL,
+      JWT_SECRET: process.env.E2E_JWT_SECRET || 'e2e-test-secret-do-not-use-in-prod',
+      ADMIN_EMAIL: process.env.E2E_ADMIN_EMAIL || 'admin@test.local',
+      ADMIN_PASSWORD: process.env.E2E_ADMIN_PASSWORD || 'test-admin-password-e2e',
+      STRIPE_SECRET_KEY: 'sk_test_e2e_stub',
+      STRIPE_PUBLISHABLE_KEY: 'pk_test_e2e_stub',
+      STRIPE_WEBHOOK_SECRET: process.env.E2E_STRIPE_WEBHOOK_SECRET || 'whsec_e2e_test_secret',
+      PUBLIC_URL: BASE_URL,
+      // Keep SendGrid unset; the harness overrides the transport anyway.
+      SENDGRID_FROM_EMAIL: 'test@bennyandthepets.test'
+    }
+  },
+  projects: [
+    {
+      name: 'chromium',
+      use: { browserName: 'chromium' }
+    }
+  ]
+});

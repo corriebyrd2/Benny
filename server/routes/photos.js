@@ -44,6 +44,11 @@ function parseShowOnHomepage(val) {
   return !(val === '0' || val === 'false' || val === false);
 }
 
+const ALLOWED_SECTIONS = ['hero', 'about', 'gallery'];
+function normalizeSection(val) {
+  return ALLOWED_SECTIONS.includes(val) ? val : 'gallery';
+}
+
 // Public: Get all homepage photos
 router.get('/', async (req, res) => {
   const { rows } = await query(
@@ -64,18 +69,19 @@ router.post('/', authenticateToken, requirePermission('write'), upload.single('p
     return res.status(400).json({ error: 'No photo file provided' });
   }
 
-  const { caption, layout, display_order, show_on_homepage } = req.body;
+  const { caption, layout, display_order, show_on_homepage, section } = req.body;
 
   const { rows } = await query(
-    `INSERT INTO photos (filename, original_name, caption, layout, display_order, show_on_homepage)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    `INSERT INTO photos (filename, original_name, caption, layout, display_order, show_on_homepage, section)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
     [
       req.file.filename,
       req.file.originalname,
       caption || '',
       layout || 'normal',
       parseInt(display_order) || 0,
-      show_on_homepage !== '0' ? 1 : 0
+      show_on_homepage !== '0' ? 1 : 0,
+      normalizeSection(section)
     ]
   );
 
@@ -89,20 +95,22 @@ router.post('/', authenticateToken, requirePermission('write'), upload.single('p
 
 // Admin: Update photo metadata
 router.put('/:id', authenticateToken, requirePermission('write'), async (req, res) => {
-  const { caption, layout, display_order, show_on_homepage } = req.body;
+  const { caption, layout, display_order, show_on_homepage, section } = req.body;
 
   await query(
     `UPDATE photos SET
        caption = COALESCE($1, caption),
        layout = COALESCE($2, layout),
        display_order = COALESCE($3, display_order),
-       show_on_homepage = COALESCE($4, show_on_homepage)
-     WHERE id = $5`,
+       show_on_homepage = COALESCE($4, show_on_homepage),
+       section = COALESCE($5, section)
+     WHERE id = $6`,
     [
       caption ?? null,
       layout ?? null,
       display_order !== undefined ? parseInt(display_order) : null,
       show_on_homepage !== undefined ? (show_on_homepage ? 1 : 0) : null,
+      section !== undefined ? normalizeSection(section) : null,
       req.params.id
     ]
   );

@@ -604,6 +604,8 @@
             <button type="submit" class="btn btn-primary">Save Company Info</button>
           </div>
         </form>
+      </div>
+
       <!-- Campaigns Panel -->
       <div class="panel" id="panel-campaigns">
         <div class="page-header">
@@ -679,63 +681,6 @@
         </div>
       </div>
 
-      <!-- Settings Panel -->
-      <div class="panel" id="panel-settings">
-        <div class="page-header">
-          <h1>Site Settings</h1>
-        </div>
-        <form id="settingsForm">
-          <div class="card" style="margin-bottom:20px;">
-            <div class="card-header"><h3>Contact Us</h3></div>
-            <div class="card-body">
-              <p style="color:var(--text-light);margin-bottom:16px;font-size:0.9rem;">
-                These details appear in the Contact Us section on the public homepage. Use a new line to split onto multiple lines (e.g. street and city).
-              </p>
-              <div class="form-field">
-                <label for="setting-contact_address">Address</label>
-                <textarea id="setting-contact_address" data-setting="contact_address" rows="2" placeholder="123 Pawsome Lane&#10;Dogtown, CA 90210"></textarea>
-              </div>
-              <div class="form-field">
-                <label for="setting-contact_phone">Phone</label>
-                <textarea id="setting-contact_phone" data-setting="contact_phone" rows="2" placeholder="(555) 236-6973"></textarea>
-              </div>
-              <div class="form-field">
-                <label for="setting-contact_email">Email</label>
-                <input type="email" id="setting-contact_email" data-setting="contact_email" placeholder="woof@bennyandthepets.com">
-              </div>
-              <div class="form-field">
-                <label for="setting-contact_hours">Hours</label>
-                <textarea id="setting-contact_hours" data-setting="contact_hours" rows="2" placeholder="Mon-Sat: 7am - 7pm&#10;Sun: 8am - 5pm"></textarea>
-              </div>
-            </div>
-          </div>
-
-          <div class="card" style="margin-bottom:20px;">
-            <div class="card-header"><h3>Social Links</h3></div>
-            <div class="card-body">
-              <p style="color:var(--text-light);margin-bottom:16px;font-size:0.9rem;">
-                Leave a URL blank to hide that social icon on the homepage footer.
-              </p>
-              <div class="form-field">
-                <label for="setting-social_facebook_url">Facebook URL</label>
-                <input type="url" id="setting-social_facebook_url" data-setting="social_facebook_url" placeholder="https://www.facebook.com/...">
-              </div>
-              <div class="form-field">
-                <label for="setting-social_instagram_url">Instagram URL</label>
-                <input type="url" id="setting-social_instagram_url" data-setting="social_instagram_url" placeholder="https://www.instagram.com/...">
-              </div>
-              <div class="form-field">
-                <label for="setting-social_tiktok_url">TikTok URL</label>
-                <input type="url" id="setting-social_tiktok_url" data-setting="social_tiktok_url" placeholder="https://www.tiktok.com/@...">
-              </div>
-            </div>
-          </div>
-
-          <div style="display:flex;gap:8px;justify-content:flex-end;">
-            <button type="submit" class="btn btn-primary">Save Settings</button>
-          </div>
-        </form>
-      </div>
     </div>
   </div>
 
@@ -905,7 +850,6 @@
         case 'settings': loadSettings(); break;
         case 'payments': loadPayments(); break;
         case 'campaigns': loadCampaigns(); break;
-        case 'settings': loadSettings(); break;
       }
     }
 
@@ -1611,36 +1555,6 @@
       } finally {
         btn.disabled = false;
         btn.textContent = 'Send to the Pack';
-      }
-    });
-
-    // --- Settings ---
-    async function loadSettings() {
-      try {
-        const settings = await apiCall('/api/settings/all');
-        document.querySelectorAll('[data-setting]').forEach(input => {
-          const key = input.getAttribute('data-setting');
-          input.value = settings[key] || '';
-        });
-      } catch (err) {
-        showToast('Failed to load settings', true);
-      }
-    }
-
-    document.getElementById('settingsForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const payload = {};
-      document.querySelectorAll('[data-setting]').forEach(input => {
-        payload[input.getAttribute('data-setting')] = input.value.trim();
-      });
-      try {
-        await apiCall('/api/settings', {
-          method: 'PUT',
-          body: JSON.stringify(payload)
-        });
-        showToast('Settings saved');
-      } catch (err) {
-        showToast(err.message, true);
       }
     });
 

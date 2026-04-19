@@ -3,114 +3,113 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
-let pool;
-
-function getPool() {
-  if (!pool) {
-    if (!process.env.DATABASE_URL) {
-      throw new Error('DATABASE_URL is not set');
-    }
-    pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: true },
-      max: 10,
-      idleTimeoutMillis: 30_000
-    });
-  }
-  return pool;
+const connectionString = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error('NEON_DATABASE_URL (or DATABASE_URL) is required');
 }
 
-async function query(text, params) {
-  const result = await getPool().query(text, params);
-  return result;
+const pool = new Pool({
+  connectionString,
+  // Neon terminates TLS at the proxy; the default CA bundle may not match.
+  ssl: { rejectUnauthorized: false },
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000
+});
+
+pool.on('error', (err) => {
+  console.error('[pg pool error]', err);
+});
+
+function query(text, params) {
+  return pool.query(text, params);
 }
 
-async function withTx(fn) {
-  const client = await getPool().connect();
-  try {
-    await client.query('BEGIN');
-    const result = await fn(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+function getClient() {
+  return pool.connect();
 }
 
 async function runMigrations() {
-  await query(`
-    CREATE TABLE IF NOT EXISTS _migrations (
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
       name TEXT PRIMARY KEY,
-      applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
 
   const dir = path.join(__dirname, 'migrations');
   const files = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).sort();
 
-  const applied = new Set(
-    (await query('SELECT name FROM _migrations')).rows.map(r => r.name)
-  );
-
   for (const file of files) {
-    if (applied.has(file)) continue;
+    const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE name = $1', [file]);
+    if (rows.length) continue;
+
     const sql = fs.readFileSync(path.join(dir, file), 'utf8');
-    await withTx(async (client) => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
       await client.query(sql);
-      await client.query('INSERT INTO _migrations (name) VALUES ($1)', [file]);
-    });
-    console.log(`[migrate] applied ${file}`);
+      await client.query('INSERT INTO schema_migrations (name) VALUES ($1)', [file]);
+      await client.query('COMMIT');
+      console.log(`[migration] applied ${file}`);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw new Error(`Migration ${file} failed: ${err.message}`);
+    } finally {
+      client.release();
+    }
   }
 }
 
 async function seed() {
-  const { rows: adminRows } = await query('SELECT COUNT(*)::int AS count FROM admins');
-  if (adminRows[0].count === 0) {
-    const email = process.env.ADMIN_EMAIL || 'admin@bennyandthepets.com';
-    const password = process.env.ADMIN_PASSWORD || 'changeme123';
-    const hash = bcrypt.hashSync(password, 10);
-    await query(
+  const { rows: adminRows } = await pool.query('SELECT COUNT(*)::int AS count FROM admins');
+  if (adminRows[0].count === 0 && process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
+    const hash = bcrypt.hashSync(process.env.ADMIN_PASSWORD, 10);
+    await pool.query(
       'INSERT INTO admins (email, password_hash, role) VALUES ($1, $2, $3)',
-      [email, hash, 'admin']
+      [process.env.ADMIN_EMAIL, hash, 'admin']
     );
+    console.log('[seed] created initial admin');
   }
 
-  const { rows: serviceRows } = await query('SELECT COUNT(*)::int AS count FROM services');
+  const { rows: serviceRows } = await pool.query('SELECT COUNT(*)::int AS count FROM services');
   if (serviceRows[0].count === 0) {
-    await withTx(async (client) => {
-      const insert = (args) => client.query(`
-        INSERT INTO services (name, description, icon, perks, price_cents, price_label, is_featured, display_order)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      `, args);
-
-      await insert(['Overnight Boarding',
+    const seeds = [
+      ['Overnight Boarding',
         'Cozy suites with bedtime stories (yes, really) and midnight check-ins. Your pup sleeps like royalty.',
-        '&#127968;',
+        '\u{1F3E0}',
         JSON.stringify(['Private suites', 'Evening walk included', 'Breakfast & dinner']),
-        4500, 'From $45/night', false, 1]);
-
-      await insert(['Doggy Daycare',
+        4500, 'From $45/night', 0, 1],
+      ['Doggy Daycare',
         'A full day of socialization, play, and structured activities. Your dog will come home happily exhausted!',
-        '&#9728;&#65039;',
+        '\u2600\uFE0F',
         JSON.stringify(['Supervised group play', 'Nap time included', 'Photo updates']),
-        3000, 'From $30/day', true, 2]);
-
-      await insert(['Spa & Grooming',
+        3000, 'From $30/day', 1, 2],
+      ['Spa & Grooming',
         'Bath time shouldn\'t be a battle. Our gentle groomers make every pup feel pampered and pretty.',
-        '&#128704;',
+        '\u{1F6C0}',
         JSON.stringify(['Bath & blow-dry', 'Nail trimming', 'Coat brushing']),
-        3500, 'From $35/session', false, 3]);
-
-      await insert(['Training Sessions',
+        3500, 'From $35/session', 0, 3],
+      ['Training Sessions',
         'Positive reinforcement training that makes learning fun. From basics to impressive tricks!',
-        '&#127939;',
+        '\u{1F3C3}',
         JSON.stringify(['1-on-1 sessions', 'Certified trainers', 'Progress reports']),
-        5000, 'From $50/session', false, 4]);
-    });
+        5000, 'From $50/session', 0, 4]
+    ];
+    for (const s of seeds) {
+      await pool.query(
+        `INSERT INTO services (name, description, icon, perks, price_cents, price_label, is_featured, display_order)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        s
+      );
+    }
+    console.log('[seed] inserted default services');
   }
 }
 
-module.exports = { getPool, query, withTx, runMigrations, seed };
+async function init() {
+  await runMigrations();
+  await seed();
+}
+
+module.exports = { pool, query, getClient, init, seed };

@@ -37,9 +37,9 @@ function authenticateToken(req, res, next) {
 }
 
 function requirePermission(...permissions) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.admin) {
-      logAudit(null, null, permissions.join(','), 'unknown', null, 'denied');
+      await logAudit(null, null, permissions.join(','), 'unknown', null, 'denied');
       return res.status(401).json({ error: 'Authentication required' });
     }
 
@@ -48,7 +48,7 @@ function requirePermission(...permissions) {
     const hasPermission = permissions.every(p => rolePerms.includes(p));
 
     if (!hasPermission) {
-      logAudit(req.admin.id, req.admin.email, permissions.join(','), req.originalUrl, null, 'denied');
+      await logAudit(req.admin.id, req.admin.email, permissions.join(','), req.originalUrl, null, 'denied');
       return res.status(403).json({
         error: 'rbac_access_denied',
         message: `Role '${role}' does not have required permission(s): ${permissions.join(', ')}`,
@@ -61,13 +61,16 @@ function requirePermission(...permissions) {
   };
 }
 
-// Fire-and-forget audit write. Never throws.
-function logAudit(adminId, adminEmail, action, resource, resourceId, status) {
-  query(
-    `INSERT INTO audit_logs (admin_id, admin_email, action, resource, resource_id, status)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [adminId, adminEmail, action, resource, resourceId || null, status || 'success']
-  ).catch(err => console.error('Audit log error:', err.message));
+async function logAudit(adminId, adminEmail, action, resource, resourceId, status) {
+  try {
+    await query(
+      `INSERT INTO audit_logs (admin_id, admin_email, action, resource, resource_id, status)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [adminId, adminEmail, action, resource, resourceId || null, status || 'success']
+    );
+  } catch (err) {
+    console.error('Audit log error:', err.message);
+  }
 }
 
 async function loginAdmin(email, password) {
@@ -75,16 +78,16 @@ async function loginAdmin(email, password) {
   const admin = rows[0];
 
   if (!admin) {
-    logAudit(null, email, 'login', 'auth', null, 'failed');
+    await logAudit(null, email, 'login', 'auth', null, 'failed');
     return null;
   }
 
   if (!bcrypt.compareSync(password, admin.password_hash)) {
-    logAudit(admin.id, email, 'login', 'auth', null, 'failed');
+    await logAudit(admin.id, email, 'login', 'auth', null, 'failed');
     return null;
   }
 
-  logAudit(admin.id, email, 'login', 'auth', null, 'success');
+  await logAudit(admin.id, email, 'login', 'auth', null, 'success');
   const token = generateToken(admin);
   return { token, admin: { id: admin.id, email: admin.email, role: admin.role || 'admin' } };
 }

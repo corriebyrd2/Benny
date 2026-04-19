@@ -8,16 +8,26 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const { loginAdmin } = require('./server/auth');
 const { registerCustomer, loginCustomer, authenticateCustomer } = require('./server/customerAuth');
-const { query, runMigrations, seed } = require('./server/database');
+const { init: initDb, query } = require('./server/database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const IS_PROD = NODE_ENV === 'production';
+const TEST_MODE = process.env.TEST_MODE === '1';
+
+// Install the test harness BEFORE feature modules load so email/Stripe
+// overrides are in place when routes require('./email') / ('./stripeClient').
+if (TEST_MODE) {
+  require('./server/testHarness').install();
+}
 
 // Validate required env vars in production; fail fast instead of booting with defaults.
 function validateEnv() {
   const problems = [];
+  if (!process.env.NEON_DATABASE_URL && !process.env.DATABASE_URL) {
+    problems.push('NEON_DATABASE_URL (or DATABASE_URL) must be set');
+  }
   if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'benny-pets-default-secret' || process.env.JWT_SECRET === 'change-this-to-a-random-secret-key') {
     problems.push('JWT_SECRET must be set to a strong random value');
   }
@@ -56,14 +66,13 @@ app.use(helmet({
 
 app.use(compression());
 
-// CORS whitelist. FRONTEND_ORIGIN is a comma-separated list of allowed origins
-// (e.g. https://bennyandthepets.com,https://www.bennyandthepets.com).
+// CORS whitelist. FRONTEND_ORIGIN is a comma-separated list of allowed origins.
 const allowedOrigins = (process.env.FRONTEND_ORIGIN || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin) return cb(null, true); // same-origin / curl / server-to-server
-    if (allowedOrigins.length === 0) return cb(null, true); // unset → allow all (dev)
+    if (!origin) return cb(null, true);
+    if (allowedOrigins.length === 0) return cb(null, true);
     if (allowedOrigins.includes(origin)) return cb(null, true);
     return cb(new Error('Not allowed by CORS'));
   },
@@ -75,8 +84,15 @@ app.use(cors({
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '1mb' }));
 
-// Health check for Railway
-app.get('/healthz', (req, res) => res.json({ ok: true }));
+// Health check — hits the database to confirm it's reachable.
+app.get('/healthz', async (req, res, next) => {
+  try {
+    await query('SELECT 1');
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // Static assets — explicit directories only, to avoid exposing server.js, package.json, .env, etc.
 app.use('/css', express.static(path.join(__dirname, 'css'), { maxAge: IS_PROD ? '7d' : 0 }));
@@ -90,7 +106,7 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
 app.get('/my-bookings', (req, res) => res.sendFile(path.join(__dirname, 'customer.html')));
 
-// Rate limiters for auth endpoints
+// Rate limiters
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -105,71 +121,63 @@ const registerLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many registration attempts. Try again in an hour.' }
 });
+app.locals.limiters = { authLimiter, registerLimiter };
 
 // Admin auth
-app.post('/api/auth/login', authLimiter, async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
-    const result = await loginAdmin(email, password);
-    if (!result) {
-      return res.status(401).json({ error: 'Invalid email or password' });
-    }
-    res.json(result);
-  } catch (err) { next(err); }
+app.post('/api/auth/login', authLimiter, async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+  const result = await loginAdmin(email, password);
+  if (!result) {
+    return res.status(401).json({ error: 'Invalid email or password' });
+  }
+  res.json(result);
 });
 
 // Customer auth
-app.post('/api/customer/register', registerLimiter, async (req, res, next) => {
-  try {
-    const { name, email, password, phone, dog_name } = req.body;
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: 'Name, email, and password are required' });
-    }
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
-    const result = await registerCustomer(name, email, password, phone, dog_name);
-    if (result.error) {
-      return res.status(409).json({ error: result.error });
-    }
-    res.status(201).json(result);
-  } catch (err) { next(err); }
+app.post('/api/customer/register', registerLimiter, async (req, res) => {
+  const { name, email, password, phone, dog_name } = req.body;
+  if (!name || !email || !password) {
+    return res.status(400).json({ error: 'Name, email, and password are required' });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+  const result = await registerCustomer(name, email, password, phone, dog_name);
+  if (result.error) {
+    return res.status(409).json({ error: result.error });
+  }
+  res.status(201).json(result);
 });
 
-app.post('/api/customer/login', authLimiter, async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
-    const result = await loginCustomer(email, password);
-    if (!result) {
-      return res.status(401).json({ error: 'Invalid email or password' });
-    }
-    res.json(result);
-  } catch (err) { next(err); }
+app.post('/api/customer/login', authLimiter, async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+  const result = await loginCustomer(email, password);
+  if (!result) {
+    return res.status(401).json({ error: 'Invalid email or password' });
+  }
+  res.json(result);
 });
 
-app.get('/api/customer/profile', authenticateCustomer, async (req, res, next) => {
-  try {
-    const [{ rows: customerRows }, { rows: dogs }] = await Promise.all([
-      query(
-        'SELECT id, name, email, phone, dog_name, created_at FROM customers WHERE id = $1',
-        [req.customer.id]
-      ),
-      query(
-        'SELECT * FROM dogs WHERE customer_id = $1 ORDER BY created_at ASC',
-        [req.customer.id]
-      )
-    ]);
-    if (customerRows.length === 0) {
-      return res.status(404).json({ error: 'Customer not found' });
-    }
-    res.json({ ...customerRows[0], dogs });
-  } catch (err) { next(err); }
+app.get('/api/customer/profile', authenticateCustomer, async (req, res) => {
+  const { rows } = await query(
+    'SELECT id, name, email, phone, dog_name, created_at FROM customers WHERE id = $1',
+    [req.customer.id]
+  );
+  const customer = rows[0];
+  if (!customer) {
+    return res.status(404).json({ error: 'Customer not found' });
+  }
+  const { rows: dogs } = await query(
+    'SELECT * FROM dogs WHERE customer_id = $1 ORDER BY created_at ASC',
+    [req.customer.id]
+  );
+  res.json({ ...customer, dogs });
 });
 
 // Feature routers
@@ -179,37 +187,37 @@ app.use('/api/bookings', require('./server/routes/bookings'));
 app.use('/api/payments', require('./server/routes/payments'));
 app.use('/api/dogs', require('./server/routes/dogs'));
 
+if (TEST_MODE) {
+  app.use('/api/__test__', require('./server/testHarness').buildRouter());
+}
+
 // Dashboard stats for admin
 const { authenticateToken, requirePermission } = require('./server/auth');
-app.get('/api/dashboard/stats', authenticateToken, requirePermission('read'), async (req, res, next) => {
-  try {
-    const [bookingStats, photoCount, serviceCount, recentBookings] = await Promise.all([
-      query(`
-        SELECT
-          COUNT(*)::int AS total,
-          COUNT(*) FILTER (WHERE status = 'pending')::int AS pending,
-          COUNT(*) FILTER (WHERE status = 'confirmed')::int AS confirmed,
-          COUNT(*) FILTER (WHERE payment_status = 'paid')::int AS paid,
-          COALESCE(SUM(amount_cents) FILTER (WHERE payment_status = 'paid'), 0)::bigint AS revenue
-        FROM bookings
-      `),
-      query('SELECT COUNT(*)::int AS count FROM photos'),
-      query('SELECT COUNT(*)::int AS count FROM services WHERE active'),
-      query('SELECT * FROM bookings ORDER BY created_at DESC LIMIT 5')
-    ]);
+app.get('/api/dashboard/stats', authenticateToken, requirePermission('read'), async (req, res) => {
+  const [
+    totalBookings, pendingBookings, confirmedBookings,
+    totalPhotos, activeServices, paidBookings, totalRevenue, recentBookings
+  ] = await Promise.all([
+    query('SELECT COUNT(*)::int AS count FROM bookings'),
+    query("SELECT COUNT(*)::int AS count FROM bookings WHERE status = 'pending'"),
+    query("SELECT COUNT(*)::int AS count FROM bookings WHERE status = 'confirmed'"),
+    query('SELECT COUNT(*)::int AS count FROM photos'),
+    query('SELECT COUNT(*)::int AS count FROM services WHERE active = 1'),
+    query("SELECT COUNT(*)::int AS count FROM bookings WHERE payment_status = 'paid'"),
+    query("SELECT COALESCE(SUM(amount_cents), 0)::bigint AS total FROM bookings WHERE payment_status = 'paid'"),
+    query('SELECT * FROM bookings ORDER BY created_at DESC LIMIT 5')
+  ]);
 
-    const b = bookingStats.rows[0];
-    res.json({
-      totalBookings: b.total,
-      pendingBookings: b.pending,
-      confirmedBookings: b.confirmed,
-      totalPhotos: photoCount.rows[0].count,
-      activeServices: serviceCount.rows[0].count,
-      paidBookings: b.paid,
-      totalRevenue: Number(b.revenue),
-      recentBookings: recentBookings.rows
-    });
-  } catch (err) { next(err); }
+  res.json({
+    totalBookings: totalBookings.rows[0].count,
+    pendingBookings: pendingBookings.rows[0].count,
+    confirmedBookings: confirmedBookings.rows[0].count,
+    totalPhotos: totalPhotos.rows[0].count,
+    activeServices: activeServices.rows[0].count,
+    paidBookings: paidBookings.rows[0].count,
+    totalRevenue: Number(totalRevenue.rows[0].total),
+    recentBookings: recentBookings.rows
+  });
 });
 
 // 404 for unmatched API routes
@@ -224,15 +232,14 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: message });
 });
 
-async function start() {
-  await runMigrations();
-  await seed();
+async function bootstrap() {
+  await initDb();
   app.listen(PORT, () => {
     console.log(`Benny and the Pets server listening on :${PORT} (${NODE_ENV})`);
   });
 }
 
-start().catch(err => {
+bootstrap().catch((err) => {
   console.error('Failed to start server:', err);
   process.exit(1);
 });

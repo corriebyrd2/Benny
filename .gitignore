@@ -1,7 +1,14 @@
 node_modules/
 .env
+.env.test
+.env.local
 *.db
 *.db-shm
 *.db-wal
 uploads/*
 !uploads/.gitkeep
+
+# Playwright
+/test-results/
+/playwright-report/
+/playwright/.cache/

@@ -221,37 +221,40 @@ router.post('/webhook', async (req, res) => {
     ]);
   }
 
-  switch (event.type) {
-    case 'checkout.session.completed': {
-      const session = event.data.object;
-      const bookingId = session.metadata.booking_id;
-      if (bookingId) {
-        const result = await query(
-          `UPDATE bookings SET
-             payment_status = 'paid',
-             stripe_payment_id = $1,
-             status = 'confirmed',
-             updated_at = NOW()
-           WHERE id = $2 AND payment_status != 'paid'`,
-          [session.payment_intent, bookingId]
-        );
-        if (result.rowCount > 0) await notifyPaid(bookingId);
+  try {
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object;
+        const bookingId = session.metadata.booking_id;
+        if (bookingId) {
+          const result = await query(
+            `UPDATE bookings SET
+               payment_status = 'paid',
+               stripe_payment_id = $1,
+               status = 'confirmed',
+               updated_at = NOW()
+             WHERE id = $2 AND payment_status != 'paid'`,
+            [session.payment_intent, bookingId]
+          );
+          if (result.rowCount > 0) await notifyPaid(bookingId);
+        }
+        break;
       }
-      break;
-    }
-    case 'payment_intent.succeeded': {
-      const intent = event.data.object;
-      const bookingId = intent.metadata.booking_id;
-      if (bookingId) {
-        const result = await query(
-          `UPDATE bookings SET
-             payment_status = 'paid',
-             stripe_payment_id = $1,
-             updated_at = NOW()
-           WHERE id = $2 AND payment_status != 'paid'`,
-          [intent.id, bookingId]
-        );
-        if (result.rowCount > 0) await notifyPaid(bookingId);
+      case 'payment_intent.succeeded': {
+        const intent = event.data.object;
+        const bookingId = intent.metadata.booking_id;
+        if (bookingId) {
+          const result = await query(
+            `UPDATE bookings SET
+               payment_status = 'paid',
+               stripe_payment_id = $1,
+               updated_at = NOW()
+             WHERE id = $2 AND payment_status != 'paid'`,
+            [intent.id, bookingId]
+          );
+          if (result.rowCount > 0) await notifyPaid(bookingId);
+        }
+        break;
       }
     }
   } catch (err) {

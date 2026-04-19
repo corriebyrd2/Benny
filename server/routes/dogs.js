@@ -17,9 +17,9 @@ router.get('/', authenticateCustomer, async (req, res) => {
 router.post('/', authenticateCustomer, async (req, res) => {
   const { name, breed, weight, age, notes } = req.body;
 
-  if (!name || !name.trim()) {
-    return res.status(400).json({ error: 'Dog name is required' });
-  }
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Dog name is required' });
+    }
 
   const { rows: customerRows } = await query('SELECT id FROM customers WHERE id = $1', [req.customer.id]);
   if (!customerRows[0]) {
@@ -67,7 +67,8 @@ router.put('/:id', authenticateCustomer, async (req, res) => {
     ]
   );
 
-  res.json({ message: 'Dog profile updated' });
+    res.json({ message: 'Dog profile updated' });
+  } catch (err) { next(err); }
 });
 
 // Delete a dog profile
@@ -81,7 +82,8 @@ router.delete('/:id', authenticateCustomer, async (req, res) => {
     return res.status(404).json({ error: 'Dog not found' });
   }
 
-  res.json({ message: 'Dog profile deleted' });
+    res.json({ message: 'Dog profile deleted' });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

@@ -37,6 +37,9 @@ function validateEnv() {
   if (!process.env.ADMIN_EMAIL) {
     problems.push('ADMIN_EMAIL must be set');
   }
+  if (!process.env.DATABASE_URL) {
+    problems.push('DATABASE_URL must be set (Neon Postgres connection string)');
+  }
   if (problems.length) {
     if (IS_PROD) {
       console.error('Refusing to start: insecure configuration');

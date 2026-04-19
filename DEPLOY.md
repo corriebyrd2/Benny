@@ -1,9 +1,8 @@
-# Deployment Guide — Railway
+# Deployment Guide — Railway + Neon
 
-This app is a Node.js/Express server backed by Neon Postgres, with local file
-uploads and Stripe payments. Railway hosts everything: the marketing homepage,
-the customer booking portal, the admin portal, and the API — all on a single
-domain.
+This app is a Node.js/Express server with a Neon (Postgres) database, file
+uploads stored on a Railway volume, and Stripe payments. Railway hosts the web
+service; Neon hosts the database.
 
 ---
 
@@ -16,7 +15,17 @@ domain.
 
 ---
 
-## 2. Create the Railway service
+## 2. Create the Neon database
+
+1. Neon console → **New Project**. Name it, pick a region close to Railway's.
+2. In the project's **Connection Details** panel, copy the **Pooled connection**
+   string (it has `-pooler` in the host). This becomes `DATABASE_URL` in Railway.
+3. Keep the default `main` branch. You can create a `dev` branch later for
+   testing migrations or running the data-migration script.
+
+Schema is created automatically on first boot via `server/migrations/*.sql`.
+
+## 3. Create the Railway service
 
 1. **New Project → Deploy from GitHub repo** → pick `corriebyrd2/benny`.
 2. Railway auto-detects Node via `package.json`. Build via Nixpacks; start via
@@ -36,7 +45,7 @@ without a Volume, photos wipe on every redeploy.
 Then set `UPLOAD_DIR=/data/uploads` in the env vars below. (Future work: move
 uploads to S3/Cloudflare R2 and drop the Volume.)
 
-## 4. Configure environment variables
+## 5. Configure environment variables
 
 In the service → **Variables** tab, add:
 
@@ -67,9 +76,10 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 `FRONTEND_ORIGIN` is **not needed** since the frontend and API share the same
 origin. Leave it unset.
 
-## 5. Deploy and attach a custom domain
+## 6. Deploy and attach a custom domain
 
 1. Trigger a deploy. Watch the logs for `Benny and the Pets server listening`.
+   On first boot you should also see `[migrate] applied 0001_init.sql`.
 2. **Settings → Domains → Custom Domain** → add your domain
    (e.g. `bennyandthepets.com` and/or `www.bennyandthepets.com`).
 3. Create the CNAME/ALIAS records Railway shows in your DNS provider.
@@ -122,7 +132,7 @@ should show a 200 response.
 
 ---
 
-## 7. First-run checklist
+## 8. First-run checklist
 
 After the first successful deploy:
 
@@ -141,13 +151,33 @@ To evolve the schema, add a new numbered `.sql` file — never edit old ones.
 
 ---
 
-## 8. Going live
+## 9. Migrating existing data from the old SQLite database
+
+If you ran an earlier version of this app on SQLite and have a `benny.db` file
+you want to bring over:
+
+1. Install better-sqlite3 temporarily: `npm install better-sqlite3`.
+2. Put the old SQLite file somewhere accessible, e.g. `./benny.db`.
+3. Point at a **fresh, empty** Neon branch (create one in the Neon console to
+   avoid polluting production during testing).
+4. Run the app once against that branch so migrations create the empty schema.
+5. Run the one-shot script:
+   ```sh
+   SQLITE_PATH=./benny.db DATABASE_URL='postgres://...?sslmode=require' \
+     node scripts/migrate-sqlite-to-pg.js
+   ```
+6. Verify row counts per table, then uninstall better-sqlite3:
+   `npm uninstall better-sqlite3`.
+
+## 10. Going live
 
 1. Switch Stripe from test to live mode; replace `STRIPE_SECRET_KEY` and
    `STRIPE_PUBLISHABLE_KEY`, then create a **new** webhook endpoint (live mode
    has its own signing secret). Update `STRIPE_WEBHOOK_SECRET`.
 2. Verify `NODE_ENV=production` so the env validator enforces strong secrets.
-3. Set up backups (see §9).
+3. Confirm Neon backups are enabled (see §11).
+
+## 11. Backups (Neon)
 
 ## 9. Backups
 
@@ -159,7 +189,7 @@ To evolve the schema, add a new numbered `.sql` file — never edit old ones.
 
 ---
 
-## 10. Known limitations / future work
+## 12. Known limitations / future work
 
 - No customer email verification on registration (SendGrid transactional sends
   do not imply the recipient owns the address).

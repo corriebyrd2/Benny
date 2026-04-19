@@ -84,9 +84,9 @@ router.post('/request-payment', authenticateToken, requirePermission('write'), a
     return res.status(404).json({ error: 'Booking not found' });
   }
 
-  if (booking.payment_status === 'paid') {
-    return res.status(400).json({ error: 'Booking is already paid' });
-  }
+    if (booking.payment_status === 'paid') {
+      return res.status(400).json({ error: 'Booking is already paid' });
+    }
 
   await query(
     `UPDATE bookings SET payment_status = 'requested', updated_at = NOW() WHERE id = $1`,
@@ -253,8 +253,9 @@ router.post('/webhook', async (req, res) => {
         );
         if (result.rowCount > 0) await notifyPaid(bookingId);
       }
-      break;
     }
+  } catch (err) {
+    console.error('[webhook] DB update failed for', event.type, err);
   }
 
   res.json({ received: true });

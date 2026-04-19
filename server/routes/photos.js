@@ -38,6 +38,12 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }
 });
 
+// Treat the multipart-form field "show_on_homepage" as false only when explicitly
+// set to '0' or 'false'. Any other value (including undefined) defaults to true.
+function parseShowOnHomepage(val) {
+  return !(val === '0' || val === 'false' || val === false);
+}
+
 // Public: Get all homepage photos
 router.get('/', async (req, res) => {
   const { rows } = await query(

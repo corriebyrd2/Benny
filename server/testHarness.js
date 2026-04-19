@@ -16,6 +16,7 @@ const { pool, seed } = require('./database');
 
 const emailLog = [];
 const marketingContactLog = [];
+const campaignLog = [];
 
 function install() {
   // Capture emails
@@ -32,7 +33,9 @@ function install() {
     }
   });
 
-  // Capture marketing contact upserts instead of calling SendGrid's API.
+  // Capture marketing contact upserts and campaign sends instead of calling
+  // SendGrid's API.
+  let campaignCounter = 0;
   mailer.setMarketingTransport({
     async addContact({ email, listIds }) {
       marketingContactLog.push({
@@ -41,6 +44,20 @@ function install() {
         at: new Date().toISOString()
       });
       return { status: 'accepted' };
+    },
+    async sendCampaign({ name, subject, html, plain, listIds }) {
+      campaignCounter += 1;
+      const id = `ss_test_${campaignCounter}`;
+      campaignLog.push({
+        id,
+        name,
+        subject,
+        html,
+        plain: plain || '',
+        listIds: listIds || [],
+        at: new Date().toISOString()
+      });
+      return { status: 'scheduled', id };
     }
   });
 
@@ -124,6 +141,15 @@ function buildRouter() {
 
   router.delete('/marketing-contacts', (req, res) => {
     marketingContactLog.length = 0;
+    res.json({ cleared: true });
+  });
+
+  router.get('/campaigns', (req, res) => {
+    res.json(campaignLog);
+  });
+
+  router.delete('/campaigns', (req, res) => {
+    campaignLog.length = 0;
     res.json({ cleared: true });
   });
 

@@ -18,7 +18,7 @@
     <div class="nav-container">
       <a href="#home" class="logo">
         <img src="images/logo.svg" alt="Benny and the Pets logo" class="logo-img">
-        <span class="logo-text">Benny<span class="logo-amp">&</span>the Pets</span>
+        <span class="logo-text" data-setting="brand">Benny<span class="logo-amp">&</span>the Pets</span>
       </a>
       <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
         <span></span><span></span><span></span>
@@ -335,22 +335,22 @@
           <div class="info-card">
             <span class="info-icon">&#128205;</span>
             <h4>Visit Us</h4>
-            <p>123 Pawsome Lane<br>Dogtown, CA 90210</p>
+            <p data-setting="address">123 Pawsome Lane<br>Dogtown, CA 90210</p>
           </div>
           <div class="info-card">
             <span class="info-icon">&#128222;</span>
             <h4>Call Us</h4>
-            <p>(555) BENNY-PET<br>(555) 236-6973</p>
+            <p data-setting="phone">(555) BENNY-PET<br>(555) 236-6973</p>
           </div>
           <div class="info-card">
             <span class="info-icon">&#128231;</span>
             <h4>Email Us</h4>
-            <p>woof@bennyandthepets.com</p>
+            <p data-setting="email">woof@bennyandthepets.com</p>
           </div>
           <div class="info-card">
             <span class="info-icon">&#128336;</span>
             <h4>Hours</h4>
-            <p>Mon-Sat: 7am - 7pm<br>Sun: 8am - 5pm</p>
+            <p data-setting="hours">Mon-Sat: 7am - 7pm<br>Sun: 8am - 5pm</p>
           </div>
         </div>
       </div>
@@ -362,12 +362,12 @@
     <div class="container">
       <div class="footer-grid">
         <div class="footer-brand">
-          <h3><img src="images/logo.svg" alt="Benny and the Pets logo" class="footer-logo-img"> Benny &amp; the Pets</h3>
-          <p>Where tails never stop wagging and every pup is family.</p>
+          <h3><img src="images/logo.svg" alt="Benny and the Pets logo" class="footer-logo-img"> <span data-setting="brand">Benny &amp; the Pets</span></h3>
+          <p data-setting="footer_tagline">Where tails never stop wagging and every pup is family.</p>
           <div class="social-links">
-            <a href="https://www.facebook.com/profile.php?id=61563336148397" aria-label="Facebook" class="social-link">FB</a>
-            <a href="#" aria-label="Instagram" class="social-link">IG</a>
-            <a href="#" aria-label="TikTok" class="social-link">TT</a>
+            <a href="https://www.facebook.com/profile.php?id=61563336148397" aria-label="Facebook" class="social-link" data-setting-href="facebook_url">FB</a>
+            <a href="#" aria-label="Instagram" class="social-link" data-setting-href="instagram_url">IG</a>
+            <a href="#" aria-label="TikTok" class="social-link" data-setting-href="tiktok_url">TT</a>
           </div>
         </div>
         <div class="footer-links">
@@ -399,7 +399,7 @@
         </div>
       </div>
       <div class="footer-bottom">
-        <p>&copy; 2026 Benny and the Pets. All rights reserved. Made with &#10084;&#65039; and lots of dog hair.</p>
+        <p>&copy; 2026 <span data-setting="brand">Benny and the Pets</span>. All rights reserved. Made with &#10084;&#65039; and lots of dog hair.</p>
       </div>
     </div>
   </footer>

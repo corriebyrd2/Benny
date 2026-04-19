@@ -394,6 +394,9 @@
         <a href="#" data-panel="photos">
           <span class="nav-icon">&#128247;</span> Homepage Photos
         </a>
+        <a href="#" data-panel="settings">
+          <span class="nav-icon">&#9881;&#65039;</span> Company Info
+        </a>
         <a href="#" data-panel="payments">
           <span class="nav-icon">&#128179;</span> Payments
         </a>
@@ -520,6 +523,82 @@
         <div id="photosBySection">
           <div style="text-align:center; color: var(--text-light); padding: 40px;">Loading...</div>
         </div>
+      </div>
+
+      <!-- Settings Panel -->
+      <div class="panel" id="panel-settings">
+        <div class="page-header">
+          <h1>Company Info</h1>
+          <a href="/" target="_blank" class="btn btn-outline btn-sm">&#127968; View Site</a>
+        </div>
+        <p style="color:var(--text-light); margin-bottom:24px; max-width:760px;">
+          These details appear on the homepage header, contact section, and footer.
+          Changes are visible on the public site immediately after saving.
+        </p>
+        <form id="settingsForm" class="card" style="padding:24px; max-width:760px;">
+          <div class="form-field">
+            <label for="setBusinessName">Business Name</label>
+            <input type="text" id="setBusinessName" data-key="business_name">
+          </div>
+          <div class="form-field">
+            <label for="setFooterTagline">Footer Tagline</label>
+            <input type="text" id="setFooterTagline" data-key="footer_tagline">
+          </div>
+
+          <h3 style="margin:16px 0 12px; color:var(--dark); font-size:1rem;">Contact</h3>
+          <div class="form-field">
+            <label for="setAddress1">Address (line 1)</label>
+            <input type="text" id="setAddress1" data-key="contact_address_line1">
+          </div>
+          <div class="form-field">
+            <label for="setAddress2">Address (line 2)</label>
+            <input type="text" id="setAddress2" data-key="contact_address_line2">
+          </div>
+          <div class="form-field" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label for="setPhoneDisplay">Phone (display)</label>
+              <input type="text" id="setPhoneDisplay" data-key="contact_phone_display">
+            </div>
+            <div>
+              <label for="setPhoneSecondary">Phone (secondary)</label>
+              <input type="text" id="setPhoneSecondary" data-key="contact_phone_secondary">
+            </div>
+          </div>
+          <div class="form-field">
+            <label for="setEmail">Email</label>
+            <input type="email" id="setEmail" data-key="contact_email">
+          </div>
+
+          <h3 style="margin:16px 0 12px; color:var(--dark); font-size:1rem;">Hours</h3>
+          <div class="form-field" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label for="setHoursWeekday">Weekdays</label>
+              <input type="text" id="setHoursWeekday" data-key="hours_weekday" placeholder="Mon-Sat: 7am - 7pm">
+            </div>
+            <div>
+              <label for="setHoursWeekend">Weekend</label>
+              <input type="text" id="setHoursWeekend" data-key="hours_weekend" placeholder="Sun: 8am - 5pm">
+            </div>
+          </div>
+
+          <h3 style="margin:16px 0 12px; color:var(--dark); font-size:1rem;">Social</h3>
+          <div class="form-field">
+            <label for="setFacebook">Facebook URL</label>
+            <input type="url" id="setFacebook" data-key="facebook_url" placeholder="https://facebook.com/...">
+          </div>
+          <div class="form-field">
+            <label for="setInstagram">Instagram URL</label>
+            <input type="url" id="setInstagram" data-key="instagram_url" placeholder="https://instagram.com/...">
+          </div>
+          <div class="form-field">
+            <label for="setTiktok">TikTok URL</label>
+            <input type="url" id="setTiktok" data-key="tiktok_url" placeholder="https://tiktok.com/@...">
+          </div>
+
+          <div style="display:flex; gap:12px; margin-top:8px;">
+            <button type="submit" class="btn btn-primary">Save Company Info</button>
+          </div>
+        </form>
       </div>
 
       <!-- Payments Panel -->
@@ -718,9 +797,40 @@
         case 'bookings': loadBookings(); break;
         case 'services': loadServices(); break;
         case 'photos': loadPhotos(); break;
+        case 'settings': loadSettings(); break;
         case 'payments': loadPayments(); break;
       }
     }
+
+    // --- Company Info / Settings ---
+    async function loadSettings() {
+      try {
+        const settings = await apiCall('/api/settings');
+        document.querySelectorAll('#settingsForm [data-key]').forEach(input => {
+          const key = input.getAttribute('data-key');
+          if (settings[key] !== undefined) input.value = settings[key];
+        });
+      } catch (err) {
+        showToast('Failed to load company info', true);
+      }
+    }
+
+    document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {};
+      document.querySelectorAll('#settingsForm [data-key]').forEach(input => {
+        payload[input.getAttribute('data-key')] = input.value;
+      });
+      try {
+        await apiCall('/api/settings', {
+          method: 'PUT',
+          body: JSON.stringify(payload)
+        });
+        showToast('Company info saved — homepage will refresh with new values');
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    });
 
     // --- Dashboard ---
     async function loadDashboard() {

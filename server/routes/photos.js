@@ -7,14 +7,15 @@ const { authenticateToken, requirePermission, logAudit } = require('../auth');
 
 const router = express.Router();
 
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '..', '..', 'uploads');
+
 // Configure multer for photo uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '..', '..', 'uploads');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
+    if (!fs.existsSync(UPLOAD_DIR)) {
+      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
     }
-    cb(null, uploadDir);
+    cb(null, UPLOAD_DIR);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -112,7 +113,7 @@ router.delete('/:id', authenticateToken, requirePermission('delete'), (req, res)
   const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(req.params.id);
 
   if (photo) {
-    const filePath = path.join(__dirname, '..', '..', 'uploads', photo.filename);
+    const filePath = path.join(UPLOAD_DIR, photo.filename);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }

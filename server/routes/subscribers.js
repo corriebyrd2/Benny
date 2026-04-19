@@ -33,17 +33,29 @@ router.post('/', async (req, res) => {
        WHERE LOWER(email) = LOWER($1)`,
       [raw]
     );
+    if (!sync.attachedToList) {
+      console.warn('[subscribe] accepted without list attachment:', raw);
+    }
   } else if (sync.status === 'failed') {
     await query(
       `UPDATE subscribers SET sendgrid_status = 'failed'
        WHERE LOWER(email) = LOWER($1)`,
       [raw]
     );
+    console.error('[subscribe] SendGrid sync failed for', raw, '→', sync.error);
+  } else if (sync.status === 'skipped') {
+    console.warn('[subscribe] SendGrid sync skipped for', raw, '→', sync.reason);
   }
 
   // Always 200 from the user's perspective — we captured the email locally
   // even if the SendGrid sync is queued or failed. An admin can retry later.
-  res.status(200).json({ message: 'Subscribed' });
+  // sendgrid_status is included so admins testing the flow can see whether
+  // the contact actually reached SendGrid.
+  res.status(200).json({
+    message: 'Subscribed',
+    sendgrid_status: sync.status,
+    sendgrid_attached_to_list: sync.status === 'accepted' ? Boolean(sync.attachedToList) : false
+  });
 });
 
 module.exports = router;

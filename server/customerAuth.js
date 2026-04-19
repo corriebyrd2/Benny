@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { getDb } = require('./database');
+const { query, withTx } = require('./database');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'benny-pets-default-secret';
 
@@ -32,34 +32,55 @@ function authenticateCustomer(req, res, next) {
   }
 }
 
-function registerCustomer(name, email, password, phone, dogName) {
-  const db = getDb();
+async function registerCustomer(name, email, password, phone, dogName) {
+  const normalizedEmail = email.toLowerCase();
 
-  const existing = db.prepare('SELECT id FROM customers WHERE LOWER(email) = LOWER(?)').get(email);
-  if (existing) {
+  const existing = await query(
+    'SELECT id FROM customers WHERE LOWER(email) = $1',
+    [normalizedEmail]
+  );
+  if (existing.rows.length > 0) {
     return { error: 'An account with this email already exists' };
   }
 
   const hash = bcrypt.hashSync(password, 10);
-  const result = db.prepare(
-    'INSERT INTO customers (name, email, phone, password_hash, dog_name) VALUES (?, ?, ?, ?, ?)'
-  ).run(name, email.toLowerCase(), phone || '', hash, dogName || '');
 
-  const customer = { id: result.lastInsertRowid, email: email.toLowerCase(), name };
+  const { customerId, dogs } = await withTx(async (client) => {
+    const insertCustomer = await client.query(
+      `INSERT INTO customers (name, email, phone, password_hash, dog_name)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [name, normalizedEmail, phone || '', hash, dogName || '']
+    );
+    const id = insertCustomer.rows[0].id;
 
-  // Create initial dog profile if dog name provided
-  if (dogName) {
-    db.prepare('INSERT INTO dogs (customer_id, name) VALUES (?, ?)').run(result.lastInsertRowid, dogName);
-  }
+    if (dogName) {
+      await client.query(
+        'INSERT INTO dogs (customer_id, name) VALUES ($1, $2)',
+        [id, dogName]
+      );
+    }
 
-  const dogs = db.prepare('SELECT * FROM dogs WHERE customer_id = ? ORDER BY created_at ASC').all(result.lastInsertRowid);
+    const dogsResult = await client.query(
+      'SELECT * FROM dogs WHERE customer_id = $1 ORDER BY created_at ASC',
+      [id]
+    );
+    return { customerId: id, dogs: dogsResult.rows };
+  });
+
+  const customer = { id: customerId, email: normalizedEmail, name };
   const token = generateCustomerToken(customer);
-  return { token, customer: { id: customer.id, email: customer.email, name, phone: phone || '', dog_name: dogName || '', dogs } };
+  return {
+    token,
+    customer: { id: customerId, email: normalizedEmail, name, phone: phone || '', dog_name: dogName || '', dogs }
+  };
 }
 
-function loginCustomer(email, password) {
-  const db = getDb();
-  const customer = db.prepare('SELECT * FROM customers WHERE LOWER(email) = LOWER(?)').get(email);
+async function loginCustomer(email, password) {
+  const { rows } = await query(
+    'SELECT * FROM customers WHERE LOWER(email) = LOWER($1)',
+    [email]
+  );
+  const customer = rows[0];
 
   if (!customer) {
     return null;
@@ -69,7 +90,10 @@ function loginCustomer(email, password) {
     return null;
   }
 
-  const dogs = db.prepare('SELECT * FROM dogs WHERE customer_id = ? ORDER BY created_at ASC').all(customer.id);
+  const { rows: dogs } = await query(
+    'SELECT * FROM dogs WHERE customer_id = $1 ORDER BY created_at ASC',
+    [customer.id]
+  );
   const token = generateCustomerToken(customer);
   return {
     token,

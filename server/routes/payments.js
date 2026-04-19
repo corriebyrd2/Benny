@@ -1,5 +1,5 @@
 const express = require('express');
-const { getDb } = require('../database');
+const { query } = require('../database');
 const { authenticateToken, requirePermission, logAudit } = require('../auth');
 const { authenticateCustomer } = require('../customerAuth');
 
@@ -21,9 +21,9 @@ router.post('/create-payment-intent', async (req, res) => {
   }
 
   const { booking_id } = req.body;
-  const db = getDb();
 
-  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(booking_id);
+  const { rows } = await query('SELECT * FROM bookings WHERE id = $1', [booking_id]);
+  const booking = rows[0];
   if (!booking) {
     return res.status(404).json({ error: 'Booking not found' });
   }
@@ -44,9 +44,10 @@ router.post('/create-payment-intent', async (req, res) => {
       description: `${booking.service_name} for ${booking.dog_name} - Benny and the Pets`
     });
 
-    // Store the payment intent ID on the booking
-    db.prepare('UPDATE bookings SET stripe_payment_id = ? WHERE id = ?')
-      .run(paymentIntent.id, booking_id);
+    await query(
+      'UPDATE bookings SET stripe_payment_id = $1 WHERE id = $2',
+      [paymentIntent.id, booking_id]
+    );
 
     res.json({
       clientSecret: paymentIntent.client_secret,
@@ -65,20 +66,19 @@ router.post('/confirm-payment', async (req, res) => {
   }
 
   const { payment_intent_id } = req.body;
-  const db = getDb();
 
   try {
     const paymentIntent = await stripe.paymentIntents.retrieve(payment_intent_id);
 
     if (paymentIntent.status === 'succeeded') {
       const bookingId = paymentIntent.metadata.booking_id;
-      db.prepare(`
+      await query(`
         UPDATE bookings SET
           payment_status = 'paid',
-          stripe_payment_id = ?,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `).run(payment_intent_id, bookingId);
+          stripe_payment_id = $1,
+          updated_at = now()
+        WHERE id = $2
+      `, [payment_intent_id, bookingId]);
 
       res.json({ message: 'Payment confirmed', booking_id: bookingId });
     } else {
@@ -90,28 +90,30 @@ router.post('/confirm-payment', async (req, res) => {
 });
 
 // Admin: Request payment from customer (sets payment_status to 'requested')
-router.post('/request-payment', authenticateToken, requirePermission('write'), (req, res) => {
-  const { booking_id } = req.body;
-  const db = getDb();
+router.post('/request-payment', authenticateToken, requirePermission('write'), async (req, res, next) => {
+  try {
+    const { booking_id } = req.body;
 
-  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(booking_id);
-  if (!booking) {
-    return res.status(404).json({ error: 'Booking not found' });
-  }
+    const { rows } = await query('SELECT * FROM bookings WHERE id = $1', [booking_id]);
+    const booking = rows[0];
+    if (!booking) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
 
-  if (booking.payment_status === 'paid') {
-    return res.status(400).json({ error: 'Booking is already paid' });
-  }
+    if (booking.payment_status === 'paid') {
+      return res.status(400).json({ error: 'Booking is already paid' });
+    }
 
-  db.prepare(`
-    UPDATE bookings SET
-      payment_status = 'requested',
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).run(booking_id);
+    await query(`
+      UPDATE bookings SET
+        payment_status = 'requested',
+        updated_at = now()
+      WHERE id = $1
+    `, [booking_id]);
 
-  logAudit(req.admin.id, req.admin.email, 'request_payment', 'payments', booking_id.toString(), 'success');
-  res.json({ message: 'Payment requested from customer' });
+    logAudit(req.admin.id, req.admin.email, 'request_payment', 'payments', booking_id.toString(), 'success');
+    res.json({ message: 'Payment requested from customer' });
+  } catch (err) { next(err); }
 });
 
 // Admin: Send a payment link for a booking
@@ -122,9 +124,9 @@ router.post('/send-payment-link', authenticateToken, requirePermission('write'),
   }
 
   const { booking_id } = req.body;
-  const db = getDb();
 
-  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(booking_id);
+  const { rows } = await query('SELECT * FROM bookings WHERE id = $1', [booking_id]);
+  const booking = rows[0];
   if (!booking) {
     return res.status(404).json({ error: 'Booking not found' });
   }
@@ -151,13 +153,12 @@ router.post('/send-payment-link', authenticateToken, requirePermission('write'),
       cancel_url: `${req.protocol}://${req.get('host')}/my-bookings?email=${encodeURIComponent(booking.email)}`
     });
 
-    // Also mark as requested so customer sees it in their dashboard
-    db.prepare(`
+    await query(`
       UPDATE bookings SET
         payment_status = 'requested',
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND payment_status != 'paid'
-    `).run(booking_id);
+        updated_at = now()
+      WHERE id = $1 AND payment_status != 'paid'
+    `, [booking_id]);
 
     logAudit(req.admin.id, req.admin.email, 'send_payment_link', 'payments', booking_id.toString(), 'success');
     res.json({ checkout_url: session.url, session_id: session.id });
@@ -174,9 +175,12 @@ router.post('/customer-checkout', authenticateCustomer, async (req, res) => {
   }
 
   const { booking_id } = req.body;
-  const db = getDb();
 
-  const booking = db.prepare('SELECT * FROM bookings WHERE id = ? AND customer_id = ?').get(booking_id, req.customer.id);
+  const { rows } = await query(
+    'SELECT * FROM bookings WHERE id = $1 AND customer_id = $2',
+    [booking_id, req.customer.id]
+  );
+  const booking = rows[0];
   if (!booking) {
     return res.status(404).json({ error: 'Booking not found' });
   }
@@ -219,7 +223,8 @@ router.post('/customer-checkout', authenticateCustomer, async (req, res) => {
   }
 });
 
-// Stripe webhook endpoint
+// Stripe webhook endpoint. Stripe retries on non-2xx, so DB failures must not
+// bubble up as 500s — log and 200 so Stripe doesn't double-charge-notify.
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const stripe = getStripe();
   if (!stripe) {
@@ -240,38 +245,40 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
     return res.status(400).json({ error: `Webhook signature verification failed: ${err.message}` });
   }
 
-  const db = getDb();
-
-  switch (event.type) {
-    case 'checkout.session.completed': {
-      const session = event.data.object;
-      const bookingId = session.metadata.booking_id;
-      if (bookingId) {
-        db.prepare(`
-          UPDATE bookings SET
-            payment_status = 'paid',
-            stripe_payment_id = ?,
-            status = 'confirmed',
-            updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).run(session.payment_intent, bookingId);
+  try {
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object;
+        const bookingId = session.metadata.booking_id;
+        if (bookingId) {
+          await query(`
+            UPDATE bookings SET
+              payment_status = 'paid',
+              stripe_payment_id = $1,
+              status = 'confirmed',
+              updated_at = now()
+            WHERE id = $2
+          `, [session.payment_intent, bookingId]);
+        }
+        break;
       }
-      break;
-    }
-    case 'payment_intent.succeeded': {
-      const intent = event.data.object;
-      const bookingId = intent.metadata.booking_id;
-      if (bookingId) {
-        db.prepare(`
-          UPDATE bookings SET
-            payment_status = 'paid',
-            stripe_payment_id = ?,
-            updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).run(intent.id, bookingId);
+      case 'payment_intent.succeeded': {
+        const intent = event.data.object;
+        const bookingId = intent.metadata.booking_id;
+        if (bookingId) {
+          await query(`
+            UPDATE bookings SET
+              payment_status = 'paid',
+              stripe_payment_id = $1,
+              updated_at = now()
+            WHERE id = $2
+          `, [intent.id, bookingId]);
+        }
+        break;
       }
-      break;
     }
+  } catch (err) {
+    console.error('[webhook] DB update failed for', event.type, err);
   }
 
   res.json({ received: true });

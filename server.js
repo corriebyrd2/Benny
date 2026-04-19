@@ -8,6 +8,7 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const { loginAdmin } = require('./server/auth');
 const { registerCustomer, loginCustomer, authenticateCustomer } = require('./server/customerAuth');
+const { query, runMigrations, seed } = require('./server/database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -25,6 +26,9 @@ function validateEnv() {
   }
   if (!process.env.ADMIN_EMAIL) {
     problems.push('ADMIN_EMAIL must be set');
+  }
+  if (!process.env.DATABASE_URL) {
+    problems.push('DATABASE_URL must be set (Neon Postgres connection string)');
   }
   if (problems.length) {
     if (IS_PROD) {
@@ -103,13 +107,13 @@ const registerLimiter = rateLimit({
 });
 
 // Admin auth
-app.post('/api/auth/login', authLimiter, (req, res, next) => {
+app.post('/api/auth/login', authLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
-    const result = loginAdmin(email, password);
+    const result = await loginAdmin(email, password);
     if (!result) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
@@ -118,7 +122,7 @@ app.post('/api/auth/login', authLimiter, (req, res, next) => {
 });
 
 // Customer auth
-app.post('/api/customer/register', registerLimiter, (req, res, next) => {
+app.post('/api/customer/register', registerLimiter, async (req, res, next) => {
   try {
     const { name, email, password, phone, dog_name } = req.body;
     if (!name || !email || !password) {
@@ -127,7 +131,7 @@ app.post('/api/customer/register', registerLimiter, (req, res, next) => {
     if (password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
-    const result = registerCustomer(name, email, password, phone, dog_name);
+    const result = await registerCustomer(name, email, password, phone, dog_name);
     if (result.error) {
       return res.status(409).json({ error: result.error });
     }
@@ -135,13 +139,13 @@ app.post('/api/customer/register', registerLimiter, (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-app.post('/api/customer/login', authLimiter, (req, res, next) => {
+app.post('/api/customer/login', authLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
-    const result = loginCustomer(email, password);
+    const result = await loginCustomer(email, password);
     if (!result) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
@@ -149,16 +153,22 @@ app.post('/api/customer/login', authLimiter, (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-app.get('/api/customer/profile', authenticateCustomer, (req, res, next) => {
+app.get('/api/customer/profile', authenticateCustomer, async (req, res, next) => {
   try {
-    const { getDb } = require('./server/database');
-    const db = getDb();
-    const customer = db.prepare('SELECT id, name, email, phone, dog_name, created_at FROM customers WHERE id = ?').get(req.customer.id);
-    if (!customer) {
+    const [{ rows: customerRows }, { rows: dogs }] = await Promise.all([
+      query(
+        'SELECT id, name, email, phone, dog_name, created_at FROM customers WHERE id = $1',
+        [req.customer.id]
+      ),
+      query(
+        'SELECT * FROM dogs WHERE customer_id = $1 ORDER BY created_at ASC',
+        [req.customer.id]
+      )
+    ]);
+    if (customerRows.length === 0) {
       return res.status(404).json({ error: 'Customer not found' });
     }
-    const dogs = db.prepare('SELECT * FROM dogs WHERE customer_id = ? ORDER BY created_at ASC').all(req.customer.id);
-    res.json({ ...customer, dogs });
+    res.json({ ...customerRows[0], dogs });
   } catch (err) { next(err); }
 });
 
@@ -171,23 +181,33 @@ app.use('/api/dogs', require('./server/routes/dogs'));
 
 // Dashboard stats for admin
 const { authenticateToken, requirePermission } = require('./server/auth');
-app.get('/api/dashboard/stats', authenticateToken, requirePermission('read'), (req, res, next) => {
+app.get('/api/dashboard/stats', authenticateToken, requirePermission('read'), async (req, res, next) => {
   try {
-    const { getDb } = require('./server/database');
-    const db = getDb();
+    const [bookingStats, photoCount, serviceCount, recentBookings] = await Promise.all([
+      query(`
+        SELECT
+          COUNT(*)::int AS total,
+          COUNT(*) FILTER (WHERE status = 'pending')::int AS pending,
+          COUNT(*) FILTER (WHERE status = 'confirmed')::int AS confirmed,
+          COUNT(*) FILTER (WHERE payment_status = 'paid')::int AS paid,
+          COALESCE(SUM(amount_cents) FILTER (WHERE payment_status = 'paid'), 0)::bigint AS revenue
+        FROM bookings
+      `),
+      query('SELECT COUNT(*)::int AS count FROM photos'),
+      query('SELECT COUNT(*)::int AS count FROM services WHERE active'),
+      query('SELECT * FROM bookings ORDER BY created_at DESC LIMIT 5')
+    ]);
 
-    const totalBookings = db.prepare('SELECT COUNT(*) as count FROM bookings').get().count;
-    const pendingBookings = db.prepare("SELECT COUNT(*) as count FROM bookings WHERE status = 'pending'").get().count;
-    const confirmedBookings = db.prepare("SELECT COUNT(*) as count FROM bookings WHERE status = 'confirmed'").get().count;
-    const totalPhotos = db.prepare('SELECT COUNT(*) as count FROM photos').get().count;
-    const activeServices = db.prepare('SELECT COUNT(*) as count FROM services WHERE active = 1').get().count;
-    const paidBookings = db.prepare("SELECT COUNT(*) as count FROM bookings WHERE payment_status = 'paid'").get().count;
-    const totalRevenue = db.prepare("SELECT COALESCE(SUM(amount_cents), 0) as total FROM bookings WHERE payment_status = 'paid'").get().total;
-    const recentBookings = db.prepare('SELECT * FROM bookings ORDER BY created_at DESC LIMIT 5').all();
-
+    const b = bookingStats.rows[0];
     res.json({
-      totalBookings, pendingBookings, confirmedBookings,
-      totalPhotos, activeServices, paidBookings, totalRevenue, recentBookings
+      totalBookings: b.total,
+      pendingBookings: b.pending,
+      confirmedBookings: b.confirmed,
+      totalPhotos: photoCount.rows[0].count,
+      activeServices: serviceCount.rows[0].count,
+      paidBookings: b.paid,
+      totalRevenue: Number(b.revenue),
+      recentBookings: recentBookings.rows
     });
   } catch (err) { next(err); }
 });
@@ -204,6 +224,15 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: message });
 });
 
-app.listen(PORT, () => {
-  console.log(`Benny and the Pets server listening on :${PORT} (${NODE_ENV})`);
+async function start() {
+  await runMigrations();
+  await seed();
+  app.listen(PORT, () => {
+    console.log(`Benny and the Pets server listening on :${PORT} (${NODE_ENV})`);
+  });
+}
+
+start().catch(err => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
 });

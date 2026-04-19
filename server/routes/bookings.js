@@ -1,259 +1,290 @@
 const express = require('express');
-const { getDb } = require('../database');
+const { query } = require('../database');
 const { authenticateToken, requirePermission, logAudit } = require('../auth');
 const { authenticateCustomer } = require('../customerAuth');
 
 const router = express.Router();
 
 // Public: Create a booking
-router.post('/', (req, res) => {
-  const db = getDb();
-  const { owner_name, email, phone, dog_name, service_id, preferred_dates, message } = req.body;
+router.post('/', async (req, res, next) => {
+  try {
+    const { owner_name, email, phone, dog_name, service_id, preferred_dates, message } = req.body;
 
-  if (!owner_name || !email || !dog_name || !service_id) {
-    return res.status(400).json({ error: 'Missing required fields: owner_name, email, dog_name, service_id' });
-  }
+    if (!owner_name || !email || !dog_name || !service_id) {
+      return res.status(400).json({ error: 'Missing required fields: owner_name, email, dog_name, service_id' });
+    }
 
-  // Look up service
-  const service = db.prepare('SELECT * FROM services WHERE id = ?').get(service_id);
-  if (!service) {
-    return res.status(400).json({ error: 'Invalid service selected' });
-  }
+    const { rows: serviceRows } = await query('SELECT * FROM services WHERE id = $1', [service_id]);
+    const service = serviceRows[0];
+    if (!service) {
+      return res.status(400).json({ error: 'Invalid service selected' });
+    }
 
-  const result = db.prepare(`
-    INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    owner_name, email, phone || '', dog_name,
-    service_id, service.name,
-    preferred_dates || '', message || '',
-    service.price_cents
-  );
+    const { rows } = await query(`
+      INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING id
+    `, [
+      owner_name, email, phone || '', dog_name,
+      service_id, service.name,
+      preferred_dates || '', message || '',
+      service.price_cents
+    ]);
 
-  res.status(201).json({
-    id: result.lastInsertRowid,
-    message: 'Booking request submitted',
-    amount_cents: service.price_cents
-  });
+    res.status(201).json({
+      id: rows[0].id,
+      message: 'Booking request submitted',
+      amount_cents: service.price_cents
+    });
+  } catch (err) { next(err); }
 });
 
 // Authenticated customer: Get my bookings
-router.get('/my', authenticateCustomer, (req, res) => {
-  const db = getDb();
-  const bookings = db.prepare(
-    'SELECT id, owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, status, payment_status, amount_cents, created_at, updated_at FROM bookings WHERE customer_id = ? ORDER BY created_at DESC'
-  ).all(req.customer.id);
-  res.json(bookings);
+router.get('/my', authenticateCustomer, async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT id, owner_name, email, phone, dog_name, service_id, service_name,
+              preferred_dates, message, status, payment_status, amount_cents, created_at, updated_at
+       FROM bookings WHERE customer_id = $1 ORDER BY created_at DESC`,
+      [req.customer.id]
+    );
+    res.json(rows);
+  } catch (err) { next(err); }
 });
 
 // Authenticated customer: Create a booking
-router.post('/customer-book', authenticateCustomer, (req, res) => {
-  const db = getDb();
-  const { dog_name, dog_id, service_id, preferred_dates, message } = req.body;
+router.post('/customer-book', authenticateCustomer, async (req, res, next) => {
+  try {
+    const { dog_name, dog_id, service_id, preferred_dates, message } = req.body;
 
-  let resolvedDogName = dog_name;
-  if (dog_id) {
-    const dog = db.prepare('SELECT * FROM dogs WHERE id = ? AND customer_id = ?').get(dog_id, req.customer.id);
-    if (!dog) {
-      return res.status(400).json({ error: 'Dog not found' });
+    let resolvedDogName = dog_name;
+    if (dog_id) {
+      const { rows: dogRows } = await query(
+        'SELECT * FROM dogs WHERE id = $1 AND customer_id = $2',
+        [dog_id, req.customer.id]
+      );
+      if (dogRows.length === 0) {
+        return res.status(400).json({ error: 'Dog not found' });
+      }
+      resolvedDogName = dogRows[0].name;
     }
-    resolvedDogName = dog.name;
-  }
 
-  if (!resolvedDogName || !service_id) {
-    return res.status(400).json({ error: 'Dog name and service are required' });
-  }
+    if (!resolvedDogName || !service_id) {
+      return res.status(400).json({ error: 'Dog name and service are required' });
+    }
 
-  const service = db.prepare('SELECT * FROM services WHERE id = ? AND active = 1').get(service_id);
-  if (!service) {
-    return res.status(400).json({ error: 'Invalid service selected' });
-  }
+    const { rows: serviceRows } = await query(
+      'SELECT * FROM services WHERE id = $1 AND active',
+      [service_id]
+    );
+    const service = serviceRows[0];
+    if (!service) {
+      return res.status(400).json({ error: 'Invalid service selected' });
+    }
 
-  const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(req.customer.id);
-  if (!customer) {
-    return res.status(404).json({ error: 'Customer not found' });
-  }
+    const { rows: customerRows } = await query(
+      'SELECT * FROM customers WHERE id = $1',
+      [req.customer.id]
+    );
+    const customer = customerRows[0];
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
 
-  const result = db.prepare(`
-    INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, customer_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    customer.name, customer.email, customer.phone || '',
-    resolvedDogName, service_id, service.name,
-    preferred_dates || '', message || '',
-    service.price_cents, customer.id
-  );
+    const { rows } = await query(`
+      INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, customer_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING id
+    `, [
+      customer.name, customer.email, customer.phone || '',
+      resolvedDogName, service_id, service.name,
+      preferred_dates || '', message || '',
+      service.price_cents, customer.id
+    ]);
 
-  res.status(201).json({
-    id: result.lastInsertRowid,
-    message: 'Booking request submitted successfully!',
-    service_name: service.name,
-    amount_cents: service.price_cents
-  });
+    res.status(201).json({
+      id: rows[0].id,
+      message: 'Booking request submitted successfully!',
+      service_name: service.name,
+      amount_cents: service.price_cents
+    });
+  } catch (err) { next(err); }
 });
 
 // Public: Look up bookings by email
-router.post('/lookup', (req, res) => {
-  const db = getDb();
-  const { email } = req.body;
+router.post('/lookup', async (req, res, next) => {
+  try {
+    const { email } = req.body;
 
-  if (!email) {
-    return res.status(400).json({ error: 'Email is required' });
-  }
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
 
-  const bookings = db.prepare(
-    'SELECT id, owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, status, payment_status, amount_cents, created_at, updated_at FROM bookings WHERE LOWER(email) = LOWER(?) ORDER BY created_at DESC'
-  ).all(email);
+    const { rows } = await query(
+      `SELECT id, owner_name, email, phone, dog_name, service_id, service_name,
+              preferred_dates, message, status, payment_status, amount_cents, created_at, updated_at
+       FROM bookings WHERE LOWER(email) = LOWER($1) ORDER BY created_at DESC`,
+      [email]
+    );
 
-  res.json(bookings);
+    res.json(rows);
+  } catch (err) { next(err); }
 });
 
 // Public: Get a single booking by ID + email verification
-router.post('/customer/:id', (req, res) => {
-  const db = getDb();
-  const { email } = req.body;
+router.post('/customer/:id', async (req, res, next) => {
+  try {
+    const { email } = req.body;
 
-  if (!email) {
-    return res.status(400).json({ error: 'Email is required for verification' });
-  }
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required for verification' });
+    }
 
-  const booking = db.prepare(
-    'SELECT id, owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, status, payment_status, amount_cents, stripe_payment_id, created_at, updated_at FROM bookings WHERE id = ? AND LOWER(email) = LOWER(?)'
-  ).get(req.params.id, email);
+    const { rows } = await query(
+      `SELECT id, owner_name, email, phone, dog_name, service_id, service_name,
+              preferred_dates, message, status, payment_status, amount_cents, stripe_payment_id, created_at, updated_at
+       FROM bookings WHERE id = $1 AND LOWER(email) = LOWER($2)`,
+      [req.params.id, email]
+    );
 
-  if (!booking) {
-    return res.status(404).json({ error: 'Booking not found or email does not match' });
-  }
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Booking not found or email does not match' });
+    }
 
-  res.json(booking);
+    res.json(rows[0]);
+  } catch (err) { next(err); }
 });
 
 // Admin: Get all bookings
-router.get('/', authenticateToken, requirePermission('read'), (req, res) => {
-  const db = getDb();
-  const { status, payment_status } = req.query;
+router.get('/', authenticateToken, requirePermission('read'), async (req, res, next) => {
+  try {
+    const { status, payment_status } = req.query;
 
-  let query = 'SELECT * FROM bookings';
-  const conditions = [];
-  const params = [];
+    const conditions = [];
+    const params = [];
 
-  if (status) {
-    conditions.push('status = ?');
-    params.push(status);
-  }
-  if (payment_status) {
-    conditions.push('payment_status = ?');
-    params.push(payment_status);
-  }
+    if (status) {
+      params.push(status);
+      conditions.push(`status = $${params.length}`);
+    }
+    if (payment_status) {
+      params.push(payment_status);
+      conditions.push(`payment_status = $${params.length}`);
+    }
 
-  if (conditions.length > 0) {
-    query += ' WHERE ' + conditions.join(' AND ');
-  }
+    let sql = 'SELECT * FROM bookings';
+    if (conditions.length > 0) {
+      sql += ' WHERE ' + conditions.join(' AND ');
+    }
+    sql += ' ORDER BY created_at DESC';
 
-  query += ' ORDER BY created_at DESC';
-
-  const bookings = db.prepare(query).all(...params);
-  res.json(bookings);
+    const { rows } = await query(sql, params);
+    res.json(rows);
+  } catch (err) { next(err); }
 });
 
 // Admin: Get single booking
-router.get('/:id', authenticateToken, requirePermission('read'), (req, res) => {
-  const db = getDb();
-  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
-
-  if (!booking) {
-    return res.status(404).json({ error: 'Booking not found' });
-  }
-
-  res.json(booking);
+router.get('/:id', authenticateToken, requirePermission('read'), async (req, res, next) => {
+  try {
+    const { rows } = await query('SELECT * FROM bookings WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+    res.json(rows[0]);
+  } catch (err) { next(err); }
 });
 
 // Admin: Update booking status
-router.put('/:id', authenticateToken, requirePermission('write'), (req, res) => {
-  const db = getDb();
-  const { status, payment_status, amount_cents } = req.body;
+router.put('/:id', authenticateToken, requirePermission('write'), async (req, res, next) => {
+  try {
+    const { status, payment_status, amount_cents } = req.body;
 
-  db.prepare(`
-    UPDATE bookings SET
-      status = COALESCE(?, status),
-      payment_status = COALESCE(?, payment_status),
-      amount_cents = COALESCE(?, amount_cents),
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).run(status, payment_status, amount_cents, req.params.id);
+    await query(`
+      UPDATE bookings SET
+        status = COALESCE($1, status),
+        payment_status = COALESCE($2, payment_status),
+        amount_cents = COALESCE($3, amount_cents),
+        updated_at = now()
+      WHERE id = $4
+    `, [status, payment_status, amount_cents, req.params.id]);
 
-  logAudit(req.admin.id, req.admin.email, 'update', 'bookings', req.params.id, 'success');
-  res.json({ message: 'Booking updated' });
+    logAudit(req.admin.id, req.admin.email, 'update', 'bookings', req.params.id, 'success');
+    res.json({ message: 'Booking updated' });
+  } catch (err) { next(err); }
 });
 
 // Admin: Approve booking (confirms + auto-requests payment)
-router.post('/:id/approve', authenticateToken, requirePermission('write'), (req, res) => {
-  const db = getDb();
-  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
-  if (!booking) {
-    return res.status(404).json({ error: 'Booking not found' });
-  }
+router.post('/:id/approve', authenticateToken, requirePermission('write'), async (req, res, next) => {
+  try {
+    const { rows } = await query('SELECT id FROM bookings WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
 
-  db.prepare(`
-    UPDATE bookings SET
-      status = 'confirmed',
-      payment_status = 'requested',
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).run(req.params.id);
+    await query(`
+      UPDATE bookings SET
+        status = 'confirmed',
+        payment_status = 'requested',
+        updated_at = now()
+      WHERE id = $1
+    `, [req.params.id]);
 
-  logAudit(req.admin.id, req.admin.email, 'approve', 'bookings', req.params.id, 'success');
-  res.json({ message: 'Booking approved and payment requested' });
+    logAudit(req.admin.id, req.admin.email, 'approve', 'bookings', req.params.id, 'success');
+    res.json({ message: 'Booking approved and payment requested' });
+  } catch (err) { next(err); }
 });
 
 // Admin: Cancel booking with reason
-router.post('/:id/cancel', authenticateToken, requirePermission('write'), (req, res) => {
-  const db = getDb();
-  const { reason } = req.body;
+router.post('/:id/cancel', authenticateToken, requirePermission('write'), async (req, res, next) => {
+  try {
+    const { reason } = req.body;
 
-  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
-  if (!booking) {
-    return res.status(404).json({ error: 'Booking not found' });
-  }
+    const { rows } = await query('SELECT id FROM bookings WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
 
-  db.prepare(`
-    UPDATE bookings SET
-      status = 'cancelled',
-      cancel_reason = ?,
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).run(reason || '', req.params.id);
+    await query(`
+      UPDATE bookings SET
+        status = 'cancelled',
+        cancel_reason = $1,
+        updated_at = now()
+      WHERE id = $2
+    `, [reason || '', req.params.id]);
 
-  logAudit(req.admin.id, req.admin.email, 'cancel', 'bookings', req.params.id, reason || '');
-  res.json({ message: 'Booking cancelled' });
+    logAudit(req.admin.id, req.admin.email, 'cancel', 'bookings', req.params.id, reason || '');
+    res.json({ message: 'Booking cancelled' });
+  } catch (err) { next(err); }
 });
 
 // Admin: Mark booking as completed and paid
-router.post('/:id/complete', authenticateToken, requirePermission('write'), (req, res) => {
-  const db = getDb();
-  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(req.params.id);
-  if (!booking) {
-    return res.status(404).json({ error: 'Booking not found' });
-  }
+router.post('/:id/complete', authenticateToken, requirePermission('write'), async (req, res, next) => {
+  try {
+    const { rows } = await query('SELECT id FROM bookings WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
 
-  db.prepare(`
-    UPDATE bookings SET
-      status = 'completed',
-      payment_status = 'paid',
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).run(req.params.id);
+    await query(`
+      UPDATE bookings SET
+        status = 'completed',
+        payment_status = 'paid',
+        updated_at = now()
+      WHERE id = $1
+    `, [req.params.id]);
 
-  logAudit(req.admin.id, req.admin.email, 'complete', 'bookings', req.params.id, 'success');
-  res.json({ message: 'Booking marked as completed and paid' });
+    logAudit(req.admin.id, req.admin.email, 'complete', 'bookings', req.params.id, 'success');
+    res.json({ message: 'Booking marked as completed and paid' });
+  } catch (err) { next(err); }
 });
 
 // Admin: Delete booking
-router.delete('/:id', authenticateToken, requirePermission('delete'), (req, res) => {
-  const db = getDb();
-  db.prepare('DELETE FROM bookings WHERE id = ?').run(req.params.id);
-  logAudit(req.admin.id, req.admin.email, 'delete', 'bookings', req.params.id, 'success');
-  res.json({ message: 'Booking deleted' });
+router.delete('/:id', authenticateToken, requirePermission('delete'), async (req, res, next) => {
+  try {
+    await query('DELETE FROM bookings WHERE id = $1', [req.params.id]);
+    logAudit(req.admin.id, req.admin.email, 'delete', 'bookings', req.params.id, 'success');
+    res.json({ message: 'Booking deleted' });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

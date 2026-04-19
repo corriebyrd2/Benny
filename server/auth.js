@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { getDb } = require('./database');
+const { query } = require('./database');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'benny-pets-default-secret';
 
@@ -61,21 +61,18 @@ function requirePermission(...permissions) {
   };
 }
 
+// Fire-and-forget audit write. Never throws.
 function logAudit(adminId, adminEmail, action, resource, resourceId, status) {
-  try {
-    const db = getDb();
-    db.prepare(`
-      INSERT INTO audit_logs (admin_id, admin_email, action, resource, resource_id, status)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(adminId, adminEmail, action, resource, resourceId || null, status || 'success');
-  } catch (err) {
-    console.error('Audit log error:', err.message);
-  }
+  query(
+    `INSERT INTO audit_logs (admin_id, admin_email, action, resource, resource_id, status)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [adminId, adminEmail, action, resource, resourceId || null, status || 'success']
+  ).catch(err => console.error('Audit log error:', err.message));
 }
 
-function loginAdmin(email, password) {
-  const db = getDb();
-  const admin = db.prepare('SELECT * FROM admins WHERE email = ?').get(email);
+async function loginAdmin(email, password) {
+  const { rows } = await query('SELECT * FROM admins WHERE email = $1', [email]);
+  const admin = rows[0];
 
   if (!admin) {
     logAudit(null, email, 'login', 'auth', null, 'failed');

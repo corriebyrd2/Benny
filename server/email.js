@@ -5,6 +5,8 @@ const FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL;
 const FROM_NAME = process.env.SENDGRID_FROM_NAME || 'Benny and the Pets';
 const OWNER_EMAIL = process.env.OWNER_NOTIFICATION_EMAIL || process.env.ADMIN_EMAIL;
 const PUBLIC_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+const MARKETING_LIST_IDS = (process.env.SENDGRID_MARKETING_LIST_IDS || '')
+  .split(',').map(s => s.trim()).filter(Boolean);
 
 let configured = false;
 if (API_KEY && FROM_EMAIL) {
@@ -24,6 +26,49 @@ let transport = {
 
 function setTransport(t) {
   transport = t;
+}
+
+// Marketing Contacts transport is separate because it hits a different SendGrid
+// API (v3/marketing/contacts, not the Mail Send API). Tests override via
+// setMarketingTransport().
+let marketingTransport = {
+  async addContact({ email, listIds }) {
+    if (!API_KEY) return { status: 'skipped', reason: 'not_configured' };
+    const res = await fetch('https://api.sendgrid.com/v3/marketing/contacts', {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        list_ids: listIds && listIds.length ? listIds : undefined,
+        contacts: [{ email }]
+      })
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`SendGrid ${res.status}: ${body.slice(0, 200)}`);
+    }
+    // SendGrid returns 202 Accepted with a job_id — the upsert is async.
+    return { status: 'accepted' };
+  }
+};
+
+function setMarketingTransport(t) {
+  marketingTransport = t;
+}
+
+async function addMarketingContact({ email }) {
+  try {
+    const result = await marketingTransport.addContact({
+      email,
+      listIds: MARKETING_LIST_IDS
+    });
+    return result;
+  } catch (err) {
+    console.error('[email] marketing contact sync failed:', email, '→', err.message);
+    return { status: 'failed', error: err.message };
+  }
 }
 
 function formatMoney(cents) {
@@ -248,6 +293,8 @@ async function sendPaymentReceivedToOwner({ booking }) {
 
 module.exports = {
   setTransport,
+  setMarketingTransport,
+  addMarketingContact,
   sendNewBookingToOwner,
   sendBookingReceivedToCustomer,
   sendBookingApprovedToCustomer,

@@ -334,17 +334,43 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Newsletter Form ---
   const newsletterForm = document.getElementById('newsletterForm');
 
-  newsletterForm.addEventListener('submit', (e) => {
+  newsletterForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const input = newsletterForm.querySelector('input[type="email"]');
     const btn = newsletterForm.querySelector('button');
     const originalText = btn.textContent;
-    btn.textContent = 'Subscribed! \u{1F389}';
-    btn.style.background = 'var(--secondary)';
-    newsletterForm.reset();
-    setTimeout(() => {
-      btn.textContent = originalText;
+    const email = (input?.value || '').trim();
+    if (!email) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Subscribing...';
+
+    try {
+      const res = await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, source: 'homepage' })
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Subscription failed');
+      }
+
+      btn.textContent = 'Subscribed! \u{1F389}';
+      btn.style.background = 'var(--secondary)';
+      newsletterForm.reset();
+    } catch (err) {
+      btn.textContent = 'Try again';
       btn.style.background = '';
-    }, 3000);
+      console.error('[newsletter]', err);
+    } finally {
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = originalText;
+        btn.style.background = '';
+      }, 3000);
+    }
   });
 
   // --- Service Card Tilt Effect ---

@@ -51,6 +51,11 @@ In the service → **Variables** tab, add:
 | `STRIPE_SECRET_KEY` | Your `sk_test_...` (switch to `sk_live_...` at go-live) |
 | `STRIPE_PUBLISHABLE_KEY` | Your `pk_test_...` / `pk_live_...` |
 | `STRIPE_WEBHOOK_SECRET` | Fill in after step 6 |
+| `SENDGRID_API_KEY` | API key from SendGrid (Mail Send permission) |
+| `SENDGRID_FROM_EMAIL` | **Verified** sender email |
+| `SENDGRID_FROM_NAME` | Display name (optional, defaults to "Benny and the Pets") |
+| `OWNER_NOTIFICATION_EMAIL` | Where new-booking / payment notifications go (defaults to `ADMIN_EMAIL`) |
+| `PUBLIC_URL` | `https://bennyandthepets.com` — used for links in emails |
 
 Generate a JWT secret locally:
 ```sh
@@ -79,6 +84,28 @@ Once the domain is live:
 | Marketing homepage | `https://bennyandthepets.com/` |
 | Customer booking portal | `https://bennyandthepets.com/my-bookings` |
 | Admin portal | `https://bennyandthepets.com/admin` |
+
+## 5a. Configure SendGrid
+
+Emails (new booking notifications, payment receipts, confirmations,
+cancellations) go through SendGrid. If `SENDGRID_API_KEY` or
+`SENDGRID_FROM_EMAIL` is unset, the app silently skips sends and logs a
+warning — it will not crash.
+
+1. In SendGrid → **Settings → Sender Authentication**. Either:
+   - **Single Sender Verification** (quick): verify one email address via the
+     click-link SendGrid emails to you, or
+   - **Domain Authentication** (recommended): add the DNS records SendGrid
+     gives you to your DNS provider so `from @bennyandthepets.com` works.
+2. Create an API key at **Settings → API Keys** with at least **Mail Send**
+   permission. Paste into Railway as `SENDGRID_API_KEY`.
+3. Set `SENDGRID_FROM_EMAIL` to the verified sender.
+4. Set `PUBLIC_URL` to `https://bennyandthepets.com` so links in emails
+   point to the right place.
+
+Send a test: trigger a booking from `/my-bookings` — both the owner and the
+customer should receive email within seconds. Check SendGrid → **Activity** if
+a send is missing.
 
 ## 6. Configure the Stripe webhook
 
@@ -134,8 +161,8 @@ To evolve the schema, add a new numbered `.sql` file — never edit old ones.
 
 ## 10. Known limitations / future work
 
-- SendGrid notifications (booking confirmed, payment received) — planned next.
-- No customer email verification on registration.
+- No customer email verification on registration (SendGrid transactional sends
+  do not imply the recipient owns the address).
 - E2E tests — planned next.
 - Uploaded photos still live on a Railway Volume; S3/R2 migration is a future
   cleanup.

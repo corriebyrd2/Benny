@@ -2,6 +2,7 @@ const express = require('express');
 const { query } = require('../database');
 const { authenticateToken, requirePermission, logAudit } = require('../auth');
 const { authenticateCustomer } = require('../customerAuth');
+const mailer = require('../email');
 
 const router = express.Router();
 
@@ -21,7 +22,7 @@ router.post('/', async (req, res) => {
 
   const { rows } = await query(
     `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
     [
       owner_name, email, phone || '', dog_name,
       service_id, service.name,
@@ -29,9 +30,15 @@ router.post('/', async (req, res) => {
       service.price_cents
     ]
   );
+  const booking = rows[0];
+
+  await Promise.all([
+    mailer.sendNewBookingToOwner({ booking }),
+    mailer.sendBookingReceivedToCustomer({ booking })
+  ]);
 
   res.status(201).json({
-    id: rows[0].id,
+    id: booking.id,
     message: 'Booking request submitted',
     amount_cents: service.price_cents
   });
@@ -85,7 +92,7 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
 
   const { rows } = await query(
     `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, customer_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
     [
       customer.name, customer.email, customer.phone || '',
       resolvedDogName, service_id, service.name,
@@ -93,9 +100,15 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
       service.price_cents, customer.id
     ]
   );
+  const booking = rows[0];
+
+  await Promise.all([
+    mailer.sendNewBookingToOwner({ booking }),
+    mailer.sendBookingReceivedToCustomer({ booking })
+  ]);
 
   res.status(201).json({
-    id: rows[0].id,
+    id: booking.id,
     message: 'Booking request submitted successfully!',
     service_name: service.name,
     amount_cents: service.price_cents
@@ -191,17 +204,16 @@ router.put('/:id', authenticateToken, requirePermission('write'), async (req, re
 
 // Admin: Approve booking (confirms + auto-requests payment)
 router.post('/:id/approve', authenticateToken, requirePermission('write'), async (req, res) => {
-  const { rows } = await query('SELECT * FROM bookings WHERE id = $1', [req.params.id]);
+  const { rows } = await query(
+    `UPDATE bookings SET status = 'confirmed', payment_status = 'requested', updated_at = NOW()
+     WHERE id = $1 RETURNING *`,
+    [req.params.id]
+  );
   if (!rows[0]) {
     return res.status(404).json({ error: 'Booking not found' });
   }
 
-  await query(
-    `UPDATE bookings SET status = 'confirmed', payment_status = 'requested', updated_at = NOW()
-     WHERE id = $1`,
-    [req.params.id]
-  );
-
+  await mailer.sendBookingApprovedToCustomer({ booking: rows[0] });
   await logAudit(req.admin.id, req.admin.email, 'approve', 'bookings', req.params.id, 'success');
   res.json({ message: 'Booking approved and payment requested' });
 });
@@ -210,17 +222,16 @@ router.post('/:id/approve', authenticateToken, requirePermission('write'), async
 router.post('/:id/cancel', authenticateToken, requirePermission('write'), async (req, res) => {
   const { reason } = req.body;
 
-  const { rows } = await query('SELECT * FROM bookings WHERE id = $1', [req.params.id]);
+  const { rows } = await query(
+    `UPDATE bookings SET status = 'cancelled', cancel_reason = $1, updated_at = NOW()
+     WHERE id = $2 RETURNING *`,
+    [reason || '', req.params.id]
+  );
   if (!rows[0]) {
     return res.status(404).json({ error: 'Booking not found' });
   }
 
-  await query(
-    `UPDATE bookings SET status = 'cancelled', cancel_reason = $1, updated_at = NOW()
-     WHERE id = $2`,
-    [reason || '', req.params.id]
-  );
-
+  await mailer.sendBookingCancelledToCustomer({ booking: rows[0], reason: reason || '' });
   await logAudit(req.admin.id, req.admin.email, 'cancel', 'bookings', req.params.id, reason || '');
   res.json({ message: 'Booking cancelled' });
 });

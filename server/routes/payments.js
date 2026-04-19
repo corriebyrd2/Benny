@@ -2,6 +2,7 @@ const express = require('express');
 const { query } = require('../database');
 const { authenticateToken, requirePermission, logAudit } = require('../auth');
 const { authenticateCustomer } = require('../customerAuth');
+const mailer = require('../email');
 
 const router = express.Router();
 
@@ -142,6 +143,8 @@ router.post('/send-payment-link', authenticateToken, requirePermission('write'),
     [booking_id]
   );
 
+  await mailer.sendPaymentLinkToCustomer({ booking, checkoutUrl: session.url });
+
   await logAudit(req.admin.id, req.admin.email, 'send_payment_link', 'payments', booking_id.toString(), 'success');
   res.json({ checkout_url: session.url, session_id: session.id });
 });
@@ -216,20 +219,30 @@ router.post('/webhook', async (req, res) => {
     return res.status(400).json({ error: `Webhook signature verification failed: ${err.message}` });
   }
 
+  async function notifyPaid(bookingId) {
+    const { rows } = await query('SELECT * FROM bookings WHERE id = $1', [bookingId]);
+    if (!rows[0]) return;
+    await Promise.all([
+      mailer.sendPaymentReceivedToCustomer({ booking: rows[0] }),
+      mailer.sendPaymentReceivedToOwner({ booking: rows[0] })
+    ]);
+  }
+
   switch (event.type) {
     case 'checkout.session.completed': {
       const session = event.data.object;
       const bookingId = session.metadata.booking_id;
       if (bookingId) {
-        await query(
+        const result = await query(
           `UPDATE bookings SET
              payment_status = 'paid',
              stripe_payment_id = $1,
              status = 'confirmed',
              updated_at = NOW()
-           WHERE id = $2`,
+           WHERE id = $2 AND payment_status != 'paid'`,
           [session.payment_intent, bookingId]
         );
+        if (result.rowCount > 0) await notifyPaid(bookingId);
       }
       break;
     }
@@ -237,14 +250,15 @@ router.post('/webhook', async (req, res) => {
       const intent = event.data.object;
       const bookingId = intent.metadata.booking_id;
       if (bookingId) {
-        await query(
+        const result = await query(
           `UPDATE bookings SET
              payment_status = 'paid',
              stripe_payment_id = $1,
              updated_at = NOW()
-           WHERE id = $2`,
+           WHERE id = $2 AND payment_status != 'paid'`,
           [intent.id, bookingId]
         );
+        if (result.rowCount > 0) await notifyPaid(bookingId);
       }
       break;
     }

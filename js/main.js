@@ -65,7 +65,49 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function loadDynamicHomepagePhotos() {
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function setContactField(id, value) {
+    const el = document.getElementById(id);
+    if (!el || !value) return;
+    el.innerHTML = value.split(/\r?\n/).map(escapeHtml).join('<br>');
+  }
+
+  async function loadDynamicSettings() {
+    try {
+      const res = await fetch('/api/settings');
+      if (!res.ok) return;
+      const s = await res.json();
+
+      setContactField('contactAddress', s.contact_address);
+      setContactField('contactPhone', s.contact_phone);
+      setContactField('contactEmail', s.contact_email);
+      setContactField('contactHours', s.contact_hours);
+
+      const socialMap = {
+        facebook: s.social_facebook_url,
+        instagram: s.social_instagram_url,
+        tiktok: s.social_tiktok_url
+      };
+      document.querySelectorAll('[data-social]').forEach(link => {
+        const url = socialMap[link.getAttribute('data-social')];
+        if (url && url.trim()) {
+          link.href = url.trim();
+          link.style.display = '';
+        } else {
+          link.style.display = 'none';
+        }
+      });
+    } catch (e) {
+      // API not available, keep static content
+    }
+  }
+
+  async function loadDynamicGallery() {
     try {
       const res = await fetch('/api/photos');
       if (!res.ok) return;
@@ -221,7 +263,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Load Dynamic Content from API ---
   loadDynamicServices();
-  loadDynamicHomepagePhotos();
+  loadDynamicGallery();
+  loadDynamicSettings();
 
   // Counter observer
   const statSection = document.querySelector('.hero-stats');

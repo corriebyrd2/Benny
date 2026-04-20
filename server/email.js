@@ -32,20 +32,41 @@ const BCC_BATCH_SIZE = 900;
 
 async function sendMarketingCampaign({ subject, html, plain, recipients }) {
   if (!configured) return { status: 'skipped', reason: 'not_configured', recipientCount: 0 };
-  const list = Array.isArray(recipients) ? recipients.filter(Boolean) : [];
+
+  // SendGrid rejects a personalization where the same address appears in both
+  // "to" and "bcc", or where "bcc" has duplicates. Normalize + dedupe, and drop
+  // FROM_EMAIL from the bcc list (it's already the "to").
+  const fromLower = (FROM_EMAIL || '').toLowerCase();
+  const seen = new Set();
+  const list = [];
+  for (const r of Array.isArray(recipients) ? recipients : []) {
+    const email = typeof r === 'string' ? r.trim() : '';
+    const key = email.toLowerCase();
+    if (!email || !key || key === fromLower || seen.has(key)) continue;
+    seen.add(key);
+    list.push(email);
+  }
   if (!list.length) return { status: 'skipped', reason: 'no_recipients', recipientCount: 0 };
 
   let sent = 0;
   for (let i = 0; i < list.length; i += BCC_BATCH_SIZE) {
     const batch = list.slice(i, i + BCC_BATCH_SIZE);
-    await transport.send({
-      to: FROM_EMAIL,
-      bcc: batch,
-      from: { email: FROM_EMAIL, name: FROM_NAME },
-      subject,
-      text: plain || undefined,
-      html
-    });
+    try {
+      await transport.send({
+        to: FROM_EMAIL,
+        bcc: batch,
+        from: { email: FROM_EMAIL, name: FROM_NAME },
+        subject,
+        text: plain || undefined,
+        html
+      });
+    } catch (err) {
+      console.error('[email] campaign batch failed:', subject,
+        'batch_size=', batch.length,
+        'from=', FROM_EMAIL,
+        'detail=', err.response?.body || err.message);
+      throw err;
+    }
     sent += batch.length;
   }
   return { status: 'sent', recipientCount: sent };

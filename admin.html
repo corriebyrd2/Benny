@@ -240,14 +240,14 @@
 
     .section-group { margin-bottom: 32px; }
     .section-group-header {
-      display: flex; justify-content: space-between; align-items: baseline;
+      display: flex; justify-content: space-between; align-items: center; gap: 16px;
       margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #eee;
     }
     .section-group-header h2 {
       font-size: 1.15rem; color: var(--dark); display: flex; align-items: center; gap: 10px;
     }
     .section-group-header .section-hint {
-      color: var(--text-light); font-size: 0.85rem; font-weight: 600;
+      display: block; color: var(--text-light); font-size: 0.85rem; font-weight: 600; margin-top: 4px;
     }
     .section-group .empty-slot {
       padding: 20px; background: #FAFBFD; border: 2px dashed #d8dee6;
@@ -402,8 +402,6 @@
         </a>
         <a href="#" data-panel="campaigns">
           <span class="nav-icon">&#128231;</span> Campaigns
-        <a href="#" data-panel="settings">
-          <span class="nav-icon">&#9881;&#65039;</span> Settings
         </a>
       </nav>
       <div class="sidebar-footer">
@@ -518,12 +516,11 @@
       <div class="panel" id="panel-photos">
         <div class="page-header">
           <h1>Homepage Photos</h1>
-          <button class="btn btn-primary btn-sm" id="addPhotoBtn">+ Upload Photo</button>
         </div>
         <p style="color:var(--text-light); margin-bottom:24px; max-width:760px;">
-          Each homepage section below has a picture placeholder. Upload or edit photos and assign them
-          to a section — Hero (the banner area), About (the &quot;Meet Ben&quot; image), or Gallery (the
-          Puppy Parade grid).
+          Each homepage section below has its own upload button. Use the one under the section
+          you want the photo to appear in — Hero (the banner area), About (the &quot;Meet Ben&quot;
+          image), or Gallery (the Puppy Parade grid).
         </p>
         <div id="photosBySection">
           <div style="text-align:center; color: var(--text-light); padding: 40px;">Loading...</div>
@@ -1286,17 +1283,19 @@
           const sectionPhotos = photos.filter(p => (p.section || 'gallery') === section.key);
           const body = sectionPhotos.length === 0
             ? `<div class="empty-slot">
-                 <p style="margin-bottom:10px;">No photo assigned to this section yet.</p>
-                 <button class="btn btn-sm btn-primary"
-                   onclick="openPhotoUploadForm('${section.key}')">+ Upload photo for this section</button>
+                 <p>No photo assigned to this section yet.</p>
                </div>`
             : `<div class="photo-grid">${sectionPhotos.map(renderPhotoCard).join('')}</div>`;
 
           return `
             <div class="section-group">
               <div class="section-group-header">
-                <h2><span>${section.icon}</span> ${escapeHtml(section.label)}</h2>
-                <span class="section-hint">${escapeHtml(section.hint)}</span>
+                <div>
+                  <h2><span>${section.icon}</span> ${escapeHtml(section.label)}</h2>
+                  <span class="section-hint">${escapeHtml(section.hint)}</span>
+                </div>
+                <button class="btn btn-sm btn-primary" style="flex-shrink:0;"
+                  onclick="openPhotoUploadForm('${section.key}')">+ Upload Photo</button>
               </div>
               ${body}
             </div>
@@ -1308,16 +1307,20 @@
     }
 
     function openPhotoUploadForm(defaultSection = 'gallery') {
+      const targetSection = HOMEPAGE_SECTIONS.find(s => s.key === defaultSection) || HOMEPAGE_SECTIONS[2];
       const sectionOptions = HOMEPAGE_SECTIONS.map(s =>
-        `<option value="${s.key}" ${s.key === defaultSection ? 'selected' : ''}>${escapeHtml(s.label)}</option>`
+        `<option value="${s.key}" ${s.key === targetSection.key ? 'selected' : ''}>${escapeHtml(s.label)}</option>`
       ).join('');
 
       const body = `
+        <div style="background:var(--bg-alt);border-left:4px solid var(--primary);padding:12px 16px;border-radius:6px;margin-bottom:16px;">
+          <strong>Uploading to:</strong> ${targetSection.icon} ${escapeHtml(targetSection.label)}
+        </div>
         <form id="photoUploadForm" enctype="multipart/form-data">
           <div class="form-field">
             <label>Homepage Section</label>
             <select id="photoSection">${sectionOptions}</select>
-            <small style="color:var(--text-light);">Which placeholder on the homepage this photo replaces.</small>
+            <small style="color:var(--text-light);">Change only if this photo belongs in a different section.</small>
           </div>
           <div class="form-field">
             <label>Photo File</label>
@@ -1349,8 +1352,6 @@
       openModal('Upload Photo', body,
         '<button class="btn btn-primary" onclick="uploadPhoto()">Upload</button>');
     }
-
-    document.getElementById('addPhotoBtn').addEventListener('click', () => openPhotoUploadForm('gallery'));
 
     async function uploadPhoto() {
       const fileInput = document.getElementById('photoFile');

@@ -52,7 +52,7 @@ function normalizeSection(val) {
 // Public: Get all homepage photos
 router.get('/', async (req, res) => {
   const { rows } = await query(
-    'SELECT * FROM photos WHERE show_on_homepage = 1 ORDER BY display_order ASC'
+    'SELECT * FROM photos WHERE show_on_homepage ORDER BY display_order ASC'
   );
   res.json(rows);
 });
@@ -80,7 +80,7 @@ router.post('/', authenticateToken, requirePermission('write'), upload.single('p
       caption || '',
       layout || 'normal',
       parseInt(display_order) || 0,
-      show_on_homepage !== '0' ? 1 : 0,
+      parseShowOnHomepage(show_on_homepage),
       normalizeSection(section)
     ]
   );
@@ -109,7 +109,7 @@ router.put('/:id', authenticateToken, requirePermission('write'), async (req, re
       caption ?? null,
       layout ?? null,
       display_order !== undefined ? parseInt(display_order) : null,
-      show_on_homepage !== undefined ? (show_on_homepage ? 1 : 0) : null,
+      show_on_homepage !== undefined ? Boolean(show_on_homepage) : null,
       section !== undefined ? normalizeSection(section) : null,
       req.params.id
     ]

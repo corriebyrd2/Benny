@@ -32,8 +32,14 @@ router.post('/', authenticateToken, requirePermission('write'), async (req, res)
       `${result.status}: ${result.recipientCount} recipients`);
     res.status(202).json({ message: 'Campaign sent', ...result });
   } catch (err) {
-    await logAudit(req.admin.id, req.admin.email, 'send', 'campaign', null, `failed: ${err.message}`);
-    res.status(502).json({ error: err.message });
+    // SendGrid's useful detail lives in err.response.body.errors, not err.message.
+    const sgErrors = err.response?.body?.errors;
+    const detail = Array.isArray(sgErrors)
+      ? sgErrors.map(e => e.message).join('; ')
+      : err.message;
+    console.error('[campaigns] send failed:', err.response?.body || err);
+    await logAudit(req.admin.id, req.admin.email, 'send', 'campaign', null, `failed: ${detail}`);
+    res.status(502).json({ error: detail });
   }
 });
 

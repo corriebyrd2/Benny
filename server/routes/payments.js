@@ -17,17 +17,26 @@ async function syncBookingFromStripe(stripe, booking) {
   let paid = false;
   let paymentIntentId = null;
 
-  if (booking.stripe_session_id) {
+  // Check every session id ever minted for this booking, newest first. A
+  // customer who retried payment may have completed an older session, so we
+  // can't rely on just the latest one. Fall back to the legacy scalar column
+  // for rows migrated before stripe_session_ids existed.
+  const sessionIds = Array.isArray(booking.stripe_session_ids) && booking.stripe_session_ids.length > 0
+    ? [...booking.stripe_session_ids].reverse()
+    : (booking.stripe_session_id ? [booking.stripe_session_id] : []);
+
+  for (const sessionId of sessionIds) {
     try {
-      const session = await stripe.checkout.sessions.retrieve(booking.stripe_session_id);
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
       if (session.payment_status === 'paid') {
         paid = true;
         paymentIntentId = typeof session.payment_intent === 'string'
           ? session.payment_intent
           : (session.payment_intent && session.payment_intent.id) || null;
+        break;
       }
     } catch (err) {
-      console.error('[sync] session retrieve failed for booking', booking.id, err.message);
+      console.error('[sync] session retrieve failed for booking', booking.id, sessionId, err.message);
     }
   }
 
@@ -194,7 +203,11 @@ router.post('/send-payment-link', authenticateToken, requirePermission('write'),
   });
 
   await query(
-    `UPDATE bookings SET payment_status = 'requested', stripe_session_id = $2, updated_at = NOW()
+    `UPDATE bookings SET
+       payment_status = 'requested',
+       stripe_session_id = $2,
+       stripe_session_ids = array_append(stripe_session_ids, $2),
+       updated_at = NOW()
      WHERE id = $1 AND payment_status != 'paid'`,
     [booking_id, session.id]
   );
@@ -252,7 +265,10 @@ router.post('/customer-checkout', authenticateCustomer, async (req, res) => {
   });
 
   await query(
-    `UPDATE bookings SET stripe_session_id = $2, updated_at = NOW()
+    `UPDATE bookings SET
+       stripe_session_id = $2,
+       stripe_session_ids = array_append(stripe_session_ids, $2),
+       updated_at = NOW()
      WHERE id = $1 AND payment_status != 'paid'`,
     [booking.id, session.id]
   );

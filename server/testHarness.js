@@ -15,49 +15,21 @@ const stripeClient = require('./stripeClient');
 const { pool, seed } = require('./database');
 
 const emailLog = [];
-const marketingContactLog = [];
-const campaignLog = [];
 
 function install() {
-  // Capture emails
+  // Capture emails — including marketing campaign sends, which now go through
+  // the regular Mail Send transport (with recipients in bcc).
   mailer.setTransport({
     async send(msg) {
       emailLog.push({
         to: Array.isArray(msg.to) ? msg.to : [msg.to],
+        bcc: msg.bcc ? (Array.isArray(msg.bcc) ? msg.bcc : [msg.bcc]) : [],
         from: msg.from,
         subject: msg.subject,
         text: msg.text,
         html: msg.html,
         at: new Date().toISOString()
       });
-    }
-  });
-
-  // Capture marketing contact upserts and campaign sends instead of calling
-  // SendGrid's API.
-  let campaignCounter = 0;
-  mailer.setMarketingTransport({
-    async addContact({ email, listIds }) {
-      marketingContactLog.push({
-        email,
-        listIds: listIds || [],
-        at: new Date().toISOString()
-      });
-      return { status: 'accepted' };
-    },
-    async sendCampaign({ name, subject, html, plain, listIds }) {
-      campaignCounter += 1;
-      const id = `ss_test_${campaignCounter}`;
-      campaignLog.push({
-        id,
-        name,
-        subject,
-        html,
-        plain: plain || '',
-        listIds: listIds || [],
-        at: new Date().toISOString()
-      });
-      return { status: 'scheduled', id };
     }
   });
 
@@ -132,24 +104,6 @@ function buildRouter() {
 
   router.delete('/emails', (req, res) => {
     emailLog.length = 0;
-    res.json({ cleared: true });
-  });
-
-  router.get('/marketing-contacts', (req, res) => {
-    res.json(marketingContactLog);
-  });
-
-  router.delete('/marketing-contacts', (req, res) => {
-    marketingContactLog.length = 0;
-    res.json({ cleared: true });
-  });
-
-  router.get('/campaigns', (req, res) => {
-    res.json(campaignLog);
-  });
-
-  router.delete('/campaigns', (req, res) => {
-    campaignLog.length = 0;
     res.json({ cleared: true });
   });
 

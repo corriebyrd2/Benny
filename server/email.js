@@ -5,9 +5,6 @@ const FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL;
 const FROM_NAME = process.env.SENDGRID_FROM_NAME || 'Benny and the Pets';
 const OWNER_EMAIL = process.env.OWNER_NOTIFICATION_EMAIL || process.env.ADMIN_EMAIL;
 const PUBLIC_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
-const MARKETING_LIST_IDS = (process.env.SENDGRID_MARKETING_LIST_IDS || '')
-  .split(',').map(s => s.trim()).filter(Boolean);
-const MARKETING_SENDER_ID = process.env.SENDGRID_MARKETING_SENDER_ID || '';
 
 let configured = false;
 if (API_KEY && FROM_EMAIL) {
@@ -15,16 +12,6 @@ if (API_KEY && FROM_EMAIL) {
   configured = true;
 } else {
   console.warn('[email] SendGrid not configured — notifications will be skipped. Set SENDGRID_API_KEY and SENDGRID_FROM_EMAIL.');
-}
-
-// Marketing Contacts uses the v3 API directly (separate from Mail Send) and
-// requires the API key to have the "Marketing" permission. It also needs at
-// least one list id if new subscribers should land on a specific list — a
-// blank SENDGRID_MARKETING_LIST_IDS still uploads contacts to the All Contacts
-// pool but leaves them unattached, which is the usual cause of "I subscribed
-// but my email isn't on the list" reports.
-if (API_KEY && MARKETING_LIST_IDS.length === 0) {
-  console.warn('[email] SENDGRID_MARKETING_LIST_IDS is empty — new subscribers will be added to All Contacts but NOT to any marketing list (e.g. "Join the Pack"). Set SENDGRID_MARKETING_LIST_IDS to the list UUID(s).');
 }
 
 // Default transport calls SendGrid. Tests can override via setTransport().
@@ -39,105 +26,29 @@ function setTransport(t) {
   transport = t;
 }
 
-// Marketing Contacts transport is separate because it hits a different SendGrid
-// API (v3/marketing/contacts, not the Mail Send API). Tests override via
-// setMarketingTransport().
-async function sgFetch(path, { method, body } = {}) {
-  const res = await fetch(`https://api.sendgrid.com${path}`, {
-    method: method || 'GET',
-    headers: {
-      'Authorization': `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: body ? JSON.stringify(body) : undefined
-  });
-  const text = await res.text().catch(() => '');
-  if (!res.ok) {
-    const err = new Error(`SendGrid ${res.status} ${path}: ${text.slice(0, 500)}`);
-    err.status = res.status;
-    err.body = text;
-    throw err;
+// SendGrid's Mail Send API caps total recipients (to+cc+bcc) at 1000 per call.
+// We batch under that with headroom for the single "to" address.
+const BCC_BATCH_SIZE = 900;
+
+async function sendMarketingCampaign({ subject, html, plain, recipients }) {
+  if (!configured) return { status: 'skipped', reason: 'not_configured', recipientCount: 0 };
+  const list = Array.isArray(recipients) ? recipients.filter(Boolean) : [];
+  if (!list.length) return { status: 'skipped', reason: 'no_recipients', recipientCount: 0 };
+
+  let sent = 0;
+  for (let i = 0; i < list.length; i += BCC_BATCH_SIZE) {
+    const batch = list.slice(i, i + BCC_BATCH_SIZE);
+    await transport.send({
+      to: FROM_EMAIL,
+      bcc: batch,
+      from: { email: FROM_EMAIL, name: FROM_NAME },
+      subject,
+      text: plain || undefined,
+      html
+    });
+    sent += batch.length;
   }
-  return text ? JSON.parse(text) : {};
-}
-
-let marketingTransport = {
-  async addContact({ email, listIds }) {
-    if (!API_KEY) return { status: 'skipped', reason: 'not_configured' };
-    const result = await sgFetch('/v3/marketing/contacts', {
-      method: 'PUT',
-      body: {
-        list_ids: listIds && listIds.length ? listIds : undefined,
-        contacts: [{ email }]
-      }
-    });
-    return {
-      status: 'accepted',
-      jobId: result.job_id || null,
-      listIds: listIds && listIds.length ? listIds : [],
-      attachedToList: Boolean(listIds && listIds.length)
-    };
-  },
-
-  // Creates a SingleSend and schedules it to go out immediately. Returns the
-  // SendGrid singlesend id so admins can follow up in mc.sendgrid.com.
-  async sendCampaign({ name, subject, html, plain, listIds, senderId }) {
-    if (!API_KEY) return { status: 'skipped', reason: 'not_configured' };
-    if (!senderId) throw new Error('SENDGRID_MARKETING_SENDER_ID is not set');
-    if (!listIds || !listIds.length) throw new Error('At least one list id is required');
-
-    const created = await sgFetch('/v3/marketing/singlesends', {
-      method: 'POST',
-      body: {
-        name,
-        send_to: { list_ids: listIds },
-        email_config: {
-          subject,
-          html_content: html,
-          plain_content: plain || undefined,
-          sender_id: Number(senderId),
-          suppression_group_id: null
-        }
-      }
-    });
-    await sgFetch(`/v3/marketing/singlesends/${created.id}/schedule`, {
-      method: 'PUT',
-      body: { send_at: 'now' }
-    });
-    return { status: 'scheduled', id: created.id };
-  }
-};
-
-function setMarketingTransport(t) {
-  marketingTransport = t;
-}
-
-async function addMarketingContact({ email }) {
-  try {
-    const result = await marketingTransport.addContact({
-      email,
-      listIds: MARKETING_LIST_IDS
-    });
-    if (result.status === 'accepted' && !result.attachedToList) {
-      console.warn('[email] marketing contact accepted but no list attached (SENDGRID_MARKETING_LIST_IDS is empty):', email);
-    }
-    return result;
-  } catch (err) {
-    console.error('[email] marketing contact sync failed:', email, '→', err.status || '', err.message);
-    return { status: 'failed', error: err.message };
-  }
-}
-
-async function sendMarketingCampaign({ name, subject, html, plain, listIds }) {
-  const lists = listIds && listIds.length ? listIds : MARKETING_LIST_IDS;
-  return marketingTransport.sendCampaign({
-    name,
-    subject,
-    html,
-    plain,
-    listIds: lists,
-    senderId: MARKETING_SENDER_ID
-  });
+  return { status: 'sent', recipientCount: sent };
 }
 
 function formatMoney(cents) {
@@ -362,8 +273,6 @@ async function sendPaymentReceivedToOwner({ booking }) {
 
 module.exports = {
   setTransport,
-  setMarketingTransport,
-  addMarketingContact,
   sendMarketingCampaign,
   sendNewBookingToOwner,
   sendBookingReceivedToCustomer,

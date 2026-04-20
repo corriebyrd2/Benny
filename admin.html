@@ -521,6 +521,8 @@
           Each homepage section below has its own upload button. Use the one under the section
           you want the photo to appear in — Hero (the banner area), About (the &quot;Meet Ben&quot;
           image), or Gallery (the Puppy Parade grid).
+          Already uploaded a photo to the wrong place? Use the &quot;Move to section&quot; dropdown on
+          any photo card to reassign it.
         </p>
         <div id="photosBySection">
           <div style="text-align:center; color: var(--text-light); padding: 40px;">Loading...</div>
@@ -1256,15 +1258,22 @@
 
     function renderPhotoCard(p) {
       const section = p.section || 'gallery';
+      const moveOptions = HOMEPAGE_SECTIONS.map(s =>
+        `<option value="${s.key}" ${s.key === section ? 'selected' : ''}>${s.icon} ${escapeHtml(s.label)}</option>`
+      ).join('');
       return `
         <div class="photo-card">
           <img src="/uploads/${encodeURIComponent(p.filename)}" alt="${escapeHtml(p.caption)}" loading="lazy"
             onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
           <div class="photo-placeholder" style="display:none;">&#128247;</div>
           <div class="photo-card-body">
-            <p><span class="section-badge">${escapeHtml(sectionLabel(section))}</span></p>
             <p>${escapeHtml(p.caption || 'No caption')}</p>
             <p><small>Layout: ${escapeHtml(p.layout)} | ${p.show_on_homepage ? 'On homepage' : 'Hidden'}</small></p>
+            <label style="display:block; font-size:0.8rem; font-weight:700; color:var(--text-light); margin:8px 0 4px;">Move to section:</label>
+            <select onchange="movePhotoToSection(${p.id}, this.value)"
+              style="width:100%; padding:6px 8px; border:1px solid #ddd; border-radius:6px; font-size:0.85rem; margin-bottom:8px;">
+              ${moveOptions}
+            </select>
             <div class="photo-card-actions">
               <button class="btn btn-sm btn-outline" onclick="editPhoto(${p.id})">Edit</button>
               <button class="btn btn-sm btn-danger" onclick="deletePhoto(${p.id})">Delete</button>
@@ -1272,6 +1281,19 @@
           </div>
         </div>
       `;
+    }
+
+    async function movePhotoToSection(id, section) {
+      try {
+        await apiCall(`/api/photos/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ section })
+        });
+        showToast(`Photo moved to ${sectionLabel(section)}`);
+        loadPhotos();
+      } catch (err) {
+        showToast(err.message, true);
+      }
     }
 
     async function loadPhotos() {
@@ -1283,7 +1305,9 @@
           const sectionPhotos = photos.filter(p => (p.section || 'gallery') === section.key);
           const body = sectionPhotos.length === 0
             ? `<div class="empty-slot">
-                 <p>No photo assigned to this section yet.</p>
+                 <p style="margin-bottom:10px;">No photo assigned to this section yet.</p>
+                 <button class="btn btn-sm btn-primary"
+                   onclick="openPhotoUploadForm('${section.key}')">+ Upload to ${escapeHtml(section.label)}</button>
                </div>`
             : `<div class="photo-grid">${sectionPhotos.map(renderPhotoCard).join('')}</div>`;
 

@@ -29,8 +29,11 @@ function rowsToObject(rows) {
 }
 
 // Public: Get all site settings (company info shown on the homepage).
+// Disable caching so admin edits show up on the next homepage load instead of
+// being held back by browser/CDN caches.
 router.get('/', async (req, res) => {
   const { rows } = await query('SELECT key, value FROM site_settings');
+  res.set('Cache-Control', 'no-store');
   res.json(rowsToObject(rows));
 });
 

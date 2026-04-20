@@ -221,17 +221,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadSiteSettings() {
     try {
-      const res = await fetch('/api/settings');
-      if (!res.ok) return;
+      const res = await fetch('/api/settings', { cache: 'no-store' });
+      if (!res.ok) {
+        console.warn('[settings] /api/settings returned', res.status, '— homepage will show static defaults');
+        return;
+      }
       const s = await res.json();
       applySettings(s);
     } catch (e) {
-      // API not available, keep static content
+      console.warn('[settings] failed to load /api/settings — homepage will show static defaults', e);
     }
   }
 
   function applySettings(s) {
     const brand = s.business_name;
+    // Wrap "&" in the brand styling span so navbar/footer keep the orange-amp look
+    // when the admin sets a brand like "Benny & the Pets".
+    const brandHtml = brand
+      ? escapeText(brand).replace(/&amp;/g, '<span class="logo-amp">&amp;</span>')
+      : null;
     const addressHtml = [s.contact_address_line1, s.contact_address_line2]
       .filter(Boolean).map(escapeText).join('<br>');
     const phoneHtml = [s.contact_phone_display, s.contact_phone_secondary]
@@ -239,12 +247,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const hoursHtml = [s.hours_weekday, s.hours_weekend]
       .filter(Boolean).map(escapeText).join('<br>');
 
-    // data-setting → replaces textContent (or innerHTML for composed strings)
+    // data-setting → replaces textContent (or innerHTML for composed strings).
+    // Anything that needs HTML structure (like the styled ampersand in the brand)
+    // goes through htmlMap; plain strings stay in textMap.
     const textMap = {
-      brand: brand,
       footer_tagline: s.footer_tagline
     };
     const htmlMap = {
+      brand: brandHtml,
       address: addressHtml,
       phone: phoneHtml,
       hours: hoursHtml,

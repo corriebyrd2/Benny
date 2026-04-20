@@ -7,7 +7,14 @@ const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const { loginAdmin } = require('./server/auth');
-const { registerCustomer, loginCustomer, authenticateCustomer } = require('./server/customerAuth');
+const {
+  registerCustomer,
+  loginCustomer,
+  authenticateCustomer,
+  createPasswordResetToken,
+  resetPasswordWithToken
+} = require('./server/customerAuth');
+const { sendPasswordResetToCustomer } = require('./server/email');
 const { init: initDb, query } = require('./server/database');
 
 const app = express();
@@ -132,7 +139,14 @@ const subscribeLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many subscribe attempts. Try again in an hour.' }
 });
-app.locals.limiters = { authLimiter, registerLimiter, subscribeLimiter };
+const passwordResetRequestLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many password reset requests. Try again in an hour.' }
+});
+app.locals.limiters = { authLimiter, registerLimiter, subscribeLimiter, passwordResetRequestLimiter };
 
 // Admin auth
 app.post('/api/auth/login', authLimiter, async (req, res) => {
@@ -173,6 +187,44 @@ app.post('/api/customer/login', authLimiter, async (req, res) => {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
   res.json(result);
+});
+
+// Password reset — always responds 200 so we never reveal whether an email is
+// registered. The reset link (when one is issued) is sent out-of-band via email.
+app.post('/api/customer/forgot-password', passwordResetRequestLimiter, async (req, res, next) => {
+  try {
+    const { email } = req.body || {};
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    const result = await createPasswordResetToken(email);
+    if (result) {
+      const base = (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+      const resetLink = `${base}/my-bookings?reset=${encodeURIComponent(result.token)}`;
+      await sendPasswordResetToCustomer({
+        to: result.customer.email,
+        name: result.customer.name,
+        resetLink
+      });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post('/api/customer/reset-password', authLimiter, async (req, res, next) => {
+  try {
+    const { token, password } = req.body || {};
+    const result = await resetPasswordWithToken(token, password);
+    if (result.error) {
+      return res.status(400).json({ error: result.error });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
 });
 
 app.get('/api/customer/profile', authenticateCustomer, async (req, res) => {

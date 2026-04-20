@@ -1053,6 +1053,45 @@
             <input type="password" id="loginPassword" placeholder="Your password" required>
           </div>
           <button type="submit" class="btn btn-primary btn-full" id="loginBtn">Log In</button>
+          <p style="text-align:center;margin-top:12px;font-size:14px;">
+            <a href="#" id="forgotPasswordLink" style="color:#ff6b9d;text-decoration:none;">Forgot your password?</a>
+          </p>
+        </form>
+
+        <!-- Forgot Password Form -->
+        <form class="auth-form" id="forgotForm">
+          <div class="form-error" id="forgotError"></div>
+          <div class="form-success" id="forgotSuccess" style="display:none;color:#2d7d3f;background:#e7f6ea;padding:12px;border-radius:8px;margin-bottom:12px;">
+            If an account exists for that email, we've sent a password reset link. Check your inbox (and spam folder).
+          </div>
+          <p style="margin-bottom:12px;color:#666;font-size:14px;">
+            Enter your email address and we'll send you a link to reset your password.
+          </p>
+          <div class="form-group">
+            <label for="forgotEmail">Email Address</label>
+            <input type="email" id="forgotEmail" placeholder="you@email.com" required>
+          </div>
+          <button type="submit" class="btn btn-primary btn-full" id="forgotBtn">Send Reset Link</button>
+          <p style="text-align:center;margin-top:12px;font-size:14px;">
+            <a href="#" id="backToLoginLink" style="color:#ff6b9d;text-decoration:none;">Back to login</a>
+          </p>
+        </form>
+
+        <!-- Reset Password Form (shown when arriving via email link ?reset=TOKEN) -->
+        <form class="auth-form" id="resetForm">
+          <div class="form-error" id="resetError"></div>
+          <p style="margin-bottom:12px;color:#666;font-size:14px;">
+            Choose a new password for your account.
+          </p>
+          <div class="form-group">
+            <label for="resetPassword">New Password</label>
+            <input type="password" id="resetPassword" placeholder="At least 6 characters" required minlength="6">
+          </div>
+          <div class="form-group">
+            <label for="resetPasswordConfirm">Confirm New Password</label>
+            <input type="password" id="resetPasswordConfirm" placeholder="Re-enter password" required minlength="6">
+          </div>
+          <button type="submit" class="btn btn-primary btn-full" id="resetBtn">Update Password</button>
         </form>
 
         <!-- Register Form -->
@@ -1435,6 +1474,119 @@
         loginBtn.textContent = 'Log In';
       }
     });
+
+    // --- Password Reset: switch between login/forgot/reset sub-views ---
+    function showAuthForm(id) {
+      document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    document.getElementById('forgotPasswordLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      document.getElementById('forgotError').classList.remove('visible');
+      document.getElementById('forgotSuccess').style.display = 'none';
+      document.getElementById('forgotForm').reset();
+      showAuthForm('forgotForm');
+    });
+
+    document.getElementById('backToLoginLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      // Re-activate the Login tab visually.
+      document.querySelectorAll('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'login'));
+      showAuthForm('loginForm');
+    });
+
+    // --- Forgot Password: request reset email ---
+    document.getElementById('forgotForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const forgotError = document.getElementById('forgotError');
+      const forgotSuccess = document.getElementById('forgotSuccess');
+      const forgotBtn = document.getElementById('forgotBtn');
+      forgotError.classList.remove('visible');
+      forgotSuccess.style.display = 'none';
+      forgotBtn.disabled = true;
+      forgotBtn.innerHTML = '<span class="loading-spinner"></span>';
+
+      try {
+        const res = await fetch('/api/customer/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: document.getElementById('forgotEmail').value.trim() })
+        });
+        const data = await safeJson(res);
+        if (!res.ok) throw new Error(data.error || 'Unable to send reset link');
+        forgotSuccess.style.display = 'block';
+      } catch (err) {
+        forgotError.textContent = err.message;
+        forgotError.classList.add('visible');
+      } finally {
+        forgotBtn.disabled = false;
+        forgotBtn.textContent = 'Send Reset Link';
+      }
+    });
+
+    // --- Reset Password: submit new password with token from email link ---
+    document.getElementById('resetForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const resetError = document.getElementById('resetError');
+      const resetBtn = document.getElementById('resetBtn');
+      resetError.classList.remove('visible');
+
+      const pw = document.getElementById('resetPassword').value;
+      const pwConfirm = document.getElementById('resetPasswordConfirm').value;
+      if (pw !== pwConfirm) {
+        resetError.textContent = 'Passwords do not match';
+        resetError.classList.add('visible');
+        return;
+      }
+
+      const resetToken = new URLSearchParams(window.location.search).get('reset');
+      if (!resetToken) {
+        resetError.textContent = 'Missing reset token. Please use the link from your email.';
+        resetError.classList.add('visible');
+        return;
+      }
+
+      resetBtn.disabled = true;
+      resetBtn.innerHTML = '<span class="loading-spinner"></span>';
+
+      try {
+        const res = await fetch('/api/customer/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: resetToken, password: pw })
+        });
+        const data = await safeJson(res);
+        if (!res.ok) throw new Error(data.error || 'Unable to reset password');
+
+        showToast('Password updated! Please log in with your new password.', 'success');
+        // Clean the ?reset=... param from the URL and return to the login form.
+        history.replaceState(null, '', window.location.pathname);
+        document.querySelectorAll('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'login'));
+        showAuthForm('loginForm');
+      } catch (err) {
+        resetError.textContent = err.message;
+        resetError.classList.add('visible');
+      } finally {
+        resetBtn.disabled = false;
+        resetBtn.textContent = 'Update Password';
+      }
+    });
+
+    // If the customer arrived via an email reset link, jump straight to the reset form.
+    (function maybeShowResetForm() {
+      const resetToken = new URLSearchParams(window.location.search).get('reset');
+      if (!resetToken) return;
+      // Ensure the auth section is visible even if a stale token is in localStorage.
+      if (token) {
+        token = null;
+        customer = null;
+        localStorage.removeItem('customerToken');
+        localStorage.removeItem('customerData');
+      }
+      document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+      showAuthForm('resetForm');
+    })();
 
     // --- Register ---
     document.getElementById('registerForm').addEventListener('submit', async (e) => {

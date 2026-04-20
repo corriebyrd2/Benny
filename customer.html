@@ -1966,14 +1966,32 @@
     initDatePickers();
     checkAuth();
 
-    // Handle return from Stripe checkout
+    // Handle return from Stripe checkout. We actively reconcile with Stripe
+    // before showing the bookings list because the webhook may not have landed
+    // yet (and occasionally doesn't land at all — see /api/payments/sync).
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('payment') === 'success') {
-      setTimeout(() => {
+      const paidBookingId = urlParams.get('booking');
+      window.history.replaceState({}, '', '/my-bookings');
+      (async () => {
+        if (paidBookingId && token) {
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              const r = await fetch(`/api/payments/sync/${paidBookingId}`, {
+                method: 'POST',
+                headers: authHeaders()
+              });
+              if (r.ok) {
+                const data = await safeJson(r);
+                if (data.payment_status === 'paid') break;
+              }
+            } catch (_) { /* retry */ }
+            await new Promise(r => setTimeout(r, 1500));
+          }
+        }
         showToast('Payment successful! Thank you.', 'success');
         switchPanel('bookings');
-      }, 500);
-      window.history.replaceState({}, '', '/my-bookings');
+      })();
     } else if (urlParams.get('payment') === 'cancelled') {
       setTimeout(() => showToast('Payment was cancelled.', 'error'), 500);
       window.history.replaceState({}, '', '/my-bookings');

@@ -7,6 +7,69 @@ const { getStripe } = require('../stripeClient');
 
 const router = express.Router();
 
+// Reconcile a booking's payment status with Stripe. Webhooks are the primary
+// path, but they can fail silently (misconfigured endpoint, missing secret,
+// transient network error). This helper retrieves the Checkout Session (or
+// PaymentIntent) from Stripe and flips the booking to 'paid' if Stripe reports
+// the payment as succeeded. Safe to call repeatedly — the UPDATE short-circuits
+// when already paid.
+async function syncBookingFromStripe(stripe, booking) {
+  let paid = false;
+  let paymentIntentId = null;
+
+  if (booking.stripe_session_id) {
+    try {
+      const session = await stripe.checkout.sessions.retrieve(booking.stripe_session_id);
+      if (session.payment_status === 'paid') {
+        paid = true;
+        paymentIntentId = typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : (session.payment_intent && session.payment_intent.id) || null;
+      }
+    } catch (err) {
+      console.error('[sync] session retrieve failed for booking', booking.id, err.message);
+    }
+  }
+
+  if (!paid && booking.stripe_payment_id && booking.stripe_payment_id.startsWith('pi_')) {
+    try {
+      const intent = await stripe.paymentIntents.retrieve(booking.stripe_payment_id);
+      if (intent.status === 'succeeded') {
+        paid = true;
+        paymentIntentId = intent.id;
+      }
+    } catch (err) {
+      console.error('[sync] intent retrieve failed for booking', booking.id, err.message);
+    }
+  }
+
+  if (!paid) {
+    return { changed: false, payment_status: booking.payment_status };
+  }
+
+  const result = await query(
+    `UPDATE bookings SET
+       payment_status = 'paid',
+       stripe_payment_id = COALESCE(NULLIF($1, ''), stripe_payment_id),
+       status = CASE WHEN status = 'pending' THEN 'confirmed' ELSE status END,
+       updated_at = NOW()
+     WHERE id = $2 AND payment_status != 'paid'`,
+    [paymentIntentId || '', booking.id]
+  );
+
+  if (result.rowCount > 0) {
+    const { rows } = await query('SELECT * FROM bookings WHERE id = $1', [booking.id]);
+    if (rows[0]) {
+      await Promise.all([
+        mailer.sendPaymentReceivedToCustomer({ booking: rows[0] }),
+        mailer.sendPaymentReceivedToOwner({ booking: rows[0] })
+      ]);
+    }
+  }
+
+  return { changed: result.rowCount > 0, payment_status: 'paid' };
+}
+
 // Public: Create a payment intent for a booking
 router.post('/create-payment-intent', async (req, res) => {
   const stripe = getStripe();
@@ -131,9 +194,9 @@ router.post('/send-payment-link', authenticateToken, requirePermission('write'),
   });
 
   await query(
-    `UPDATE bookings SET payment_status = 'requested', updated_at = NOW()
+    `UPDATE bookings SET payment_status = 'requested', stripe_session_id = $2, updated_at = NOW()
      WHERE id = $1 AND payment_status != 'paid'`,
-    [booking_id]
+    [booking_id, session.id]
   );
 
   await mailer.sendPaymentLinkToCustomer({ booking, checkoutUrl: session.url });
@@ -187,6 +250,12 @@ router.post('/customer-checkout', authenticateCustomer, async (req, res) => {
     success_url: `${protocol}://${host}/my-bookings?payment=success&booking=${booking.id}`,
     cancel_url: `${protocol}://${host}/my-bookings?payment=cancelled`
   });
+
+  await query(
+    `UPDATE bookings SET stripe_session_id = $2, updated_at = NOW()
+     WHERE id = $1 AND payment_status != 'paid'`,
+    [booking.id, session.id]
+  );
 
   res.json({ checkout_url: session.url });
 });
@@ -258,10 +327,59 @@ router.post('/webhook', async (req, res) => {
       }
     }
   } catch (err) {
-    console.error('[webhook] DB update failed for', event.type, err);
+    console.error('[webhook] DB update failed for', event.type, 'event', event.id, err);
   }
 
   res.json({ received: true });
+});
+
+// Customer: reconcile their booking with Stripe. Used after returning from
+// Checkout so the UI reflects the payment even if the webhook hasn't landed.
+router.post('/sync/:booking_id', authenticateCustomer, async (req, res) => {
+  const stripe = getStripe();
+  if (!stripe) {
+    return res.status(503).json({ error: 'Stripe is not configured' });
+  }
+
+  const { rows } = await query(
+    'SELECT * FROM bookings WHERE id = $1 AND customer_id = $2',
+    [req.params.booking_id, req.customer.id]
+  );
+  const booking = rows[0];
+  if (!booking) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  const result = await syncBookingFromStripe(stripe, booking);
+  res.json({
+    booking_id: booking.id,
+    payment_status: result.payment_status,
+    updated: result.changed
+  });
+});
+
+// Admin: reconcile a booking with Stripe for any booking. Useful when the
+// webhook didn't land (e.g., endpoint was mis-configured in Stripe).
+router.post('/sync-admin/:booking_id', authenticateToken, requirePermission('write'), async (req, res) => {
+  const stripe = getStripe();
+  if (!stripe) {
+    return res.status(503).json({ error: 'Stripe is not configured' });
+  }
+
+  const { rows } = await query('SELECT * FROM bookings WHERE id = $1', [req.params.booking_id]);
+  const booking = rows[0];
+  if (!booking) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  const result = await syncBookingFromStripe(stripe, booking);
+  await logAudit(req.admin.id, req.admin.email, 'sync_payment', 'payments', String(booking.id),
+    result.changed ? 'updated' : 'no_change');
+  res.json({
+    booking_id: booking.id,
+    payment_status: result.payment_status,
+    updated: result.changed
+  });
 });
 
 // Admin: Get Stripe config status

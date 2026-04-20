@@ -1078,6 +1078,22 @@
       }
     }
 
+    async function syncPaymentStatus(id) {
+      try {
+        const data = await apiCall(`/api/payments/sync-admin/${id}`, { method: 'POST' });
+        if (data.payment_status === 'paid') {
+          showToast(data.updated ? 'Marked as paid from Stripe' : 'Already marked paid');
+        } else {
+          showToast('Stripe has not received payment for this booking yet', true);
+        }
+        loadBookings();
+        loadPayments();
+        loadDashboard();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
     async function completeBooking(id) {
       if (!confirm('Mark this booking as completed and paid?')) return;
       try {
@@ -1485,7 +1501,14 @@
           return;
         }
 
-        tbody.innerHTML = bookings.map(b => `
+        tbody.innerHTML = bookings.map(b => {
+          const unpaidActions = [
+            `<button class="btn btn-sm btn-success" onclick="sendPaymentRequest(${b.id})">Request Payment</button>`
+          ];
+          if (b.stripe_session_id || (b.stripe_payment_id || '').startsWith('pi_')) {
+            unpaidActions.push(`<button class="btn btn-sm btn-outline" onclick="syncPaymentStatus(${b.id})">Sync with Stripe</button>`);
+          }
+          return `
           <tr>
             <td>#${b.id}</td>
             <td>${escapeHtml(b.dog_name)}</td>
@@ -1496,11 +1519,12 @@
             <td>
               ${b.payment_status === 'paid' ?
                 '<span style="color:var(--success);font-weight:700;">Paid</span>' :
-                `<button class="btn btn-sm btn-success" onclick="sendPaymentRequest(${b.id})">Request Payment</button>`
+                unpaidActions.join(' ')
               }
             </td>
           </tr>
-        `).join('');
+        `;
+        }).join('');
       } catch (err) {
         showToast('Failed to load payments', true);
       }

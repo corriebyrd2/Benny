@@ -146,19 +146,22 @@ async function resetPasswordWithToken(token, newPassword) {
   }
 
   const tokenHash = hashToken(token);
+  // Atomically consume the token: only one concurrent request can win this
+  // UPDATE, so the password change below is guarded against replay.
   const { rows } = await query(
-    `SELECT id, customer_id, expires_at, used_at
-     FROM password_reset_tokens WHERE token_hash = $1`,
+    `UPDATE password_reset_tokens
+     SET used_at = NOW()
+     WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
+     RETURNING customer_id`,
     [tokenHash]
   );
   const record = rows[0];
-  if (!record || record.used_at || new Date(record.expires_at) < new Date()) {
+  if (!record) {
     return { error: 'This reset link is invalid or has expired' };
   }
 
   const hash = bcrypt.hashSync(newPassword, 10);
   await query('UPDATE customers SET password_hash = $1 WHERE id = $2', [hash, record.customer_id]);
-  await query('UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1', [record.id]);
   return { ok: true };
 }
 

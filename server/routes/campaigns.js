@@ -11,14 +11,11 @@ router.get('/stats', authenticateToken, requirePermission('read'), async (req, r
   res.json({ subscriberCount: rows[0].count });
 });
 
-// Admin: create + immediately send a Single Send to the marketing list(s).
+// Admin: send an email to every captured subscriber via SendGrid Mail Send (BCC).
 router.post('/', authenticateToken, requirePermission('write'), async (req, res) => {
   const subject = typeof req.body?.subject === 'string' ? req.body.subject.trim() : '';
   const html = typeof req.body?.html === 'string' ? req.body.html.trim() : '';
   const plain = typeof req.body?.plain === 'string' ? req.body.plain.trim() : '';
-  // SendGrid requires a unique name per SingleSend — fall back to subject + timestamp.
-  const name = (typeof req.body?.name === 'string' && req.body.name.trim())
-    || `${subject} — ${new Date().toISOString()}`;
 
   if (!subject || subject.length > 200) {
     return res.status(400).json({ error: 'Subject is required (max 200 chars)' });
@@ -28,9 +25,12 @@ router.post('/', authenticateToken, requirePermission('write'), async (req, res)
   }
 
   try {
-    const result = await mailer.sendMarketingCampaign({ name, subject, html, plain });
-    await logAudit(req.admin.id, req.admin.email, 'send', 'campaign', result.id || null, 'success');
-    res.status(202).json({ message: 'Campaign scheduled', ...result });
+    const { rows } = await query('SELECT email FROM subscribers ORDER BY id');
+    const recipients = rows.map(r => r.email);
+    const result = await mailer.sendMarketingCampaign({ subject, html, plain, recipients });
+    await logAudit(req.admin.id, req.admin.email, 'send', 'campaign', null,
+      `${result.status}: ${result.recipientCount} recipients`);
+    res.status(202).json({ message: 'Campaign sent', ...result });
   } catch (err) {
     await logAudit(req.admin.id, req.admin.email, 'send', 'campaign', null, `failed: ${err.message}`);
     res.status(502).json({ error: err.message });

@@ -615,10 +615,9 @@
           </div>
           <div class="card-body">
             <p style="color:var(--text-light); margin-bottom:16px;">
-              Composes a SendGrid Single Send and delivers it to everyone on the
-              <strong>Join the Pack</strong> list immediately. For richer templates,
-              previews, or scheduling use
-              <a href="https://mc.sendgrid.com/single-sends" target="_blank" rel="noopener">SendGrid's Marketing UI</a>.
+              Sends an email to every subscriber in the <strong>Join the Pack</strong>
+              database, delivered via SendGrid as BCC. Sends immediately — there
+              is no scheduling or undo.
             </p>
             <form id="campaignForm" style="display:flex; flex-direction:column; gap:12px;">
               <label>
@@ -1548,7 +1547,7 @@
           method: 'POST',
           body: JSON.stringify({ subject, html, plain })
         });
-        showToast(`Campaign scheduled (${result.id || 'queued'})`);
+        showToast(`Campaign sent to ${result.recipientCount || 0} subscriber${result.recipientCount === 1 ? '' : 's'}`);
         document.getElementById('campaignForm').reset();
         document.getElementById('campaignPreview').style.display = 'none';
       } catch (err) {

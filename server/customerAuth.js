@@ -1,8 +1,14 @@
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { query } = require('./database');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'benny-pets-default-secret';
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
 
 function generateCustomerToken(customer) {
   return jwt.sign(
@@ -101,4 +107,65 @@ async function loginCustomer(email, password) {
   };
 }
 
-module.exports = { authenticateCustomer, registerCustomer, loginCustomer };
+// Creates a single-use password reset token for the customer matching `email`.
+// Returns { token, customer } when an account exists, or null otherwise. The
+// caller is responsible for not leaking the difference to unauthenticated users.
+async function createPasswordResetToken(email) {
+  const { rows } = await query(
+    'SELECT id, email, name FROM customers WHERE LOWER(email) = LOWER($1)',
+    [email]
+  );
+  const customer = rows[0];
+  if (!customer) return null;
+
+  // Invalidate any prior unused tokens so only the latest link works.
+  await query(
+    'UPDATE password_reset_tokens SET used_at = NOW() WHERE customer_id = $1 AND used_at IS NULL',
+    [customer.id]
+  );
+
+  const token = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashToken(token);
+  const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+
+  await query(
+    `INSERT INTO password_reset_tokens (customer_id, token_hash, expires_at)
+     VALUES ($1, $2, $3)`,
+    [customer.id, tokenHash, expiresAt]
+  );
+
+  return { token, customer, expiresAt };
+}
+
+async function resetPasswordWithToken(token, newPassword) {
+  if (!token || !newPassword) {
+    return { error: 'Invalid request' };
+  }
+  if (newPassword.length < 6) {
+    return { error: 'Password must be at least 6 characters' };
+  }
+
+  const tokenHash = hashToken(token);
+  const { rows } = await query(
+    `SELECT id, customer_id, expires_at, used_at
+     FROM password_reset_tokens WHERE token_hash = $1`,
+    [tokenHash]
+  );
+  const record = rows[0];
+  if (!record || record.used_at || new Date(record.expires_at) < new Date()) {
+    return { error: 'This reset link is invalid or has expired' };
+  }
+
+  const hash = bcrypt.hashSync(newPassword, 10);
+  await query('UPDATE customers SET password_hash = $1 WHERE id = $2', [hash, record.customer_id]);
+  await query('UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1', [record.id]);
+  return { ok: true };
+}
+
+module.exports = {
+  authenticateCustomer,
+  registerCustomer,
+  loginCustomer,
+  createPasswordResetToken,
+  resetPasswordWithToken
+};

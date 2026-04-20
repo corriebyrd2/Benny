@@ -252,6 +252,30 @@ async function sendPaymentReceivedToCustomer({ booking }) {
   });
 }
 
+async function sendPasswordResetToCustomer({ to, name, resetLink }) {
+  const greeting = name ? `Hi ${escapeHtml(name)},` : 'Hi there,';
+  await send({
+    to,
+    subject: 'Reset your Benny and the Pets password',
+    text: [
+      name ? `Hi ${name},` : 'Hi there,',
+      '',
+      'We received a request to reset your password. Click the link below to choose a new one. This link expires in 1 hour.',
+      '',
+      resetLink,
+      '',
+      `If you didn't request this, you can safely ignore this email — your password won't change.`
+    ].join('\n'),
+    html: `
+      <p>${greeting}</p>
+      <p>We received a request to reset your password. Click the button below to choose a new one. This link expires in <strong>1 hour</strong>.</p>
+      <p><a href="${resetLink}" style="display:inline-block;background:#ff6b9d;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600;">Reset password</a></p>
+      <p style="color:#666;font-size:12px;">Or copy and paste this link: ${escapeHtml(resetLink)}</p>
+      <p style="color:#666;font-size:12px;">If you didn't request this, you can safely ignore this email — your password won't change.</p>
+    `
+  });
+}
+
 async function sendPaymentReceivedToOwner({ booking }) {
   if (!OWNER_EMAIL) return;
   await send({
@@ -280,5 +304,6 @@ module.exports = {
   sendBookingCancelledToCustomer,
   sendPaymentLinkToCustomer,
   sendPaymentReceivedToCustomer,
-  sendPaymentReceivedToOwner
+  sendPaymentReceivedToOwner,
+  sendPasswordResetToCustomer
 };

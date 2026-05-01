@@ -82,6 +82,19 @@ function escapeHtml(s) {
   }[c]));
 }
 
+// Strip CR/LF/NUL — SendGrid's HTTP API encodes JSON, so a newline in a name
+// or subject can't directly forge a header today. This is defense-in-depth in
+// case the transport ever changes (e.g. raw SMTP), and it also keeps subject
+// lines tidy when a user posts a "name" with embedded line breaks.
+function oneLine(s) {
+  return String(s ?? '').replace(/[\r\n\0]/g, '').trim().slice(0, 500);
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function isValidRecipient(addr) {
+  return typeof addr === 'string' && addr.length <= 254 && !/[\r\n\0]/.test(addr) && EMAIL_RE.test(addr);
+}
+
 function bookingSummary(booking) {
   const lines = [
     `Booking #${booking.id}`,
@@ -114,11 +127,15 @@ async function send({ to, subject, html, text }) {
     console.warn(`[email] skipped (no recipient): ${subject}`);
     return;
   }
+  if (!isValidRecipient(to)) {
+    console.warn(`[email] skipped (invalid recipient): ${subject} → ${to}`);
+    return;
+  }
   try {
     await transport.send({
       to,
       from: { email: FROM_EMAIL || 'noreply@example.test', name: FROM_NAME },
-      subject,
+      subject: oneLine(subject),
       text,
       html
     });

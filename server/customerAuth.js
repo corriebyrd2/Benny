@@ -9,6 +9,19 @@ if (!JWT_SECRET || JWT_SECRET === 'benny-pets-default-secret' || JWT_SECRET === 
 }
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
+// Returns null if the password meets policy, or an error message describing
+// what's missing. Kept lenient enough that real users won't bounce, strict
+// enough to defeat the obvious "password" / "12345678" candidates.
+function validatePassword(password) {
+  if (typeof password !== 'string' || password.length < 10) {
+    return 'Password must be at least 10 characters';
+  }
+  if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+    return 'Password must contain at least one letter and one number';
+  }
+  return null;
+}
+
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
@@ -144,8 +157,9 @@ async function resetPasswordWithToken(token, newPassword) {
   if (!token || !newPassword) {
     return { error: 'Invalid request' };
   }
-  if (newPassword.length < 6) {
-    return { error: 'Password must be at least 6 characters' };
+  const passwordError = validatePassword(newPassword);
+  if (passwordError) {
+    return { error: passwordError };
   }
 
   const tokenHash = hashToken(token);
@@ -173,5 +187,6 @@ module.exports = {
   registerCustomer,
   loginCustomer,
   createPasswordResetToken,
-  resetPasswordWithToken
+  resetPasswordWithToken,
+  validatePassword
 };

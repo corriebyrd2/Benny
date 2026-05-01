@@ -12,7 +12,8 @@ const {
   loginCustomer,
   authenticateCustomer,
   createPasswordResetToken,
-  resetPasswordWithToken
+  resetPasswordWithToken,
+  validatePassword
 } = require('./server/customerAuth');
 const { sendPasswordResetToCustomer } = require('./server/email');
 const { init: initDb, query } = require('./server/database');
@@ -76,11 +77,14 @@ app.set('trust proxy', 1);
 app.set('etag', false);
 
 // Security headers. CSP is disabled because admin.html/customer.html use extensive
-// inline scripts/styles that a strict CSP would break.
+// inline scripts/styles that a strict CSP would break. HSTS is only enabled in
+// production — sending it from a local dev server would lock browsers into
+// http→https upgrades that fail when developers come back to plain http.
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
-  crossOriginResourcePolicy: { policy: 'cross-origin' }
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  hsts: IS_PROD ? { maxAge: 15552000, includeSubDomains: true } : false
 }));
 
 app.use(compression());
@@ -197,8 +201,9 @@ app.post('/api/customer/register', registerLimiter, async (req, res) => {
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'Name, email, and password are required' });
   }
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    return res.status(400).json({ error: passwordError });
   }
   const result = await registerCustomer(name, email, password, phone, dog_name);
   if (result.error) {

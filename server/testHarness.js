@@ -16,7 +16,14 @@ const { pool, seed } = require('./database');
 
 const emailLog = [];
 
+function assertNotProduction() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Test harness must never be loaded in production');
+  }
+}
+
 function install() {
+  assertNotProduction();
   // Capture emails — including marketing campaign sends, which now go through
   // the regular Mail Send transport (with recipients in bcc).
   mailer.setTransport({
@@ -90,6 +97,7 @@ function install() {
 }
 
 function buildRouter() {
+  assertNotProduction();
   const router = express.Router();
 
   router.get('/health', (req, res) => res.json({ ok: true, mode: 'test' }));

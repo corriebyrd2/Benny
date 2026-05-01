@@ -12,7 +12,8 @@ const {
   loginCustomer,
   authenticateCustomer,
   createPasswordResetToken,
-  resetPasswordWithToken
+  resetPasswordWithToken,
+  validatePassword
 } = require('./server/customerAuth');
 const { sendPasswordResetToCustomer } = require('./server/email');
 const { init: initDb, query } = require('./server/database');
@@ -25,7 +26,15 @@ const TEST_MODE = process.env.TEST_MODE === '1';
 
 // Install the test harness BEFORE feature modules load so email/Stripe
 // overrides are in place when routes require('./email') / ('./stripeClient').
+// Hard-fail if TEST_MODE leaks into a production deploy: the harness silently
+// replaces the email transport with an in-memory log and stubs Stripe, so a
+// production process running with TEST_MODE=1 would drop real emails on the
+// floor and never charge customers.
 if (TEST_MODE) {
+  if (IS_PROD) {
+    console.error('Refusing to start: TEST_MODE=1 cannot be combined with NODE_ENV=production');
+    process.exit(1);
+  }
   require('./server/testHarness').install();
 }
 
@@ -68,23 +77,30 @@ app.set('trust proxy', 1);
 app.set('etag', false);
 
 // Security headers. CSP is disabled because admin.html/customer.html use extensive
-// inline scripts/styles that a strict CSP would break.
+// inline scripts/styles that a strict CSP would break. HSTS is only enabled in
+// production — sending it from a local dev server would lock browsers into
+// http→https upgrades that fail when developers come back to plain http.
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
-  crossOriginResourcePolicy: { policy: 'cross-origin' }
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  hsts: IS_PROD ? { maxAge: 15552000, includeSubDomains: true } : false
 }));
 
 app.use(compression());
 
 // CORS whitelist. FRONTEND_ORIGIN is a comma-separated list of allowed origins.
+// Same-origin requests (no Origin header) are always allowed because the app
+// also serves its own HTML. Cross-origin requests in production are rejected
+// unless their origin is in the whitelist — never fall through to allow-all
+// while credentials: true is set.
 const allowedOrigins = (process.env.FRONTEND_ORIGIN || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
-    if (allowedOrigins.length === 0) return cb(null, true);
     if (allowedOrigins.includes(origin)) return cb(null, true);
+    if (allowedOrigins.length === 0 && !IS_PROD) return cb(null, true);
     return cb(new Error('Not allowed by CORS'));
   },
   credentials: true
@@ -153,7 +169,18 @@ const publicBookingLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many booking requests. Try again in an hour.' }
 });
-app.locals.limiters = { authLimiter, registerLimiter, subscribeLimiter, passwordResetRequestLimiter, publicBookingLimiter };
+// /api/bookings/lookup returns full PII (phone, dog name, dates, free-text
+// message) for any matching email. Without a limiter, anyone can enumerate
+// customer addresses by submitting candidate emails and observing whether the
+// response array is empty.
+const bookingLookupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many lookup attempts. Try again in an hour.' }
+});
+app.locals.limiters = { authLimiter, registerLimiter, subscribeLimiter, passwordResetRequestLimiter, publicBookingLimiter, bookingLookupLimiter };
 
 // Admin auth
 app.post('/api/auth/login', authLimiter, async (req, res) => {
@@ -174,8 +201,9 @@ app.post('/api/customer/register', registerLimiter, async (req, res) => {
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'Name, email, and password are required' });
   }
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    return res.status(400).json({ error: passwordError });
   }
   const result = await registerCustomer(name, email, password, phone, dog_name);
   if (result.error) {
@@ -253,9 +281,10 @@ app.get('/api/customer/profile', authenticateCustomer, async (req, res) => {
 // Feature routers
 app.use('/api/services', require('./server/routes/services'));
 app.use('/api/photos', require('./server/routes/photos'));
-// Rate-limit only the public booking-creation endpoint; admin and authenticated
-// customer routes on the same router stay unlimited.
+// Rate-limit only the public booking-creation and lookup endpoints; admin and
+// authenticated customer routes on the same router stay unlimited.
 app.post('/api/bookings', publicBookingLimiter, (req, res, next) => next('route'));
+app.post('/api/bookings/lookup', bookingLookupLimiter, (req, res, next) => next('route'));
 app.use('/api/bookings', require('./server/routes/bookings'));
 app.use('/api/payments', require('./server/routes/payments'));
 app.use('/api/dogs', require('./server/routes/dogs'));

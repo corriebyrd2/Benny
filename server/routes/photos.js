@@ -38,6 +38,28 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }
 });
 
+// Multer's fileFilter only sees the client-declared MIME type, which is trivial
+// to spoof. Sniff the first 16 bytes of the file on disk and verify they match
+// one of the allowed image formats.
+async function detectImageMime(filePath) {
+  const fd = await fs.promises.open(filePath, 'r');
+  try {
+    const { bytesRead, buffer } = await fd.read({ buffer: Buffer.alloc(16), position: 0 });
+    if (bytesRead < 12) return null;
+    const b = buffer;
+    if (b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return 'image/jpeg';
+    if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47 &&
+        b[4] === 0x0D && b[5] === 0x0A && b[6] === 0x1A && b[7] === 0x0A) return 'image/png';
+    if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38 &&
+        (b[4] === 0x37 || b[4] === 0x39) && b[5] === 0x61) return 'image/gif';
+    if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
+        b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
+    return null;
+  } finally {
+    await fd.close();
+  }
+}
+
 // Treat the multipart-form field "show_on_homepage" as false only when explicitly
 // set to '0' or 'false'. Any other value (including undefined) defaults to true.
 function parseShowOnHomepage(val) {
@@ -67,6 +89,12 @@ router.get('/all', authenticateToken, requirePermission('read'), async (req, res
 router.post('/', authenticateToken, requirePermission('write'), upload.single('photo'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No photo file provided' });
+  }
+
+  const detected = await detectImageMime(req.file.path);
+  if (!detected) {
+    await fs.promises.unlink(req.file.path).catch(() => {});
+    return res.status(400).json({ error: 'Uploaded file is not a supported image' });
   }
 
   const { caption, layout, display_order, show_on_homepage, section } = req.body;

@@ -146,7 +146,14 @@ const passwordResetRequestLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many password reset requests. Try again in an hour.' }
 });
-app.locals.limiters = { authLimiter, registerLimiter, subscribeLimiter, passwordResetRequestLimiter };
+const publicBookingLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many booking requests. Try again in an hour.' }
+});
+app.locals.limiters = { authLimiter, registerLimiter, subscribeLimiter, passwordResetRequestLimiter, publicBookingLimiter };
 
 // Admin auth
 app.post('/api/auth/login', authLimiter, async (req, res) => {
@@ -246,6 +253,9 @@ app.get('/api/customer/profile', authenticateCustomer, async (req, res) => {
 // Feature routers
 app.use('/api/services', require('./server/routes/services'));
 app.use('/api/photos', require('./server/routes/photos'));
+// Rate-limit only the public booking-creation endpoint; admin and authenticated
+// customer routes on the same router stay unlimited.
+app.post('/api/bookings', publicBookingLimiter, (req, res, next) => next('route'));
 app.use('/api/bookings', require('./server/routes/bookings'));
 app.use('/api/payments', require('./server/routes/payments'));
 app.use('/api/dogs', require('./server/routes/dogs'));

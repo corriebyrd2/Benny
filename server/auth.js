@@ -2,7 +2,10 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { query } = require('./database');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'benny-pets-default-secret';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET === 'benny-pets-default-secret' || JWT_SECRET === 'change-this-to-a-random-secret-key') {
+  throw new Error('JWT_SECRET must be set to a strong random value before loading auth module');
+}
 
 // Role hierarchy: admin > manager > viewer
 const ROLE_PERMISSIONS = {

@@ -110,6 +110,16 @@ app.use(cors({
 // mounted BEFORE express.json() consumes the stream.
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '1mb' }));
+// body-parser 2.x (bundled with Express 5) leaves req.body undefined when the
+// incoming request has no JSON body — empty body, missing/wrong Content-Type,
+// browser preflights, health probes. Route handlers that destructure req.body
+// then crash with "Cannot destructure property '...' of 'req.body' as it is
+// undefined" and surface as a 500. Restore the previous default of an empty
+// object so each handler's own field validation runs and returns a clean 400.
+app.use((req, _res, next) => {
+  if (req.body == null) req.body = {};
+  next();
+});
 
 // Health check — hits the database to confirm it's reachable.
 app.get('/healthz', async (req, res, next) => {

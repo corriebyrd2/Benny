@@ -63,6 +63,10 @@ npx playwright show-report
 | `payment.spec.js` | Payment-link email, webhook flips status, duplicate-webhook idempotency, bad signatures, ownership, already-paid guard |
 | `dogs.spec.js` | Dog CRUD, cross-customer isolation, validation |
 | `dashboard.spec.js` | Stats arithmetic, services CRUD + active filter, photo upload mime validation |
+| `security.spec.js` | Magic-byte upload sniffing, public-endpoint rate limits (lookup, booking creation), password policy (length + letter + digit), email subject sanitization, malformed-recipient rejection, JSON 404, JWT type boundaries and tampering, settings-key whitelist |
+| `api-coverage.spec.js` | Newsletter subscribers (idempotency, rate limit, validation), site settings GET/PUT + whitelist, password-reset flow (request, single-use token, second-request invalidation, brute-force limit), campaign stats and validation, photo edit/delete, payments config visibility |
+| `headers.spec.js` | Helmet hardening headers, rate-limit headers on auth responses, JSON content-type on errors, ETag-off invariant |
+| `ui.spec.js` | Browser-driven flows: homepage services + newsletter signup, customer register/login (success, weak password, wrong password), admin login success and failure |
 
 ## How the harness works
 

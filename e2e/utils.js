@@ -84,9 +84,23 @@ async function simulateStripeWebhook(request, { type, booking_id, payment_id }) 
   return res;
 }
 
+// 1x1 transparent PNG used by upload tests that need a payload that survives
+// the magic-byte sniff in server/routes/photos.js.
+const TINY_PNG = Buffer.from(
+  '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6300010000000500010d0a2db40000000049454e44ae426082',
+  'hex'
+);
+
+// Strong password that satisfies the policy in server/customerAuth.js
+// (>=10 chars, contains a letter and a digit). Used by every fixture that
+// creates a customer so individual specs don't have to invent one.
+const STRONG_PASSWORD = 'password123';
+
 module.exports = {
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
+  STRONG_PASSWORD,
+  TINY_PNG,
   resetAll,
   safeBody,
   loginAdmin,

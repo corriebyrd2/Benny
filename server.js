@@ -90,20 +90,24 @@ app.use(helmet({
 app.use(compression());
 
 // CORS whitelist. FRONTEND_ORIGIN is a comma-separated list of allowed origins.
-// Same-origin requests (no Origin header) are always allowed because the app
-// also serves its own HTML. Cross-origin requests in production are rejected
-// unless their origin is in the whitelist — never fall through to allow-all
+// Browsers send an Origin header on every non-GET fetch (including same-origin
+// POSTs like the admin login form), so "no Origin header" alone isn't enough
+// to identify a same-origin call — we also accept any Origin matching the
+// request's own scheme+host. Cross-origin requests in production are rejected
+// unless their origin is in the whitelist; we never fall through to allow-all
 // while credentials: true is set.
 const allowedOrigins = (process.env.FRONTEND_ORIGIN || '')
   .split(',').map(s => s.trim()).filter(Boolean);
-app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true);
-    if (allowedOrigins.includes(origin)) return cb(null, true);
-    if (allowedOrigins.length === 0 && !IS_PROD) return cb(null, true);
-    return cb(new Error('Not allowed by CORS'));
-  },
-  credentials: true
+app.use(cors((req, cb) => {
+  const origin = req.header('Origin');
+  const sameOrigin = origin && origin === `${req.protocol}://${req.get('host')}`;
+  const allowed =
+    !origin ||
+    sameOrigin ||
+    allowedOrigins.includes(origin) ||
+    (allowedOrigins.length === 0 && !IS_PROD);
+  if (!allowed) return cb(new Error('Not allowed by CORS'));
+  cb(null, { origin: true, credentials: true });
 }));
 
 // Stripe webhook needs the raw body for signature verification, so it must be

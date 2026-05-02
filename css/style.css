@@ -979,8 +979,8 @@ img {
 }
 
 .contact-info {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
 
@@ -1322,5 +1322,9 @@ img {
 
   .bouncing-dog {
     font-size: 5rem;
+  }
+
+  .contact-info {
+    grid-template-columns: 1fr;
   }
 }

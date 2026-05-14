@@ -1430,7 +1430,7 @@
     async function checkAvailability(date) {
       const alertEl = document.getElementById('availabilityAlert');
       try {
-        const res = await fetch('/api/availability?date=' + encodeURIComponent(date));
+        const res = await fetch('/api/bookings/availability?date=' + encodeURIComponent(date));
         if (!res.ok) return;
         const data = await res.json();
         const remaining = data.capacity - data.count;

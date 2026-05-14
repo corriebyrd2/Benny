@@ -6,9 +6,32 @@ const mailer = require('../email');
 
 const router = express.Router();
 
+// Public: Check availability for a given date
+// Returns count of non-cancelled bookings that overlap the requested date.
+// Capacity is fixed at 10 slots per day.
+router.get('/availability', async (req, res) => {
+  const { date } = req.query;
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: 'date query param required (YYYY-MM-DD)' });
+  }
+
+  const { rows } = await query(
+    `SELECT COUNT(*)::int AS count FROM bookings
+     WHERE status != 'cancelled'
+       AND start_date IS NOT NULL
+       AND start_date <= $1
+       AND COALESCE(end_date, start_date) >= $1`,
+    [date]
+  );
+
+  const count = rows[0].count;
+  const capacity = 10;
+  res.json({ date, count, capacity, available: count < capacity });
+});
+
 // Public: Create a booking
 router.post('/', async (req, res) => {
-  const { owner_name, email, phone, dog_name, service_id, preferred_dates, message } = req.body;
+  const { owner_name, email, phone, dog_name, service_id, preferred_dates, message, start_date, end_date } = req.body;
 
   if (!owner_name || !email || !dog_name || !service_id) {
     return res.status(400).json({ error: 'Missing required fields: owner_name, email, dog_name, service_id' });
@@ -21,13 +44,14 @@ router.post('/', async (req, res) => {
   }
 
   const { rows } = await query(
-    `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, start_date, end_date)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
     [
       owner_name, email, phone || '', dog_name,
       service_id, service.name,
       preferred_dates || '', message || '',
-      service.price_cents
+      service.price_cents,
+      start_date || null, end_date || null
     ]
   );
   const booking = rows[0];
@@ -57,7 +81,7 @@ router.get('/my', authenticateCustomer, async (req, res) => {
 
 // Authenticated customer: Create a booking
 router.post('/customer-book', authenticateCustomer, async (req, res) => {
-  const { dog_name, dog_id, service_id, preferred_dates, message } = req.body;
+  const { dog_name, dog_id, service_id, preferred_dates, message, start_date, end_date } = req.body;
 
   let resolvedDogName = dog_name;
   if (dog_id) {
@@ -91,13 +115,14 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
   }
 
   const { rows } = await query(
-    `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, customer_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+    `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, customer_id, start_date, end_date)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
     [
       customer.name, customer.email, customer.phone || '',
       resolvedDogName, service_id, service.name,
       preferred_dates || '', message || '',
-      service.price_cents, customer.id
+      service.price_cents, customer.id,
+      start_date || null, end_date || null
     ]
   );
   const booking = rows[0];

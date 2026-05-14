@@ -279,6 +279,26 @@
 
     .form-error.visible { display: block; }
 
+    .availability-alert {
+      display: none;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-weight: 700;
+      font-size: 0.9rem;
+      margin-top: 12px;
+    }
+    .availability-alert.visible { display: block; }
+    .availability-alert.warn {
+      background: #FEF3CD;
+      color: #856404;
+      border-left: 3px solid var(--warning);
+    }
+    .availability-alert.full {
+      background: #FADBD8;
+      color: #922B21;
+      border-left: 3px solid var(--danger);
+    }
+
     .btn {
       display: inline-flex;
       align-items: center;
@@ -1187,6 +1207,7 @@
                   <input type="date" id="bookDateEnd">
                 </div>
               </div>
+              <div class="availability-alert" id="availabilityAlert"></div>
             </div>
 
             <div class="form-section">
@@ -1399,8 +1420,38 @@
           if (endInput.value && endInput.value < startInput.value) {
             endInput.value = startInput.value;
           }
+          checkAvailability(startInput.value);
+        } else {
+          clearAvailabilityAlert();
         }
       });
+    }
+
+    async function checkAvailability(date) {
+      const alertEl = document.getElementById('availabilityAlert');
+      try {
+        const res = await fetch('/api/availability?date=' + encodeURIComponent(date));
+        if (!res.ok) return;
+        const data = await res.json();
+        const remaining = data.capacity - data.count;
+        alertEl.className = 'availability-alert';
+        if (!data.available) {
+          alertEl.textContent = 'This date is fully booked. Please choose a different date.';
+          alertEl.classList.add('visible', 'full');
+        } else if (remaining <= 3) {
+          alertEl.textContent = 'Only ' + remaining + ' spot' + (remaining === 1 ? '' : 's') + ' left on this date — book soon!';
+          alertEl.classList.add('visible', 'warn');
+        } else {
+          alertEl.classList.remove('visible');
+        }
+      } catch {
+        // silently ignore network errors — don't block the form
+      }
+    }
+
+    function clearAvailabilityAlert() {
+      const alertEl = document.getElementById('availabilityAlert');
+      alertEl.className = 'availability-alert';
     }
 
     // --- Auth Check ---
@@ -1679,9 +1730,13 @@
       try {
         const dogSelect = document.getElementById('bookDogSelect');
         const dogVal = dogSelect.value;
+        const startDateVal = document.getElementById('bookDateStart').value;
+        const endDateVal = document.getElementById('bookDateEnd').value;
         let bookingBody = {
           service_id: parseInt(serviceId),
           preferred_dates: formatPreferredDates(),
+          start_date: startDateVal || null,
+          end_date: endDateVal || null,
           message: document.getElementById('bookMessage').value.trim()
         };
 

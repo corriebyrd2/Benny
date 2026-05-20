@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Availability Alert — Mockup</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #FF6B35;
+      --primary-dark: #E5551F;
+      --secondary: #4ECDC4;
+      --dark: #2C3E50;
+      --text: #333333;
+      --text-light: #666666;
+      --bg: #FFFDF7;
+      --bg-alt: #FFF8EE;
+      --white: #FFFFFF;
+      --success: #27AE60;
+      --warning: #F39C12;
+      --danger: #E74C3C;
+      --shadow: 0 4px 20px rgba(0,0,0,0.08);
+      --radius: 16px;
+      --radius-sm: 8px;
+      --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Nunito', sans-serif;
+      color: var(--text);
+      background: #f0ede8;
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    h1, h2, h3 {
+      font-family: 'Fredoka One', cursive;
+      line-height: 1.2;
+    }
+
+    .page-title {
+      text-align: center;
+      margin-bottom: 8px;
+      font-size: 1.5rem;
+      color: var(--dark);
+    }
+
+    .page-subtitle {
+      text-align: center;
+      color: var(--text-light);
+      font-size: 0.9rem;
+      margin-bottom: 40px;
+    }
+
+    .scenarios {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 28px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .scenario-label {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1rem;
+      text-align: center;
+      margin-bottom: 12px;
+      padding: 5px 14px;
+      border-radius: 50px;
+      display: inline-block;
+    }
+
+    .label-ok   { background: #D5F5E3; color: #1E8449; }
+    .label-warn { background: #FEF3CD; color: #856404; }
+    .label-full { background: #FADBD8; color: #922B21; }
+
+    .scenario-header {
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    /* Booking form card */
+    .booking-form-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+
+    .booking-form-card h2 {
+      font-size: 1.6rem;
+      color: var(--dark);
+      margin-bottom: 4px;
+    }
+
+    .booking-form-card > p {
+      color: var(--text-light);
+      font-size: 0.95rem;
+      margin-bottom: 24px;
+    }
+
+    .form-section {
+      margin-bottom: 24px;
+    }
+
+    .form-section-label {
+      font-weight: 800;
+      color: var(--dark);
+      font-size: 0.95rem;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--bg-alt);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .form-group { margin-bottom: 0; }
+
+    .form-group label {
+      display: block;
+      font-weight: 700;
+      color: var(--dark);
+      margin-bottom: 6px;
+      font-size: 0.9rem;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: var(--radius-sm);
+      font-family: 'Nunito', sans-serif;
+      font-size: 1rem;
+      background: var(--bg);
+    }
+
+    .form-group input.has-value {
+      border-color: var(--primary);
+    }
+
+    /* Availability alert */
+    .availability-alert {
+      padding: 11px 14px;
+      border-radius: var(--radius-sm);
+      font-weight: 700;
+      font-size: 0.9rem;
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .availability-alert.warn {
+      background: #FEF3CD;
+      color: #856404;
+      border-left: 3px solid var(--warning);
+    }
+
+    .availability-alert.full {
+      background: #FADBD8;
+      color: #922B21;
+      border-left: 3px solid var(--danger);
+    }
+
+    .availability-alert .alert-icon {
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+
+    /* No-alert placeholder */
+    .no-alert-placeholder {
+      margin-top: 12px;
+      padding: 11px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 0.9rem;
+      color: var(--text-light);
+      font-style: italic;
+      border: 2px dashed #e0e0e0;
+      text-align: center;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 14px 28px;
+      border-radius: 50px;
+      font-family: 'Nunito', sans-serif;
+      font-weight: 800;
+      font-size: 1rem;
+      cursor: pointer;
+      border: none;
+      background: var(--primary);
+      color: var(--white);
+      margin-top: 8px;
+      transition: all var(--transition);
+    }
+
+    .dots {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      margin: 28px 0 16px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ccc;
+    }
+  </style>
+</head>
+<body>
+
+  <h2 class="page-title">Availability Alert — Mockup</h2>
+  <p class="page-subtitle">Three states shown below based on how many of the 10 daily spots are taken</p>
+
+  <div class="scenarios">
+
+    <!-- State 1: Plenty of availability -->
+    <div>
+      <div class="scenario-header">
+        <span class="scenario-label label-ok">Plenty available (4–10 spots)</span>
+      </div>
+      <div class="booking-form-card">
+        <h2>Book a Service</h2>
+        <p>Choose a service and tell us about your pup's stay.</p>
+
+        <div class="form-section">
+          <div class="form-section-label">3. When?</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Start Date</label>
+              <input type="date" value="2026-05-20" class="has-value" readonly>
+            </div>
+            <div class="form-group">
+              <label>End Date (optional)</label>
+              <input type="date" value="2026-05-22" class="has-value" readonly>
+            </div>
+          </div>
+          <!-- No alert shown -->
+          <div class="no-alert-placeholder">No alert — availability looks good</div>
+        </div>
+
+        <button class="btn-primary">Submit Booking Request</button>
+      </div>
+    </div>
+
+    <!-- State 2: Running low -->
+    <div>
+      <div class="scenario-header">
+        <span class="scenario-label label-warn">Running low (1–3 spots left)</span>
+      </div>
+      <div class="booking-form-card">
+        <h2>Book a Service</h2>
+        <p>Choose a service and tell us about your pup's stay.</p>
+
+        <div class="form-section">
+          <div class="form-section-label">3. When?</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Start Date</label>
+              <input type="date" value="2026-05-25" class="has-value" readonly>
+            </div>
+            <div class="form-group">
+              <label>End Date (optional)</label>
+              <input type="date" readonly>
+            </div>
+          </div>
+          <div class="availability-alert warn">
+            <span class="alert-icon">⚠️</span>
+            Only 2 spots left on this date — book soon!
+          </div>
+        </div>
+
+        <button class="btn-primary">Submit Booking Request</button>
+      </div>
+    </div>
+
+    <!-- State 3: Fully booked -->
+    <div>
+      <div class="scenario-header">
+        <span class="scenario-label label-full">Fully booked (0 spots)</span>
+      </div>
+      <div class="booking-form-card">
+        <h2>Book a Service</h2>
+        <p>Choose a service and tell us about your pup's stay.</p>
+
+        <div class="form-section">
+          <div class="form-section-label">3. When?</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Start Date</label>
+              <input type="date" value="2026-05-30" class="has-value" readonly>
+            </div>
+            <div class="form-group">
+              <label>End Date (optional)</label>
+              <input type="date" readonly>
+            </div>
+          </div>
+          <div class="availability-alert full">
+            <span class="alert-icon">🚫</span>
+            This date is fully booked. Please choose a different date.
+          </div>
+        </div>
+
+        <button class="btn-primary">Submit Booking Request</button>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>

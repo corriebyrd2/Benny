@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { query } = require('../database');
 const { authenticateToken, requirePermission, logAudit } = require('../auth');
+const r2 = require('../r2');
 
 const router = express.Router();
 
@@ -71,18 +72,27 @@ function normalizeSection(val) {
   return ALLOWED_SECTIONS.includes(val) ? val : 'gallery';
 }
 
+function photoUrl(filename) {
+  if (r2.isConfigured()) return r2.publicUrl(filename);
+  return `/uploads/${encodeURIComponent(filename)}`;
+}
+
+function withUrl(photo) {
+  return { ...photo, url: photoUrl(photo.filename) };
+}
+
 // Public: Get all homepage photos
 router.get('/', async (req, res) => {
   const { rows } = await query(
     'SELECT * FROM photos WHERE show_on_homepage ORDER BY display_order ASC'
   );
-  res.json(rows);
+  res.json(rows.map(withUrl));
 });
 
 // Admin: Get all photos
 router.get('/all', authenticateToken, requirePermission('read'), async (req, res) => {
   const { rows } = await query('SELECT * FROM photos ORDER BY display_order ASC');
-  res.json(rows);
+  res.json(rows.map(withUrl));
 });
 
 // Admin: Upload a photo
@@ -95,6 +105,11 @@ router.post('/', authenticateToken, requirePermission('write'), upload.single('p
   if (!detected) {
     await fs.promises.unlink(req.file.path).catch(() => {});
     return res.status(400).json({ error: 'Uploaded file is not a supported image' });
+  }
+
+  if (r2.isConfigured()) {
+    await r2.uploadFile(req.file.filename, req.file.path, detected);
+    await fs.promises.unlink(req.file.path).catch(() => {});
   }
 
   const { caption, layout, display_order, show_on_homepage, section } = req.body;
@@ -117,6 +132,7 @@ router.post('/', authenticateToken, requirePermission('write'), upload.single('p
   res.status(201).json({
     id: rows[0].id,
     filename: req.file.filename,
+    url: photoUrl(req.file.filename),
     message: 'Photo uploaded'
   });
 });
@@ -153,9 +169,11 @@ router.delete('/:id', authenticateToken, requirePermission('delete'), async (req
   const photo = rows[0];
 
   if (photo) {
-    const filePath = path.join(UPLOAD_DIR, photo.filename);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    if (r2.isConfigured()) {
+      await r2.deleteFile(photo.filename).catch(() => {});
+    } else {
+      const filePath = path.join(UPLOAD_DIR, photo.filename);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     }
     await query('DELETE FROM photos WHERE id = $1', [req.params.id]);
   }

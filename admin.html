@@ -1275,7 +1275,7 @@
       const section = p.section || 'gallery';
       return `
         <div class="photo-card">
-          <img src="/uploads/${encodeURIComponent(p.filename)}" alt="${escapeHtml(p.caption)}" loading="lazy"
+          <img src="${p.url}" alt="${escapeHtml(p.caption)}" loading="lazy"
             onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
           <div class="photo-placeholder" style="display:none;">&#128247;</div>
           <div class="photo-card-body">

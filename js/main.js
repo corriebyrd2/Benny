@@ -91,7 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const layoutClass = p.layout === 'large' ? ' large' : (p.layout === 'tall' ? ' tall' : '');
       return `
         <div class="gallery-item${layoutClass}">
-          <img src="/uploads/${encodeURIComponent(p.filename)}" alt="${p.caption || ''}"
+          <img src="${p.url}" alt="${p.caption || ''}"
             style="width:100%;height:100%;object-fit:cover;"
             onerror="this.parentElement.innerHTML='<div class=\\'gallery-placeholder\\' style=\\'--hue:30;\\'><span>&#128054;</span><p>${p.caption || ''}</p></div>';">
         </div>
@@ -116,7 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
       : 'max-width:100%;max-height:500px;object-fit:contain;display:block;border-radius:16px;';
 
     container.innerHTML = `
-      <img src="/uploads/${encodeURIComponent(photo.filename)}" alt="${photo.caption || ''}" style="${styles}">
+      <img src="${photo.url}" alt="${photo.caption || ''}" style="${styles}">
     `;
   }
 

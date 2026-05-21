@@ -108,8 +108,11 @@ router.post('/', authenticateToken, requirePermission('write'), upload.single('p
   }
 
   if (r2.isConfigured()) {
-    await r2.uploadFile(req.file.filename, req.file.path, detected);
-    await fs.promises.unlink(req.file.path).catch(() => {});
+    try {
+      await r2.uploadFile(req.file.filename, req.file.path, detected);
+    } finally {
+      await fs.promises.unlink(req.file.path).catch(() => {});
+    }
   }
 
   const { caption, layout, display_order, show_on_homepage, section } = req.body;

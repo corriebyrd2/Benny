@@ -125,6 +125,18 @@ app.use((req, _res, next) => {
   next();
 });
 
+// Block probes for dotfiles and other sensitive root paths. These are never
+// served anyway (no root static middleware exists), but logging them makes
+// automated scan activity visible in production logs.
+const PROBE_PATH_RE = /^\/(?:\.[\w]|package(?:-lock)?\.json$|node_modules(?:\/|$)|Procfile$|railway\.json$)/i;
+app.use((req, res, next) => {
+  if (PROBE_PATH_RE.test(req.path)) {
+    console.warn('[probe]', req.ip, req.method, req.path);
+    return res.status(404).end();
+  }
+  next();
+});
+
 // Health check — hits the database to confirm it's reachable.
 app.get('/healthz', async (req, res, next) => {
   try {
@@ -341,6 +353,9 @@ app.get('/api/dashboard/stats', authenticateToken, requirePermission('read'), as
 
 // 404 for unmatched API routes
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
+
+// Catch-all 404 for any other unmatched route
+app.use((req, res) => res.status(404).end());
 
 // Central error handler — avoid leaking internals in production.
 // eslint-disable-next-line no-unused-vars

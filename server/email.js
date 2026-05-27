@@ -95,6 +95,26 @@ function isValidRecipient(addr) {
   return typeof addr === 'string' && addr.length <= 254 && !/[\r\n\0]/.test(addr) && EMAIL_RE.test(addr);
 }
 
+// node-pg returns DATE columns as JS Date objects; normalize to YYYY-MM-DD.
+function formatStayDate(d) {
+  if (!d) return '';
+  const date = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(date.getTime())) return String(d);
+  return date.toISOString().slice(0, 10);
+}
+
+// Stay span for date-range bookings, e.g. "2026-06-01 to 2026-06-08 (7 nights)".
+function stayLine(booking) {
+  if (!booking.start_date || !booking.end_date) return null;
+  const start = formatStayDate(booking.start_date);
+  const end = formatStayDate(booking.end_date);
+  const nights = Math.round(
+    (new Date(booking.end_date).getTime() - new Date(booking.start_date).getTime()) / 86400000
+  );
+  const span = `${start} to ${end}`;
+  return nights > 0 ? `${span} (${nights} night${nights === 1 ? '' : 's'})` : span;
+}
+
 function bookingSummary(booking) {
   const lines = [
     `Booking #${booking.id}`,
@@ -102,6 +122,8 @@ function bookingSummary(booking) {
     `Dog: ${booking.dog_name}`,
     `Amount: ${formatMoney(booking.amount_cents)}`
   ];
+  const stay = stayLine(booking);
+  if (stay) lines.push(`Stay: ${stay}`);
   if (booking.preferred_dates) lines.push(`Preferred dates: ${booking.preferred_dates}`);
   return lines;
 }
@@ -113,6 +135,7 @@ function bookingHtmlBlock(booking) {
       <tr><td style="padding:4px 12px 4px 0;color:#666;">Service</td><td>${escapeHtml(booking.service_name)}</td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#666;">Dog</td><td>${escapeHtml(booking.dog_name)}</td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#666;">Amount</td><td>${formatMoney(booking.amount_cents)}</td></tr>
+      ${stayLine(booking) ? `<tr><td style="padding:4px 12px 4px 0;color:#666;">Stay</td><td>${escapeHtml(stayLine(booking))}</td></tr>` : ''}
       ${booking.preferred_dates ? `<tr><td style="padding:4px 12px 4px 0;color:#666;">Dates</td><td>${escapeHtml(booking.preferred_dates)}</td></tr>` : ''}
     </table>
   `;

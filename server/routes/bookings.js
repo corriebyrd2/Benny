@@ -6,6 +6,30 @@ const mailer = require('../email');
 
 const router = express.Router();
 
+const MS_PER_DAY = 86400000;
+
+// Number of nights between two YYYY-MM-DD dates (0 if end <= start or invalid).
+function nightsBetween(startDate, endDate) {
+  const ms = new Date(endDate).getTime() - new Date(startDate).getTime();
+  if (!Number.isFinite(ms) || ms <= 0) return 0;
+  return Math.round(ms / MS_PER_DAY);
+}
+
+// Boarding/daycare are billed per-night/per-day, so the total must scale with
+// the length of stay; grooming/training are per-session (flat). The schema has
+// no unit column, so we infer the unit from the service's price_label.
+function computeAmountCents(service, startDate, endDate) {
+  const base = Number(service.price_cents) || 0;
+  const label = String(service.price_label || '').toLowerCase();
+  const perNight = label.includes('night');
+  const perDay = label.includes('day');
+  if ((!perNight && !perDay) || !startDate || !endDate) return base;
+  const nights = nightsBetween(startDate, endDate);
+  // Per-night charges the number of nights; per-day charges inclusive days.
+  const qty = perNight ? Math.max(1, nights) : Math.max(1, nights + 1);
+  return base * qty;
+}
+
 // Public: Check availability for a given date
 // Returns count of non-cancelled bookings that overlap the requested date.
 // Capacity is fixed at 10 slots per day.
@@ -43,6 +67,8 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Invalid service selected' });
   }
 
+  const amount_cents = computeAmountCents(service, start_date, end_date);
+
   const { rows } = await query(
     `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, start_date, end_date)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
@@ -50,7 +76,7 @@ router.post('/', async (req, res) => {
       owner_name, email, phone || '', dog_name,
       service_id, service.name,
       preferred_dates || '', message || '',
-      service.price_cents,
+      amount_cents,
       start_date || null, end_date || null
     ]
   );
@@ -64,7 +90,7 @@ router.post('/', async (req, res) => {
   res.status(201).json({
     id: booking.id,
     message: 'Booking request submitted',
-    amount_cents: service.price_cents
+    amount_cents
   });
 });
 
@@ -114,6 +140,8 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
     return res.status(404).json({ error: 'Customer not found' });
   }
 
+  const amount_cents = computeAmountCents(service, start_date, end_date);
+
   const { rows } = await query(
     `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, customer_id, start_date, end_date)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
@@ -121,7 +149,7 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
       customer.name, customer.email, customer.phone || '',
       resolvedDogName, service_id, service.name,
       preferred_dates || '', message || '',
-      service.price_cents, customer.id,
+      amount_cents, customer.id,
       start_date || null, end_date || null
     ]
   );
@@ -136,7 +164,7 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
     id: booking.id,
     message: 'Booking request submitted successfully!',
     service_name: service.name,
-    amount_cents: service.price_cents
+    amount_cents
   });
 });
 

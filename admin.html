@@ -513,6 +513,12 @@
       background: #FFF3CD; color: #856404; text-transform: uppercase; letter-spacing: 0.3px;
     }
 
+    .dog-count-pill {
+      display: inline-block; padding: 1px 8px; border-radius: 50px;
+      background: var(--accent); color: var(--dark);
+      font-size: 0.75rem; font-weight: 800; margin-left: 4px;
+    }
+
     .client-bookings-table {
       width: 100%; background: var(--white); border-radius: var(--radius-sm); overflow: hidden;
     }
@@ -1174,10 +1180,15 @@
           return;
         }
 
-        tbody.innerHTML = bookings.map(b => `
+        tbody.innerHTML = bookings.map(b => {
+          const count = b.dog_count && b.dog_count > 1 ? b.dog_count : 1;
+          const dogCell = count > 1
+            ? `<strong>${escapeHtml(b.dog_name)}</strong> <span class="dog-count-pill">&times;${count}</span>`
+            : `<strong>${escapeHtml(b.dog_name)}</strong>`;
+          return `
           <tr>
             <td>#${b.id}</td>
-            <td><strong>${escapeHtml(b.dog_name)}</strong></td>
+            <td>${dogCell}</td>
             <td>${escapeHtml(b.owner_name)}<br><small style="color:var(--text-light)">${escapeHtml(b.email)}</small></td>
             <td>${escapeHtml(b.service_name)}</td>
             <td>${escapeHtml(b.preferred_dates || '-')}</td>
@@ -1187,7 +1198,8 @@
               <button class="btn btn-sm btn-outline" onclick="viewBooking(${b.id})">View</button>
             </td>
           </tr>
-        `).join('');
+          `;
+        }).join('');
       } catch (err) {
         showToast('Failed to load bookings', true);
       }
@@ -1228,10 +1240,10 @@
               <div><strong>Owner:</strong> ${escapeHtml(b.owner_name)}</div>
               <div><strong>Email:</strong> ${escapeHtml(b.email)}</div>
               <div><strong>Phone:</strong> ${escapeHtml(b.phone || '-')}</div>
-              <div><strong>Dog:</strong> ${escapeHtml(b.dog_name)}</div>
+              <div><strong>Dog:</strong> ${escapeHtml(b.dog_name)}${b.dog_count > 1 ? ` <span class="dog-count-pill">&times;${b.dog_count}</span>` : ''}</div>
               <div><strong>Service:</strong> ${escapeHtml(b.service_name)}</div>
               <div><strong>Dates:</strong> ${escapeHtml(b.preferred_dates || '-')}</div>
-              <div><strong>Amount:</strong> ${formatCents(b.amount_cents)}</div>
+              <div><strong>Amount:</strong> ${formatCents(b.amount_cents)}${b.dog_count > 1 ? ` <small style="color:var(--text-light);">(${b.dog_count} dogs)</small>` : ''}</div>
             </div>
             ${b.message ? `<div><strong>Message:</strong><p style="margin-top:4px;color:var(--text-light)">${escapeHtml(b.message)}</p></div>` : ''}
             <div id="cancelReasonSection" style="display:none;">
@@ -2029,10 +2041,14 @@
         const dates = b.start_date
           ? formatDateRange(b.start_date, b.end_date)
           : (b.preferred_dates ? escapeHtml(b.preferred_dates) : '-');
+        const count = b.dog_count && b.dog_count > 1 ? b.dog_count : 1;
+        const dogCell = count > 1
+          ? `${escapeHtml(b.dog_name || '-')} <span class="dog-count-pill">&times;${count}</span>`
+          : escapeHtml(b.dog_name || '-');
         return `
           <tr>
             <td><strong>#${b.id}</strong></td>
-            <td>${escapeHtml(b.dog_name || '-')}</td>
+            <td>${dogCell}</td>
             <td>${escapeHtml(b.service_name || '-')}</td>
             <td>${dates}</td>
             <td>${formatCents(b.amount_cents)}</td>
@@ -2053,7 +2069,7 @@
             <table class="client-bookings-table">
               <thead>
                 <tr>
-                  <th>ID</th><th>Dog</th><th>Service</th><th>Dates</th>
+                  <th>ID</th><th>Dog(s)</th><th>Service</th><th>Dates</th>
                   <th>Amount</th><th>Status</th><th>Payment</th><th></th>
                 </tr>
               </thead>

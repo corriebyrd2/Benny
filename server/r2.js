@@ -1,4 +1,4 @@
-const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, HeadBucketCommand, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const fs = require('fs');
 
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
@@ -49,4 +49,23 @@ async function getObject(key) {
   }));
 }
 
-module.exports = { isConfigured, uploadFile, deleteFile, getObject };
+// One-shot startup probe so misconfigured R2 (wrong bucket name, wrong account
+// id, token missing Object Read) shows up immediately in deploy logs instead
+// of silently breaking every homepage photo. Returns `{ ok }` so the caller
+// can decide whether to log a warning — never throws.
+async function checkBucket() {
+  try {
+    await getClient().send(new HeadBucketCommand({ Bucket: R2_BUCKET_NAME }));
+    return { ok: true, bucket: R2_BUCKET_NAME };
+  } catch (err) {
+    return {
+      ok: false,
+      bucket: R2_BUCKET_NAME,
+      errorName: err.name,
+      message: err.message,
+      httpStatus: err.$metadata && err.$metadata.httpStatusCode,
+    };
+  }
+}
+
+module.exports = { isConfigured, uploadFile, deleteFile, getObject, checkBucket };

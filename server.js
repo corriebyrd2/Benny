@@ -368,6 +368,27 @@ app.use((err, req, res, next) => {
 
 async function bootstrap() {
   await initDb();
+
+  // If R2 is configured, probe the bucket once at startup. A misconfigured
+  // token or bucket name is the most common reason uploaded homepage photos
+  // (Hero / "Meet Ben & The Pack" / Gallery) don't appear — without this
+  // probe the failure is silent until someone notices a broken image.
+  const r2 = require('./server/r2');
+  if (r2.isConfigured()) {
+    const probe = await r2.checkBucket();
+    if (probe.ok) {
+      console.log(`[r2] startup probe OK — bucket "${probe.bucket}" reachable`);
+    } else {
+      const status = probe.httpStatus ? ` HTTP ${probe.httpStatus}` : '';
+      console.warn(
+        `[r2] startup probe FAILED — bucket "${probe.bucket}" not reachable ` +
+        `(${probe.errorName || 'Unknown'}${status}: ${probe.message}). ` +
+        `Homepage photos uploaded to this app will not load. ` +
+        `Check R2_BUCKET_NAME and that the R2 API token has Object Read & Write permission.`
+      );
+    }
+  }
+
   app.listen(PORT, () => {
     console.log(`Benny and the Pets server listening on :${PORT} (${NODE_ENV})`);
   });

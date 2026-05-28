@@ -1231,6 +1231,21 @@
             </div>`;
         }
 
+        const currentDogCount = b.dog_count && b.dog_count > 0 ? b.dog_count : 1;
+        const canEditDogCount =
+          b.payment_status !== 'paid' && b.status !== 'cancelled';
+        const dogCountDisplay = canEditDogCount
+          ? `<div>
+              <strong>Dogs on stay:</strong>
+              <span style="display:inline-flex;align-items:center;gap:6px;margin-left:6px;">
+                <input type="number" id="editDogCount" value="${currentDogCount}" min="1" max="10"
+                       style="width:64px;padding:4px 6px;border:2px solid #e0e0e0;border-radius:6px;font-family:inherit;">
+                <button class="btn btn-sm btn-outline" onclick="saveDogCount(${b.id})">Update &amp; re-price</button>
+              </span>
+              <small style="display:block;color:var(--text-light);margin-top:4px;">Rate is per dog &mdash; changing this recomputes the amount.</small>
+            </div>`
+          : `<div><strong>Dogs on stay:</strong> ${currentDogCount}</div>`;
+
         const body = `
           <div style="display:grid; gap:16px;">
             ${stateBanner}
@@ -1240,10 +1255,11 @@
               <div><strong>Owner:</strong> ${escapeHtml(b.owner_name)}</div>
               <div><strong>Email:</strong> ${escapeHtml(b.email)}</div>
               <div><strong>Phone:</strong> ${escapeHtml(b.phone || '-')}</div>
-              <div><strong>Dog:</strong> ${escapeHtml(b.dog_name)}${b.dog_count > 1 ? ` <span class="dog-count-pill">&times;${b.dog_count}</span>` : ''}</div>
+              <div><strong>Dog:</strong> ${escapeHtml(b.dog_name)}${currentDogCount > 1 ? ` <span class="dog-count-pill">&times;${currentDogCount}</span>` : ''}</div>
               <div><strong>Service:</strong> ${escapeHtml(b.service_name)}</div>
               <div><strong>Dates:</strong> ${escapeHtml(b.preferred_dates || '-')}</div>
-              <div><strong>Amount:</strong> ${formatCents(b.amount_cents)}${b.dog_count > 1 ? ` <small style="color:var(--text-light);">(${b.dog_count} dogs)</small>` : ''}</div>
+              ${dogCountDisplay}
+              <div><strong>Amount:</strong> ${formatCents(b.amount_cents)}${currentDogCount > 1 ? ` <small style="color:var(--text-light);">(${currentDogCount} dogs)</small>` : ''}</div>
             </div>
             ${b.message ? `<div><strong>Message:</strong><p style="margin-top:4px;color:var(--text-light)">${escapeHtml(b.message)}</p></div>` : ''}
             <div id="cancelReasonSection" style="display:none;">
@@ -1384,6 +1400,30 @@
         closeModal();
         loadBookings();
         loadDashboard();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
+    async function saveDogCount(id) {
+      const input = document.getElementById('editDogCount');
+      if (!input) return;
+      const raw = parseInt(input.value, 10);
+      const count = Math.min(10, Math.max(1, Number.isFinite(raw) ? raw : 1));
+      try {
+        const result = await apiCall(`/api/bookings/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ dog_count: count })
+        });
+        const newAmount = result.booking ? formatCents(result.booking.amount_cents) : '';
+        showToast(`Dog count set to ${count}${newAmount ? ` — amount is now ${newAmount}` : ''}`);
+        viewBooking(id);
+        loadBookings();
+        loadDashboard();
+        // The Clients panel caches its data; refresh if it has been loaded.
+        if (clientsCache && clientsCache.clients && clientsCache.clients.length) {
+          loadClients();
+        }
       } catch (err) {
         showToast(err.message, true);
       }

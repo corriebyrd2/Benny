@@ -253,20 +253,45 @@ router.get('/:id', authenticateToken, requirePermission('read'), async (req, res
 
 // Admin: Update booking status
 router.put('/:id', authenticateToken, requirePermission('write'), async (req, res) => {
-  const { status, payment_status, amount_cents } = req.body;
+  const { status, payment_status, amount_cents, dog_count } = req.body;
+
+  // When the admin changes dog_count, recompute amount_cents from the service
+  // rate so the per-dog multiplier flows through. Explicit amount_cents in
+  // the same request still wins so manual price adjustments stay possible.
+  let recomputedAmount = null;
+  if (dog_count !== undefined && amount_cents === undefined) {
+    const { rows: existing } = await query('SELECT * FROM bookings WHERE id = $1', [req.params.id]);
+    const booking = existing[0];
+    if (!booking) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+    if (booking.payment_status === 'paid') {
+      return res.status(409).json({ error: 'Cannot change dog count on a paid booking' });
+    }
+    const { rows: serviceRows } = await query('SELECT * FROM services WHERE id = $1', [booking.service_id]);
+    const service = serviceRows[0];
+    if (service) {
+      recomputedAmount = computeAmountCents(service, booking.start_date, booking.end_date, dog_count);
+    }
+  }
+
+  const normalizedDogCount = dog_count !== undefined ? normalizeDogCount(dog_count) : null;
+  const finalAmount = amount_cents ?? recomputedAmount;
 
   await query(
     `UPDATE bookings SET
        status = COALESCE($1, status),
        payment_status = COALESCE($2, payment_status),
        amount_cents = COALESCE($3, amount_cents),
+       dog_count = COALESCE($4, dog_count),
        updated_at = NOW()
-     WHERE id = $4`,
-    [status ?? null, payment_status ?? null, amount_cents ?? null, req.params.id]
+     WHERE id = $5`,
+    [status ?? null, payment_status ?? null, finalAmount ?? null, normalizedDogCount, req.params.id]
   );
 
+  const { rows: updated } = await query('SELECT * FROM bookings WHERE id = $1', [req.params.id]);
   await logAudit(req.admin.id, req.admin.email, 'update', 'bookings', req.params.id, 'success');
-  res.json({ message: 'Booking updated' });
+  res.json({ message: 'Booking updated', booking: updated[0] });
 });
 
 // Admin: Approve booking (confirms + auto-requests payment)

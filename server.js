@@ -324,6 +324,189 @@ if (TEST_MODE) {
 
 // Dashboard stats for admin
 const { authenticateToken, requirePermission } = require('./server/auth');
+
+// Admin: Clients directory — aggregates registered customers AND guest
+// bookers (by email) with their dogs, bookings, and per-client totals,
+// plus business-wide KPIs in a single payload so the client panel can
+// render without a second round-trip.
+app.get('/api/admin/clients', authenticateToken, requirePermission('read'), async (req, res, next) => {
+  try {
+    const [customersRes, dogsRes, bookingsRes] = await Promise.all([
+      query('SELECT id, name, email, phone, created_at FROM customers ORDER BY created_at DESC'),
+      query('SELECT id, customer_id, name, breed, weight, age, notes, created_at FROM dogs'),
+      query(`SELECT id, owner_name, email, phone, dog_name, service_name, preferred_dates,
+                    status, payment_status, amount_cents, customer_id, start_date, end_date,
+                    created_at
+             FROM bookings ORDER BY created_at DESC`)
+    ]);
+
+    const customers = customersRes.rows;
+    const dogs = dogsRes.rows;
+    const bookings = bookingsRes.rows;
+
+    const customersById = new Map(customers.map(c => [c.id, c]));
+    const clientsByEmail = new Map();
+
+    function getOrCreateClient(emailRaw, fallback) {
+      const key = (emailRaw || '').toLowerCase().trim();
+      if (!key) return null;
+      let client = clientsByEmail.get(key);
+      if (!client) {
+        client = {
+          customer_id: null,
+          name: fallback.name || emailRaw,
+          email: fallback.email || emailRaw,
+          phone: fallback.phone || '',
+          registered_at: null,
+          type: 'guest',
+          dogs: [],
+          bookings: [],
+          first_seen: fallback.created_at || null,
+          last_seen: fallback.created_at || null
+        };
+        clientsByEmail.set(key, client);
+      }
+      return client;
+    }
+
+    for (const c of customers) {
+      const client = getOrCreateClient(c.email, { name: c.name, email: c.email, phone: c.phone, created_at: c.created_at });
+      if (!client) continue;
+      client.customer_id = c.id;
+      client.name = c.name;
+      client.email = c.email;
+      client.phone = c.phone || client.phone;
+      client.registered_at = c.created_at;
+      client.type = 'registered';
+      client.first_seen = c.created_at;
+      client.last_seen = c.created_at;
+    }
+
+    for (const d of dogs) {
+      const customer = customersById.get(d.customer_id);
+      if (!customer) continue;
+      const client = clientsByEmail.get((customer.email || '').toLowerCase().trim());
+      if (!client) continue;
+      client.dogs.push({
+        id: d.id,
+        name: d.name,
+        breed: d.breed || '',
+        weight: d.weight || '',
+        age: d.age || '',
+        notes: d.notes || '',
+        created_at: d.created_at,
+        source: 'profile'
+      });
+    }
+
+    for (const b of bookings) {
+      const client = getOrCreateClient(b.email, {
+        name: b.owner_name, email: b.email, phone: b.phone, created_at: b.created_at
+      });
+      if (!client) continue;
+
+      if (!client.phone && b.phone) client.phone = b.phone;
+      if (!client.first_seen || new Date(b.created_at) < new Date(client.first_seen)) {
+        client.first_seen = b.created_at;
+      }
+      if (!client.last_seen || new Date(b.created_at) > new Date(client.last_seen)) {
+        client.last_seen = b.created_at;
+      }
+
+      client.bookings.push({
+        id: b.id,
+        dog_name: b.dog_name,
+        service_name: b.service_name,
+        preferred_dates: b.preferred_dates || '',
+        start_date: b.start_date,
+        end_date: b.end_date,
+        status: b.status,
+        payment_status: b.payment_status,
+        amount_cents: Number(b.amount_cents) || 0,
+        created_at: b.created_at
+      });
+
+      // Surface dogs that appear only in bookings (guests, or registered
+      // customers who haven't added a profile for that pup yet).
+      const dogNameLower = (b.dog_name || '').toLowerCase().trim();
+      if (dogNameLower && !client.dogs.some(d => d.name.toLowerCase().trim() === dogNameLower)) {
+        client.dogs.push({
+          id: null,
+          name: b.dog_name,
+          breed: '',
+          weight: '',
+          age: '',
+          notes: '',
+          created_at: b.created_at,
+          source: 'booking'
+        });
+      }
+    }
+
+    const clients = Array.from(clientsByEmail.values()).map(client => {
+      const paid = client.bookings.filter(b => b.payment_status === 'paid');
+      const pending = client.bookings.filter(b => b.status !== 'cancelled' && b.payment_status !== 'paid');
+      const total_spent_cents = paid.reduce((s, b) => s + b.amount_cents, 0);
+      const pending_revenue_cents = pending.reduce((s, b) => s + b.amount_cents, 0);
+      return {
+        ...client,
+        total_bookings: client.bookings.length,
+        completed_bookings: client.bookings.filter(b => b.status === 'completed').length,
+        cancelled_bookings: client.bookings.filter(b => b.status === 'cancelled').length,
+        pending_bookings: client.bookings.filter(b => b.status === 'pending').length,
+        confirmed_bookings: client.bookings.filter(b => b.status === 'confirmed').length,
+        total_dogs: client.dogs.length,
+        total_spent_cents,
+        pending_revenue_cents
+      };
+    });
+
+    const totalRevenue = clients.reduce((s, c) => s + c.total_spent_cents, 0);
+    const pendingRevenue = clients.reduce((s, c) => s + c.pending_revenue_cents, 0);
+    const totalBookings = bookings.length;
+    const totalClients = clients.length;
+    const totalDogs = clients.reduce((s, c) => s + c.total_dogs, 0);
+    const registeredClients = clients.filter(c => c.type === 'registered').length;
+    const guestClients = clients.filter(c => c.type === 'guest').length;
+    const avgRevenuePerClient = totalClients ? Math.round(totalRevenue / totalClients) : 0;
+    const avgBookingsPerClient = totalClients ? Math.round((totalBookings / totalClients) * 10) / 10 : 0;
+    const avgDogsPerClient = totalClients ? Math.round((totalDogs / totalClients) * 10) / 10 : 0;
+
+    const topSpender = clients.reduce(
+      (top, c) => c.total_spent_cents > (top?.total_spent_cents || 0) ? c : top, null);
+    const mostLoyal = clients.reduce(
+      (top, c) => c.total_bookings > (top?.total_bookings || 0) ? c : top, null);
+
+    clients.sort((a, b) => new Date(b.last_seen || 0) - new Date(a.last_seen || 0));
+
+    res.json({
+      clients,
+      kpis: {
+        total_revenue_cents: totalRevenue,
+        pending_revenue_cents: pendingRevenue,
+        total_bookings: totalBookings,
+        total_clients: totalClients,
+        total_dogs: totalDogs,
+        registered_clients: registeredClients,
+        guest_clients: guestClients,
+        avg_revenue_per_client_cents: avgRevenuePerClient,
+        avg_bookings_per_client: avgBookingsPerClient,
+        avg_dogs_per_client: avgDogsPerClient,
+        top_spender: topSpender && topSpender.total_spent_cents > 0
+          ? { name: topSpender.name, email: topSpender.email,
+              total_spent_cents: topSpender.total_spent_cents }
+          : null,
+        most_loyal: mostLoyal && mostLoyal.total_bookings > 0
+          ? { name: mostLoyal.name, email: mostLoyal.email,
+              total_bookings: mostLoyal.total_bookings }
+          : null
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.get('/api/dashboard/stats', authenticateToken, requirePermission('read'), async (req, res) => {
   const [
     totalBookings, pendingBookings, confirmedBookings,

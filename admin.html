@@ -333,6 +333,217 @@
     .empty-state .empty-icon { font-size: 4rem; margin-bottom: 16px; }
     .empty-state h3 { color: var(--dark); margin-bottom: 8px; }
 
+    /* Clients panel — KPIs, spotlight cards, client accordion */
+    .kpi-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 16px; margin-bottom: 20px;
+    }
+    .kpi-card {
+      background: var(--white); padding: 20px; border-radius: var(--radius);
+      box-shadow: var(--shadow); position: relative; overflow: hidden;
+      border-left: 4px solid var(--primary); transition: transform var(--transition);
+    }
+    .kpi-card:hover { transform: translateY(-2px); }
+    .kpi-card .kpi-icon { font-size: 1.6rem; margin-bottom: 6px; }
+    .kpi-card .kpi-value {
+      font-family: 'Fredoka One', cursive; font-size: 1.7rem; color: var(--dark);
+      line-height: 1.1; margin-bottom: 4px;
+    }
+    .kpi-card .kpi-label {
+      font-size: 0.78rem; color: var(--text-light); font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.4px;
+    }
+    .kpi-card .kpi-sub {
+      margin-top: 6px; font-size: 0.78rem; color: var(--text-light); font-weight: 600;
+    }
+    .kpi-card.teal { border-left-color: var(--secondary); }
+    .kpi-card.green { border-left-color: var(--success); }
+    .kpi-card.yellow { border-left-color: var(--warning); }
+    .kpi-card.purple { border-left-color: #9B59B6; }
+    .kpi-card.blue { border-left-color: #3498DB; }
+
+    .spotlight-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px; margin-bottom: 28px;
+    }
+    .spotlight-card {
+      padding: 20px 24px; border-radius: var(--radius); color: var(--white);
+      box-shadow: var(--shadow); display: flex; align-items: center; gap: 16px;
+      position: relative; overflow: hidden;
+    }
+    .spotlight-card.gold {
+      background: linear-gradient(135deg, #F39C12 0%, #E67E22 100%);
+    }
+    .spotlight-card.loyal {
+      background: linear-gradient(135deg, #9B59B6 0%, #6C3483 100%);
+    }
+    .spotlight-card::after {
+      content: ''; position: absolute; top: -40px; right: -40px;
+      width: 140px; height: 140px; border-radius: 50%;
+      background: rgba(255,255,255,0.12);
+    }
+    .spotlight-icon {
+      font-size: 2.6rem; flex-shrink: 0; z-index: 1;
+    }
+    .spotlight-body { flex: 1; z-index: 1; }
+    .spotlight-body .spotlight-label {
+      font-size: 0.75rem; font-weight: 800; text-transform: uppercase;
+      letter-spacing: 0.6px; opacity: 0.85; margin-bottom: 2px;
+    }
+    .spotlight-body .spotlight-name {
+      font-family: 'Fredoka One', cursive; font-size: 1.3rem; margin-bottom: 2px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .spotlight-body .spotlight-stat { font-size: 0.95rem; font-weight: 700; opacity: 0.95; }
+
+    .clients-toolbar {
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px;
+    }
+    .clients-search {
+      flex: 1; min-width: 240px; padding: 10px 14px; border: 2px solid #e0e0e0;
+      border-radius: var(--radius-sm); font-family: 'Nunito', sans-serif;
+      font-size: 0.95rem; background: var(--white); transition: border-color var(--transition);
+    }
+    .clients-search:focus { outline: none; border-color: var(--primary); }
+    .clients-sort {
+      padding: 10px 14px; border: 2px solid #e0e0e0; border-radius: var(--radius-sm);
+      background: var(--white); font-family: 'Nunito', sans-serif;
+      font-size: 0.9rem; font-weight: 700; cursor: pointer; color: var(--dark);
+    }
+
+    .client-card {
+      background: var(--white); border-radius: var(--radius);
+      box-shadow: var(--shadow); margin-bottom: 12px; overflow: hidden;
+      transition: box-shadow var(--transition);
+    }
+    .client-card:hover { box-shadow: var(--shadow-lg); }
+    .client-card-header {
+      display: grid;
+      grid-template-columns: auto 1fr auto auto;
+      align-items: center; gap: 16px; padding: 16px 20px; cursor: pointer;
+    }
+    .client-avatar {
+      width: 48px; height: 48px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: var(--white); font-family: 'Fredoka One', cursive;
+      font-size: 1.1rem; display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .client-avatar.guest {
+      background: linear-gradient(135deg, var(--secondary), var(--secondary-dark));
+    }
+    .client-info h3 {
+      font-size: 1rem; color: var(--dark); display: flex; align-items: center;
+      gap: 8px; flex-wrap: wrap;
+    }
+    .client-info p {
+      font-size: 0.85rem; color: var(--text-light); margin-top: 2px;
+      display: flex; gap: 12px; flex-wrap: wrap;
+    }
+    .client-info p a {
+      color: var(--text-light); text-decoration: none; transition: color var(--transition);
+    }
+    .client-info p a:hover { color: var(--primary); }
+    .client-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 50px;
+      font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px;
+    }
+    .client-badge.registered { background: #D4EDDA; color: #155724; }
+    .client-badge.guest { background: #E8F4F8; color: #0C5460; }
+
+    .client-totals {
+      display: flex; gap: 18px; align-items: center;
+    }
+    .client-stat {
+      text-align: center; min-width: 56px;
+    }
+    .client-stat-value {
+      font-family: 'Fredoka One', cursive; font-size: 1.1rem; color: var(--dark);
+      line-height: 1.1;
+    }
+    .client-stat-value.revenue { color: var(--success); }
+    .client-stat-value.pending { color: var(--warning); }
+    .client-stat-label {
+      font-size: 0.7rem; color: var(--text-light); font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.4px; margin-top: 2px;
+    }
+    .expand-icon {
+      font-size: 0.85rem; color: var(--text-light); transition: transform var(--transition);
+      width: 24px; text-align: center;
+    }
+    .client-card.open .expand-icon { transform: rotate(180deg); }
+
+    .client-card-body {
+      display: none; padding: 4px 20px 20px; border-top: 1px solid #f0f0f0;
+      background: #FAFBFD;
+    }
+    .client-card.open .client-card-body { display: block; }
+    .client-section { margin-top: 16px; }
+    .client-section h4 {
+      font-size: 0.85rem; color: var(--dark); margin-bottom: 10px;
+      text-transform: uppercase; letter-spacing: 0.5px; font-family: 'Nunito', sans-serif;
+      font-weight: 800;
+    }
+
+    .dog-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 10px;
+    }
+    .dog-pill {
+      background: var(--white); border-radius: var(--radius-sm);
+      padding: 12px 14px; border: 1px solid #eee;
+    }
+    .dog-pill .dog-name {
+      font-weight: 800; color: var(--dark); display: flex; align-items: center; gap: 6px;
+      margin-bottom: 4px;
+    }
+    .dog-pill .dog-meta {
+      font-size: 0.8rem; color: var(--text-light); display: flex;
+      gap: 8px; flex-wrap: wrap;
+    }
+    .dog-pill .dog-meta span {
+      background: #F5F7FA; padding: 2px 8px; border-radius: 4px;
+    }
+    .dog-pill .dog-notes {
+      font-size: 0.8rem; color: var(--text); margin-top: 6px;
+      padding-top: 6px; border-top: 1px dashed #eee; font-style: italic;
+    }
+    .dog-pill .source-tag {
+      font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 4px;
+      background: #FFF3CD; color: #856404; text-transform: uppercase; letter-spacing: 0.3px;
+    }
+
+    .client-bookings-table {
+      width: 100%; background: var(--white); border-radius: var(--radius-sm); overflow: hidden;
+    }
+    .client-bookings-table th {
+      font-size: 0.75rem; padding: 8px 12px;
+    }
+    .client-bookings-table td {
+      font-size: 0.85rem; padding: 10px 12px;
+    }
+    .client-bookings-table .no-bookings {
+      text-align: center; color: var(--text-light); padding: 20px;
+      font-style: italic;
+    }
+
+    .client-empty-bookings {
+      text-align: center; padding: 16px; color: var(--text-light);
+      font-style: italic; font-size: 0.85rem;
+    }
+
+    @media (max-width: 700px) {
+      .client-card-header {
+        grid-template-columns: auto 1fr;
+        grid-template-areas: "avatar info" "totals totals";
+      }
+      .client-avatar { grid-area: avatar; }
+      .client-info { grid-area: info; }
+      .client-totals { grid-area: totals; justify-content: space-around; padding-top: 8px;
+        border-top: 1px dashed #eee; width: 100%; }
+      .expand-icon { display: none; }
+    }
+
     /* Stripe config banner */
     .stripe-banner {
       background: linear-gradient(135deg, #635BFF, #8B83FF);
@@ -389,6 +600,9 @@
         </a>
         <a href="#" data-panel="bookings">
           <span class="nav-icon">&#128197;</span> Bookings
+        </a>
+        <a href="#" data-panel="clients">
+          <span class="nav-icon">&#128101;</span> Clients
         </a>
         <a href="#" data-panel="services">
           <span class="nav-icon">&#128736;</span> Services
@@ -500,6 +714,43 @@
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <!-- Clients Panel -->
+      <div class="panel" id="panel-clients">
+        <div class="page-header">
+          <h1>Clients</h1>
+          <button class="btn btn-outline btn-sm" id="refreshClientsBtn">&#128260; Refresh</button>
+        </div>
+
+        <div class="kpi-grid" id="clientsKpis">
+          <div style="grid-column:1/-1; text-align:center; color:var(--text-light); padding:24px;">Loading...</div>
+        </div>
+
+        <div class="spotlight-grid" id="clientsSpotlights"></div>
+
+        <div class="clients-toolbar">
+          <input type="text" class="clients-search" id="clientSearch"
+                 placeholder="&#128269; Search by name, email, phone, or dog...">
+          <select class="clients-sort" id="clientSort">
+            <option value="recent">Most Recent Activity</option>
+            <option value="spent">Highest Revenue</option>
+            <option value="bookings">Most Bookings</option>
+            <option value="dogs">Most Dogs</option>
+            <option value="name">Name (A&ndash;Z)</option>
+          </select>
+          <select class="clients-sort" id="clientFilter">
+            <option value="all">All Clients</option>
+            <option value="registered">Registered Only</option>
+            <option value="guest">Guests Only</option>
+            <option value="with-bookings">With Bookings</option>
+            <option value="paying">Has Paid Booking</option>
+          </select>
+        </div>
+
+        <div id="clientsList">
+          <div style="text-align:center; color:var(--text-light); padding:40px;">Loading clients...</div>
         </div>
       </div>
 
@@ -843,6 +1094,7 @@
       switch (name) {
         case 'dashboard': loadDashboard(); break;
         case 'bookings': loadBookings(); break;
+        case 'clients': loadClients(); break;
         case 'services': loadServices(); break;
         case 'photos': loadPhotos(); break;
         case 'settings': loadSettings(); break;
@@ -1535,6 +1787,293 @@
         showToast('Failed to load payments', true);
       }
     }
+
+    // --- Clients ---
+    let clientsCache = { clients: [], kpis: null };
+
+    function clientInitials(name) {
+      const parts = (name || '?').trim().split(/\s+/).slice(0, 2);
+      return parts.map(p => p.charAt(0).toUpperCase()).join('') || '?';
+    }
+
+    function formatRelativeDate(dateStr) {
+      if (!dateStr) return '-';
+      const d = new Date(dateStr);
+      const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+      if (days === 0) return 'Today';
+      if (days === 1) return 'Yesterday';
+      if (days < 7) return `${days} days ago`;
+      if (days < 30) return `${Math.floor(days / 7)}w ago`;
+      if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+      return `${Math.floor(days / 365)}y ago`;
+    }
+
+    function formatDateRange(start, end) {
+      if (!start) return '-';
+      const startFmt = formatDate(start);
+      if (!end || end === start) return startFmt;
+      return `${startFmt} &rarr; ${formatDate(end)}`;
+    }
+
+    async function loadClients() {
+      try {
+        const data = await apiCall('/api/admin/clients');
+        clientsCache = data;
+        renderClientsKpis(data.kpis);
+        renderClientsSpotlights(data.kpis);
+        renderClientsList();
+      } catch (err) {
+        showToast('Failed to load clients', true);
+        document.getElementById('clientsList').innerHTML =
+          '<div style="text-align:center;color:var(--danger);padding:40px;">Could not load clients.</div>';
+      }
+    }
+
+    function renderClientsKpis(k) {
+      const grid = document.getElementById('clientsKpis');
+      if (!k) { grid.innerHTML = ''; return; }
+      const cards = [
+        { cls: 'green', icon: '&#128176;', value: formatCents(k.total_revenue_cents),
+          label: 'Total Revenue', sub: `Paid bookings only` },
+        { cls: 'yellow', icon: '&#9203;', value: formatCents(k.pending_revenue_cents),
+          label: 'Pending Revenue', sub: 'Awaiting payment' },
+        { cls: 'orange', icon: '&#128197;', value: k.total_bookings,
+          label: 'Total Bookings', sub: `~${k.avg_bookings_per_client} per client` },
+        { cls: 'teal', icon: '&#128054;', value: k.total_dogs,
+          label: 'Total Dogs', sub: `~${k.avg_dogs_per_client} per client` },
+        { cls: 'purple', icon: '&#128101;', value: k.total_clients,
+          label: 'Total Clients',
+          sub: `${k.registered_clients} registered &middot; ${k.guest_clients} guest` },
+        { cls: 'blue', icon: '&#128202;', value: formatCents(k.avg_revenue_per_client_cents),
+          label: 'Avg Revenue / Client', sub: 'Across all clients' }
+      ];
+      grid.innerHTML = cards.map(c => `
+        <div class="kpi-card ${c.cls}">
+          <div class="kpi-icon">${c.icon}</div>
+          <div class="kpi-value">${c.value}</div>
+          <div class="kpi-label">${c.label}</div>
+          <div class="kpi-sub">${c.sub}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderClientsSpotlights(k) {
+      const wrap = document.getElementById('clientsSpotlights');
+      if (!k) { wrap.innerHTML = ''; return; }
+      const cards = [];
+      if (k.top_spender) {
+        cards.push(`
+          <div class="spotlight-card gold">
+            <div class="spotlight-icon">&#127942;</div>
+            <div class="spotlight-body">
+              <div class="spotlight-label">Top Spender</div>
+              <div class="spotlight-name">${escapeHtml(k.top_spender.name)}</div>
+              <div class="spotlight-stat">${formatCents(k.top_spender.total_spent_cents)} total</div>
+            </div>
+          </div>`);
+      }
+      if (k.most_loyal) {
+        cards.push(`
+          <div class="spotlight-card loyal">
+            <div class="spotlight-icon">&#128142;</div>
+            <div class="spotlight-body">
+              <div class="spotlight-label">Most Loyal Client</div>
+              <div class="spotlight-name">${escapeHtml(k.most_loyal.name)}</div>
+              <div class="spotlight-stat">${k.most_loyal.total_bookings} booking${k.most_loyal.total_bookings === 1 ? '' : 's'}</div>
+            </div>
+          </div>`);
+      }
+      wrap.innerHTML = cards.join('');
+    }
+
+    function renderClientsList() {
+      const list = document.getElementById('clientsList');
+      const query = document.getElementById('clientSearch').value.trim().toLowerCase();
+      const sort = document.getElementById('clientSort').value;
+      const filter = document.getElementById('clientFilter').value;
+
+      let rows = clientsCache.clients.slice();
+
+      if (filter === 'registered') rows = rows.filter(c => c.type === 'registered');
+      else if (filter === 'guest') rows = rows.filter(c => c.type === 'guest');
+      else if (filter === 'with-bookings') rows = rows.filter(c => c.total_bookings > 0);
+      else if (filter === 'paying') rows = rows.filter(c => c.total_spent_cents > 0);
+
+      if (query) {
+        rows = rows.filter(c => {
+          const hay = [
+            c.name, c.email, c.phone,
+            ...c.dogs.map(d => d.name)
+          ].join(' ').toLowerCase();
+          return hay.includes(query);
+        });
+      }
+
+      rows.sort((a, b) => {
+        switch (sort) {
+          case 'spent': return b.total_spent_cents - a.total_spent_cents;
+          case 'bookings': return b.total_bookings - a.total_bookings;
+          case 'dogs': return b.total_dogs - a.total_dogs;
+          case 'name': return (a.name || '').localeCompare(b.name || '');
+          case 'recent':
+          default:
+            return new Date(b.last_seen || 0) - new Date(a.last_seen || 0);
+        }
+      });
+
+      if (rows.length === 0) {
+        list.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">&#128101;</div>
+            <h3>No clients found</h3>
+            <p>${query || filter !== 'all' ? 'Try adjusting your search or filter.' : 'Clients will appear here once people register or book.'}</p>
+          </div>`;
+        return;
+      }
+
+      list.innerHTML = rows.map((c, i) => renderClientCard(c, i)).join('');
+    }
+
+    function renderClientCard(c, idx) {
+      const initials = clientInitials(c.name);
+      const isGuest = c.type === 'guest';
+      const phoneLink = c.phone
+        ? `<a href="tel:${escapeHtml(c.phone)}">&#9742; ${escapeHtml(c.phone)}</a>`
+        : '<span style="opacity:0.5;">No phone</span>';
+      const emailLink = `<a href="mailto:${escapeHtml(c.email)}">&#9993; ${escapeHtml(c.email)}</a>`;
+      const lastSeen = c.last_seen
+        ? `<span title="${formatDate(c.last_seen)}">&#128340; Active ${formatRelativeDate(c.last_seen)}</span>`
+        : '';
+
+      return `
+        <div class="client-card" id="client-card-${idx}">
+          <div class="client-card-header" onclick="toggleClient(${idx})">
+            <div class="client-avatar ${isGuest ? 'guest' : ''}">${escapeHtml(initials)}</div>
+            <div class="client-info">
+              <h3>
+                ${escapeHtml(c.name || c.email)}
+                <span class="client-badge ${isGuest ? 'guest' : 'registered'}">${isGuest ? 'Guest' : 'Member'}</span>
+              </h3>
+              <p>${emailLink} ${phoneLink} ${lastSeen}</p>
+            </div>
+            <div class="client-totals">
+              <div class="client-stat">
+                <div class="client-stat-value">${c.total_dogs}</div>
+                <div class="client-stat-label">Dogs</div>
+              </div>
+              <div class="client-stat">
+                <div class="client-stat-value">${c.total_bookings}</div>
+                <div class="client-stat-label">Bookings</div>
+              </div>
+              <div class="client-stat">
+                <div class="client-stat-value revenue">${formatCents(c.total_spent_cents)}</div>
+                <div class="client-stat-label">Spent</div>
+              </div>
+              ${c.pending_revenue_cents > 0 ? `
+                <div class="client-stat">
+                  <div class="client-stat-value pending">${formatCents(c.pending_revenue_cents)}</div>
+                  <div class="client-stat-label">Pending</div>
+                </div>` : ''}
+            </div>
+            <span class="expand-icon">&#9662;</span>
+          </div>
+          <div class="client-card-body">
+            ${renderClientDogs(c)}
+            ${renderClientBookings(c)}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderClientDogs(c) {
+      if (c.dogs.length === 0) {
+        return `<div class="client-section">
+          <h4>&#128054; Dogs</h4>
+          <div class="client-empty-bookings">No dogs on file yet.</div>
+        </div>`;
+      }
+      const pills = c.dogs.map(d => {
+        const meta = [];
+        if (d.breed) meta.push(`<span>${escapeHtml(d.breed)}</span>`);
+        if (d.age) meta.push(`<span>Age ${escapeHtml(d.age)}</span>`);
+        if (d.weight) meta.push(`<span>${escapeHtml(d.weight)}</span>`);
+        const sourceTag = d.source === 'booking'
+          ? ' <span class="source-tag" title="Mentioned in a booking but no full profile">From booking</span>'
+          : '';
+        return `
+          <div class="dog-pill">
+            <div class="dog-name">&#128054; ${escapeHtml(d.name)}${sourceTag}</div>
+            ${meta.length ? `<div class="dog-meta">${meta.join('')}</div>` : ''}
+            ${d.notes ? `<div class="dog-notes">${escapeHtml(d.notes)}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+      return `
+        <div class="client-section">
+          <h4>&#128054; Dogs (${c.dogs.length})</h4>
+          <div class="dog-grid">${pills}</div>
+        </div>
+      `;
+    }
+
+    function renderClientBookings(c) {
+      if (c.bookings.length === 0) {
+        return `<div class="client-section">
+          <h4>&#128197; Bookings</h4>
+          <div class="client-empty-bookings">No bookings yet.</div>
+        </div>`;
+      }
+      const sorted = c.bookings.slice().sort(
+        (a, b) => new Date(b.created_at) - new Date(a.created_at));
+      const rows = sorted.map(b => {
+        const dates = b.start_date
+          ? formatDateRange(b.start_date, b.end_date)
+          : (b.preferred_dates ? escapeHtml(b.preferred_dates) : '-');
+        return `
+          <tr>
+            <td><strong>#${b.id}</strong></td>
+            <td>${escapeHtml(b.dog_name || '-')}</td>
+            <td>${escapeHtml(b.service_name || '-')}</td>
+            <td>${dates}</td>
+            <td>${formatCents(b.amount_cents)}</td>
+            <td>${statusBadge(b.status)}</td>
+            <td>${statusBadge(b.payment_status)}</td>
+            <td><button class="btn btn-sm btn-outline" onclick="event.stopPropagation(); viewBooking(${b.id})">View</button></td>
+          </tr>
+        `;
+      }).join('');
+      return `
+        <div class="client-section">
+          <h4>&#128197; Bookings (${c.bookings.length}) &middot;
+            ${c.completed_bookings} completed &middot;
+            ${c.pending_bookings} pending &middot;
+            ${c.confirmed_bookings} confirmed &middot;
+            ${c.cancelled_bookings} cancelled
+          </h4>
+          <div style="overflow-x:auto;">
+            <table class="client-bookings-table">
+              <thead>
+                <tr>
+                  <th>ID</th><th>Dog</th><th>Service</th><th>Dates</th>
+                  <th>Amount</th><th>Status</th><th>Payment</th><th></th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function toggleClient(idx) {
+      const card = document.getElementById('client-card-' + idx);
+      if (card) card.classList.toggle('open');
+    }
+
+    document.getElementById('clientSearch').addEventListener('input', renderClientsList);
+    document.getElementById('clientSort').addEventListener('change', renderClientsList);
+    document.getElementById('clientFilter').addEventListener('change', renderClientsList);
+    document.getElementById('refreshClientsBtn').addEventListener('click', loadClients);
 
     // --- Campaigns ---
     async function loadCampaigns() {

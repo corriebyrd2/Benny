@@ -1048,6 +1048,7 @@
         showToast('Booking cancelled');
         closeModal();
         loadBookings();
+        loadPayments();
         loadDashboard();
       } catch (err) {
         showToast(err.message, true);
@@ -1496,8 +1497,9 @@
             </div>`;
         }
 
-        // Load bookings with payment info
-        const bookings = await apiCall('/api/bookings');
+        // Load bookings with payment info (exclude cancelled bookings)
+        const allBookings = await apiCall('/api/bookings');
+        const bookings = allBookings.filter(b => b.status !== 'cancelled');
         const tbody = document.getElementById('paymentsTable');
 
         if (bookings.length === 0) {

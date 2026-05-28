@@ -1232,9 +1232,9 @@
         }
 
         const currentDogCount = b.dog_count && b.dog_count > 0 ? b.dog_count : 1;
-        const canEditDogCount =
+        const canEditPricing =
           b.payment_status !== 'paid' && b.status !== 'cancelled';
-        const dogCountDisplay = canEditDogCount
+        const dogCountDisplay = canEditPricing
           ? `<div>
               <strong>Dogs on stay:</strong>
               <span style="display:inline-flex;align-items:center;gap:6px;margin-left:6px;">
@@ -1245,6 +1245,22 @@
               <small style="display:block;color:var(--text-light);margin-top:4px;">Rate is per dog &mdash; changing this recomputes the amount.</small>
             </div>`
           : `<div><strong>Dogs on stay:</strong> ${currentDogCount}</div>`;
+        const currentAmountDollars = (b.amount_cents / 100).toFixed(2);
+        const amountDisplay = canEditPricing
+          ? `<div>
+              <strong>Amount:</strong>
+              <span style="display:inline-flex;align-items:center;gap:6px;margin-left:6px;">
+                <span>$</span>
+                <input type="number" id="editAmountDollars" value="${currentAmountDollars}" min="0" step="0.01"
+                       style="width:96px;padding:4px 6px;border:2px solid #e0e0e0;border-radius:6px;font-family:inherit;">
+                <button class="btn btn-sm btn-outline" onclick="saveBookingPrice(${b.id})">Save price</button>
+              </span>
+              <small style="display:block;color:var(--text-light);margin-top:4px;">
+                Override the calculated price${currentDogCount > 1 ? ` (currently ${currentDogCount} dogs)` : ''}.
+                Sending a new payment request will use this amount.
+              </small>
+            </div>`
+          : `<div><strong>Amount:</strong> ${formatCents(b.amount_cents)}${currentDogCount > 1 ? ` <small style="color:var(--text-light);">(${currentDogCount} dogs)</small>` : ''}</div>`;
 
         const body = `
           <div style="display:grid; gap:16px;">
@@ -1259,7 +1275,7 @@
               <div><strong>Service:</strong> ${escapeHtml(b.service_name)}</div>
               <div><strong>Dates:</strong> ${escapeHtml(b.preferred_dates || '-')}</div>
               ${dogCountDisplay}
-              <div><strong>Amount:</strong> ${formatCents(b.amount_cents)}${currentDogCount > 1 ? ` <small style="color:var(--text-light);">(${currentDogCount} dogs)</small>` : ''}</div>
+              ${amountDisplay}
             </div>
             ${b.message ? `<div><strong>Message:</strong><p style="margin-top:4px;color:var(--text-light)">${escapeHtml(b.message)}</p></div>` : ''}
             <div id="cancelReasonSection" style="display:none;">
@@ -1417,15 +1433,40 @@
         });
         const newAmount = result.booking ? formatCents(result.booking.amount_cents) : '';
         showToast(`Dog count set to ${count}${newAmount ? ` — amount is now ${newAmount}` : ''}`);
-        viewBooking(id);
-        loadBookings();
-        loadDashboard();
-        // The Clients panel caches its data; refresh if it has been loaded.
-        if (clientsCache && clientsCache.clients && clientsCache.clients.length) {
-          loadClients();
-        }
+        refreshAfterBookingEdit(id);
       } catch (err) {
         showToast(err.message, true);
+      }
+    }
+
+    async function saveBookingPrice(id) {
+      const input = document.getElementById('editAmountDollars');
+      if (!input) return;
+      const dollars = parseFloat(input.value);
+      if (!Number.isFinite(dollars) || dollars < 0) {
+        showToast('Enter a valid price in dollars', true);
+        return;
+      }
+      const cents = Math.round(dollars * 100);
+      try {
+        await apiCall(`/api/bookings/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ amount_cents: cents })
+        });
+        showToast(`Price updated to ${formatCents(cents)}`);
+        refreshAfterBookingEdit(id);
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
+    function refreshAfterBookingEdit(id) {
+      viewBooking(id);
+      loadBookings();
+      loadDashboard();
+      // The Clients panel caches its data; refresh if it has been loaded.
+      if (clientsCache && clientsCache.clients && clientsCache.clients.length) {
+        loadClients();
       }
     }
 

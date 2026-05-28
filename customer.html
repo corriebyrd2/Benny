@@ -1185,21 +1185,18 @@
             </div>
 
             <div class="form-section">
-              <div class="form-section-label">2. Which Dog?</div>
-              <div class="form-row">
-                <div class="form-group">
-                  <select id="bookDogSelect" onchange="onDogSelectChange()">
-                    <option value="">-- Select a dog --</option>
-                    <option value="__new__">+ Enter a different name</option>
-                  </select>
-                  <input type="text" id="bookDogName" placeholder="Enter dog's name" style="display:none;margin-top:8px;" required>
-                </div>
-                <div class="form-group">
-                  <label for="bookDogCount">How many dogs?</label>
-                  <input type="number" id="bookDogCount" min="1" max="10" value="1">
-                  <small style="display:block;margin-top:4px;color:var(--text-light);font-size:0.8rem;">
-                    Rates are per dog &mdash; an extra pup multiplies the price.
-                  </small>
+              <div class="form-section-label">2. Which Dog(s)?</div>
+              <div class="form-group">
+                <div id="bookDogsChecklist"></div>
+                <label for="bookExtraDogNames" style="display:block;margin-top:12px;font-weight:600;font-size:0.9rem;">
+                  Bringing a dog that's not in your profile?
+                </label>
+                <input type="text" id="bookExtraDogNames"
+                       placeholder="e.g. Rocky, Coco (comma-separated)"
+                       style="margin-top:4px;">
+                <div id="bookDogCountSummary"
+                     style="margin-top:10px;padding:8px 12px;border-radius:6px;background:#FFF8E7;color:var(--dark);font-weight:700;font-size:0.9rem;">
+                  No dogs selected &mdash; rates are per dog
                 </div>
               </div>
             </div>
@@ -1489,6 +1486,11 @@
 
       loadServices();
       loadDogs();
+      const extraInput = document.getElementById('bookExtraDogNames');
+      if (extraInput && !extraInput.dataset.wired) {
+        extraInput.addEventListener('input', updateBookingDogCount);
+        extraInput.dataset.wired = '1';
+      }
     }
 
     function logout() {
@@ -1737,34 +1739,24 @@
       bookBtn.innerHTML = '<span class="loading-spinner"></span>';
 
       try {
-        const dogSelect = document.getElementById('bookDogSelect');
-        const dogVal = dogSelect.value;
         const startDateVal = document.getElementById('bookDateStart').value;
         const endDateVal = document.getElementById('bookDateEnd').value;
-        const dogCountRaw = parseInt(document.getElementById('bookDogCount').value, 10);
-        const dogCount = Math.min(10, Math.max(1, Number.isFinite(dogCountRaw) ? dogCountRaw : 1));
-        let bookingBody = {
+        const dogNames = collectSelectedDogNames();
+        if (dogNames.length === 0) {
+          bookingError.textContent = 'Please select at least one dog or enter a name';
+          bookingError.classList.add('visible');
+          bookBtn.disabled = false;
+          bookBtn.textContent = 'Submit Booking Request';
+          return;
+        }
+        const bookingBody = {
           service_id: parseInt(serviceId),
           preferred_dates: formatPreferredDates(),
           start_date: startDateVal || null,
           end_date: endDateVal || null,
-          dog_count: dogCount,
+          dog_names: dogNames,
           message: document.getElementById('bookMessage').value.trim()
         };
-
-        if (dogVal === '__new__' || dogVal === '') {
-          const dogName = document.getElementById('bookDogName').value.trim();
-          if (!dogName) {
-            bookingError.textContent = 'Please enter a dog name or select a saved dog';
-            bookingError.classList.add('visible');
-            bookBtn.disabled = false;
-            bookBtn.textContent = 'Submit Booking Request';
-            return;
-          }
-          bookingBody.dog_name = dogName;
-        } else {
-          bookingBody.dog_id = parseInt(dogVal);
-        }
 
         const res = await fetch('/api/bookings/customer-book', {
           method: 'POST',
@@ -2020,39 +2012,68 @@
     }
 
     function renderDogSelector() {
-      const select = document.getElementById('bookDogSelect');
-      const nameInput = document.getElementById('bookDogName');
-      const options = dogs.map(d => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('');
+      const checklist = document.getElementById('bookDogsChecklist');
+      if (!checklist) return;
 
       if (dogs.length === 0) {
-        select.innerHTML = '<option value="">-- No dogs saved --</option><option value="__new__">+ Enter a dog name</option>';
-        select.value = '__new__';
-        nameInput.style.display = 'block';
-        nameInput.required = true;
+        checklist.innerHTML = `
+          <div style="padding:12px;background:#F5F7FA;border-radius:8px;color:var(--text-light);font-size:0.9rem;">
+            No dogs in your profile yet &mdash; add their names below to book.
+          </div>`;
       } else {
-        select.innerHTML = '<option value="">-- Select a dog --</option>' + options + '<option value="__new__">+ Enter a different name</option>';
-        if (dogs.length === 1) {
-          select.value = dogs[0].id;
-          nameInput.style.display = 'none';
-          nameInput.required = false;
-        } else {
-          nameInput.style.display = 'none';
-          nameInput.required = false;
-        }
+        checklist.innerHTML = dogs.map(d => `
+          <label class="dog-check-row" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:2px solid #e0e0e0;border-radius:8px;margin-bottom:6px;cursor:pointer;transition:all 0.2s;">
+            <input type="checkbox" class="book-dog-cb" value="${d.id}" data-name="${escapeHtml(d.name)}"
+                   style="width:18px;height:18px;cursor:pointer;"
+                   ${dogs.length === 1 ? 'checked' : ''}>
+            <div style="flex:1;">
+              <div style="font-weight:700;color:var(--dark);">&#128054; ${escapeHtml(d.name)}</div>
+              ${(d.breed || d.age || d.weight) ? `
+                <div style="font-size:0.8rem;color:var(--text-light);margin-top:2px;">
+                  ${[d.breed, d.age ? `Age ${escapeHtml(d.age)}` : '', d.weight].filter(Boolean).map(escapeHtml).join(' &middot; ')}
+                </div>` : ''}
+            </div>
+          </label>
+        `).join('');
       }
+
+      // Live count summary on every checkbox toggle or text change.
+      checklist.querySelectorAll('.book-dog-cb').forEach(cb => {
+        cb.addEventListener('change', updateBookingDogCount);
+      });
+      updateBookingDogCount();
     }
 
-    function onDogSelectChange() {
-      const val = document.getElementById('bookDogSelect').value;
-      const nameInput = document.getElementById('bookDogName');
-      if (val === '__new__' || val === '') {
-        nameInput.style.display = 'block';
-        nameInput.required = true;
-        nameInput.value = '';
-        nameInput.focus();
+    function collectSelectedDogNames() {
+      const checked = Array.from(document.querySelectorAll('.book-dog-cb:checked'))
+        .map(cb => cb.getAttribute('data-name').trim())
+        .filter(Boolean);
+      const extra = (document.getElementById('bookExtraDogNames').value || '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+      const seen = new Set();
+      const out = [];
+      for (const n of [...checked, ...extra]) {
+        const key = n.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(n);
+      }
+      return out;
+    }
+
+    function updateBookingDogCount() {
+      const names = collectSelectedDogNames();
+      const summary = document.getElementById('bookDogCountSummary');
+      if (!summary) return;
+      if (names.length === 0) {
+        summary.style.background = '#FFE5E5';
+        summary.textContent = 'No dogs selected — rates are per dog';
       } else {
-        nameInput.style.display = 'none';
-        nameInput.required = false;
+        summary.style.background = '#E8F5E9';
+        const list = names.join(', ');
+        summary.innerHTML = `&#128054; ${names.length} dog${names.length === 1 ? '' : 's'} on this booking: <span style="font-weight:400;">${escapeHtml(list)}</span>`;
       }
     }
 

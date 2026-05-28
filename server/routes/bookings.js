@@ -119,21 +119,46 @@ router.get('/my', authenticateCustomer, async (req, res) => {
 
 // Authenticated customer: Create a booking
 router.post('/customer-book', authenticateCustomer, async (req, res) => {
-  const { dog_name, dog_id, service_id, preferred_dates, message, start_date, end_date, dog_count } = req.body;
+  const { dog_name, dog_id, dog_names, service_id, preferred_dates, message, start_date, end_date, dog_count } = req.body;
 
-  let resolvedDogName = dog_name;
-  if (dog_id) {
-    const { rows: dogRows } = await query(
-      'SELECT * FROM dogs WHERE id = $1 AND customer_id = $2',
-      [dog_id, req.customer.id]
-    );
-    if (!dogRows[0]) {
-      return res.status(400).json({ error: 'Dog not found' });
+  // New shape: dog_names is an array of names (saved + typed). The count is
+  // derived from the array length, so the client can't desync count from
+  // selection. Old shape (dog_id or dog_name + dog_count) still works for
+  // existing tests and stale browser sessions.
+  let resolvedNames = null;
+  if (Array.isArray(dog_names) && dog_names.length > 0) {
+    const seen = new Set();
+    resolvedNames = [];
+    for (const raw of dog_names) {
+      if (typeof raw !== 'string') continue;
+      const name = raw.trim();
+      const key = name.toLowerCase();
+      if (!name || seen.has(key)) continue;
+      seen.add(key);
+      resolvedNames.push(name);
     }
-    resolvedDogName = dogRows[0].name;
+    if (resolvedNames.length === 0) {
+      return res.status(400).json({ error: 'At least one dog name is required' });
+    }
+  } else {
+    let resolvedDogName = dog_name;
+    if (dog_id) {
+      const { rows: dogRows } = await query(
+        'SELECT * FROM dogs WHERE id = $1 AND customer_id = $2',
+        [dog_id, req.customer.id]
+      );
+      if (!dogRows[0]) {
+        return res.status(400).json({ error: 'Dog not found' });
+      }
+      resolvedDogName = dogRows[0].name;
+    }
+    if (!resolvedDogName) {
+      return res.status(400).json({ error: 'Dog name and service are required' });
+    }
+    resolvedNames = [resolvedDogName];
   }
 
-  if (!resolvedDogName || !service_id) {
+  if (!service_id) {
     return res.status(400).json({ error: 'Dog name and service are required' });
   }
 
@@ -152,7 +177,12 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
     return res.status(404).json({ error: 'Customer not found' });
   }
 
-  const dogs = normalizeDogCount(dog_count);
+  // Multi-dog: count comes from the names array. Old shape: honor explicit
+  // dog_count (legacy callers).
+  const dogs = Array.isArray(dog_names)
+    ? Math.min(MAX_DOGS_PER_BOOKING, Math.max(1, resolvedNames.length))
+    : normalizeDogCount(dog_count);
+  const resolvedDogName = resolvedNames.join(', ');
   const amount_cents = computeAmountCents(service, start_date, end_date, dogs);
 
   const { rows } = await query(
@@ -255,23 +285,32 @@ router.get('/:id', authenticateToken, requirePermission('read'), async (req, res
 router.put('/:id', authenticateToken, requirePermission('write'), async (req, res) => {
   const { status, payment_status, amount_cents, dog_count } = req.body;
 
+  // Block re-pricing or dog-count changes on a settled booking — the customer
+  // has already paid the original amount, so silently changing it here would
+  // misrepresent the receipt. Status/payment_status edits still go through
+  // (e.g. correcting a wrongly-marked record).
+  const wantsRepricing = amount_cents !== undefined || dog_count !== undefined;
+  let existingBooking = null;
+  if (wantsRepricing) {
+    const { rows: existing } = await query('SELECT * FROM bookings WHERE id = $1', [req.params.id]);
+    existingBooking = existing[0];
+    if (!existingBooking) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+    if (existingBooking.payment_status === 'paid') {
+      return res.status(409).json({ error: 'Cannot change price or dog count on a paid booking' });
+    }
+  }
+
   // When the admin changes dog_count, recompute amount_cents from the service
   // rate so the per-dog multiplier flows through. Explicit amount_cents in
   // the same request still wins so manual price adjustments stay possible.
   let recomputedAmount = null;
-  if (dog_count !== undefined && amount_cents === undefined) {
-    const { rows: existing } = await query('SELECT * FROM bookings WHERE id = $1', [req.params.id]);
-    const booking = existing[0];
-    if (!booking) {
-      return res.status(404).json({ error: 'Booking not found' });
-    }
-    if (booking.payment_status === 'paid') {
-      return res.status(409).json({ error: 'Cannot change dog count on a paid booking' });
-    }
-    const { rows: serviceRows } = await query('SELECT * FROM services WHERE id = $1', [booking.service_id]);
+  if (dog_count !== undefined && amount_cents === undefined && existingBooking) {
+    const { rows: serviceRows } = await query('SELECT * FROM services WHERE id = $1', [existingBooking.service_id]);
     const service = serviceRows[0];
     if (service) {
-      recomputedAmount = computeAmountCents(service, booking.start_date, booking.end_date, dog_count);
+      recomputedAmount = computeAmountCents(service, existingBooking.start_date, existingBooking.end_date, dog_count);
     }
   }
 

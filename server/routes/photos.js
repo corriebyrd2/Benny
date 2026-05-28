@@ -73,9 +73,16 @@ function normalizeSection(val) {
 }
 
 function photoUrl(filename) {
-  if (r2.isConfigured()) return r2.publicUrl(filename);
+  // When R2 is configured, point at our own streaming route rather than a
+  // public bucket URL — the bucket stays private and nothing depends on
+  // Cloudflare "Public access" being enabled.
+  if (r2.isConfigured()) return `/api/photos/file/${encodeURIComponent(filename)}`;
   return `/uploads/${encodeURIComponent(filename)}`;
 }
+
+// Generated filenames look like "photo-<ts>-<rand>.<ext>". Reject anything with
+// slashes or other characters so the proxy can't be used to fetch arbitrary keys.
+const SAFE_FILENAME_RE = /^[A-Za-z0-9._-]+$/;
 
 function withUrl(photo) {
   return { ...photo, url: photoUrl(photo.filename) };
@@ -87,6 +94,30 @@ router.get('/', async (req, res) => {
     'SELECT * FROM photos WHERE show_on_homepage ORDER BY display_order ASC'
   );
   res.json(rows.map(withUrl));
+});
+
+// Public: Stream a photo's bytes from R2 through the app. This is what the
+// homepage <img> tags load when R2 is configured, so the bucket needs no public
+// access. Falls through to a 404 when R2 isn't configured (files live on disk
+// and are served by the /uploads static handler instead).
+router.get('/file/:filename', async (req, res, next) => {
+  const { filename } = req.params;
+  if (!r2.isConfigured() || !SAFE_FILENAME_RE.test(filename)) {
+    return res.status(404).end();
+  }
+  try {
+    const obj = await r2.getObject(filename);
+    res.setHeader('Content-Type', obj.ContentType || 'application/octet-stream');
+    if (obj.ContentLength != null) res.setHeader('Content-Length', obj.ContentLength);
+    res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+    obj.Body.on('error', () => res.destroy());
+    obj.Body.pipe(res);
+  } catch (err) {
+    if (err && (err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404)) {
+      return res.status(404).end();
+    }
+    next(err);
+  }
 });
 
 // Admin: Get all photos

@@ -1,14 +1,15 @@
-const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const fs = require('fs');
 
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
 const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
 const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || 'benny';
-const R2_PUBLIC_URL = (process.env.R2_PUBLIC_URL || '').replace(/\/$/, '');
 
+// Photos are streamed back through the app (see getObject), so the bucket can
+// stay private — no "Public access" toggle or public r2.dev URL is required.
 function isConfigured() {
-  return !!(R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_PUBLIC_URL);
+  return !!(R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY);
 }
 
 function getClient() {
@@ -39,8 +40,13 @@ async function deleteFile(key) {
   }));
 }
 
-function publicUrl(filename) {
-  return `${R2_PUBLIC_URL}/${encodeURIComponent(filename)}`;
+// Read an object back so the app can stream it to the browser. Returns the raw
+// S3 response: `.Body` is a Readable stream, plus `.ContentType`/`.ContentLength`.
+async function getObject(key) {
+  return getClient().send(new GetObjectCommand({
+    Bucket: R2_BUCKET_NAME,
+    Key: key,
+  }));
 }
 
-module.exports = { isConfigured, uploadFile, deleteFile, publicUrl };
+module.exports = { isConfigured, uploadFile, deleteFile, getObject };

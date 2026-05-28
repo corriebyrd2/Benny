@@ -387,6 +387,11 @@ app.get('/api/admin/clients', authenticateToken, requirePermission('read'), asyn
       if (!customer) continue;
       const client = clientsByEmail.get((customer.email || '').toLowerCase().trim());
       if (!client) continue;
+      const dogNameLower = (d.name || '').toLowerCase().trim();
+      if (!dogNameLower) continue;
+      // Same client can't own two dogs with the same name — collapse duplicate
+      // rows (older imports + new profile entries) into a single dog.
+      if (client.dogs.some(x => x.name.toLowerCase().trim() === dogNameLower)) continue;
       client.dogs.push({
         id: d.id,
         name: d.name,
@@ -464,7 +469,19 @@ app.get('/api/admin/clients', authenticateToken, requirePermission('read'), asyn
     const pendingRevenue = clients.reduce((s, c) => s + c.pending_revenue_cents, 0);
     const totalBookings = bookings.length;
     const totalClients = clients.length;
-    const totalDogs = clients.reduce((s, c) => s + c.total_dogs, 0);
+
+    // Count distinct dogs system-wide. Two different clients may each have a
+    // pup named "Max" — those are two unique dogs. Same name within one
+    // client (profile + booking, or duplicate rows) collapses to one.
+    const uniqueDogKeys = new Set();
+    for (const c of clients) {
+      const emailKey = (c.email || '').toLowerCase().trim();
+      for (const d of c.dogs) {
+        const nameKey = (d.name || '').toLowerCase().trim();
+        if (nameKey) uniqueDogKeys.add(`${emailKey}|${nameKey}`);
+      }
+    }
+    const totalDogs = uniqueDogKeys.size;
     const registeredClients = clients.filter(c => c.type === 'registered').length;
     const guestClients = clients.filter(c => c.type === 'guest').length;
     const avgRevenuePerClient = totalClients ? Math.round(totalRevenue / totalClients) : 0;

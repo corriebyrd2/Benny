@@ -336,7 +336,7 @@ app.get('/api/admin/clients', authenticateToken, requirePermission('read'), asyn
       query('SELECT id, customer_id, name, breed, weight, age, notes, created_at FROM dogs'),
       query(`SELECT id, owner_name, email, phone, dog_name, service_name, preferred_dates,
                     status, payment_status, amount_cents, customer_id, start_date, end_date,
-                    created_at
+                    dog_count, created_at
              FROM bookings WHERE status != 'cancelled' ORDER BY created_at DESC`)
     ]);
 
@@ -421,6 +421,7 @@ app.get('/api/admin/clients', authenticateToken, requirePermission('read'), asyn
       client.bookings.push({
         id: b.id,
         dog_name: b.dog_name,
+        dog_count: Number(b.dog_count) || 1,
         service_name: b.service_name,
         preferred_dates: b.preferred_dates || '',
         start_date: b.start_date,

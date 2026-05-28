@@ -8,6 +8,13 @@ const { getStripe } = require('../stripeClient');
 const router = express.Router();
 
 const MS_PER_DAY = 86400000;
+const MAX_DOGS_PER_BOOKING = 10;
+
+function normalizeDogCount(value) {
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(MAX_DOGS_PER_BOOKING, n);
+}
 
 // Number of nights between two YYYY-MM-DD dates (0 if end <= start or invalid).
 function nightsBetween(startDate, endDate) {
@@ -18,17 +25,19 @@ function nightsBetween(startDate, endDate) {
 
 // Boarding/daycare are billed per-night/per-day, so the total must scale with
 // the length of stay; grooming/training are per-session (flat). The schema has
-// no unit column, so we infer the unit from the service's price_label.
-function computeAmountCents(service, startDate, endDate) {
+// no unit column, so we infer the unit from the service's price_label. Every
+// service rate is also per-dog — a booking for two pups doubles the price.
+function computeAmountCents(service, startDate, endDate, dogCount) {
   const base = Number(service.price_cents) || 0;
+  const count = normalizeDogCount(dogCount);
   const label = String(service.price_label || '').toLowerCase();
   const perNight = label.includes('night');
   const perDay = label.includes('day');
-  if ((!perNight && !perDay) || !startDate || !endDate) return base;
+  if ((!perNight && !perDay) || !startDate || !endDate) return base * count;
   const nights = nightsBetween(startDate, endDate);
   // Per-night charges the number of nights; per-day charges inclusive days.
   const qty = perNight ? Math.max(1, nights) : Math.max(1, nights + 1);
-  return base * qty;
+  return base * qty * count;
 }
 
 // Public: Check availability for a given date
@@ -56,7 +65,7 @@ router.get('/availability', async (req, res) => {
 
 // Public: Create a booking
 router.post('/', async (req, res) => {
-  const { owner_name, email, phone, dog_name, service_id, preferred_dates, message, start_date, end_date } = req.body;
+  const { owner_name, email, phone, dog_name, service_id, preferred_dates, message, start_date, end_date, dog_count } = req.body;
 
   if (!owner_name || !email || !dog_name || !service_id) {
     return res.status(400).json({ error: 'Missing required fields: owner_name, email, dog_name, service_id' });
@@ -68,17 +77,19 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Invalid service selected' });
   }
 
-  const amount_cents = computeAmountCents(service, start_date, end_date);
+  const dogs = normalizeDogCount(dog_count);
+  const amount_cents = computeAmountCents(service, start_date, end_date, dogs);
 
   const { rows } = await query(
-    `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, start_date, end_date)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+    `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, start_date, end_date, dog_count)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
     [
       owner_name, email, phone || '', dog_name,
       service_id, service.name,
       preferred_dates || '', message || '',
       amount_cents,
-      start_date || null, end_date || null
+      start_date || null, end_date || null,
+      dogs
     ]
   );
   const booking = rows[0];
@@ -98,7 +109,7 @@ router.post('/', async (req, res) => {
 // Authenticated customer: Get my bookings
 router.get('/my', authenticateCustomer, async (req, res) => {
   const { rows } = await query(
-    `SELECT id, owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message,
+    `SELECT id, owner_name, email, phone, dog_name, dog_count, service_id, service_name, preferred_dates, message,
             status, payment_status, amount_cents, created_at, updated_at
      FROM bookings WHERE customer_id = $1 ORDER BY created_at DESC`,
     [req.customer.id]
@@ -108,7 +119,7 @@ router.get('/my', authenticateCustomer, async (req, res) => {
 
 // Authenticated customer: Create a booking
 router.post('/customer-book', authenticateCustomer, async (req, res) => {
-  const { dog_name, dog_id, service_id, preferred_dates, message, start_date, end_date } = req.body;
+  const { dog_name, dog_id, service_id, preferred_dates, message, start_date, end_date, dog_count } = req.body;
 
   let resolvedDogName = dog_name;
   if (dog_id) {
@@ -141,17 +152,19 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
     return res.status(404).json({ error: 'Customer not found' });
   }
 
-  const amount_cents = computeAmountCents(service, start_date, end_date);
+  const dogs = normalizeDogCount(dog_count);
+  const amount_cents = computeAmountCents(service, start_date, end_date, dogs);
 
   const { rows } = await query(
-    `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, customer_id, start_date, end_date)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+    `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, customer_id, start_date, end_date, dog_count)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
     [
       customer.name, customer.email, customer.phone || '',
       resolvedDogName, service_id, service.name,
       preferred_dates || '', message || '',
       amount_cents, customer.id,
-      start_date || null, end_date || null
+      start_date || null, end_date || null,
+      dogs
     ]
   );
   const booking = rows[0];
@@ -177,7 +190,7 @@ router.post('/lookup', async (req, res) => {
   }
 
   const { rows } = await query(
-    `SELECT id, owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message,
+    `SELECT id, owner_name, email, phone, dog_name, dog_count, service_id, service_name, preferred_dates, message,
             status, payment_status, amount_cents, created_at, updated_at
      FROM bookings WHERE LOWER(email) = LOWER($1) ORDER BY created_at DESC`,
     [email]
@@ -193,7 +206,7 @@ router.post('/customer/:id', async (req, res) => {
   }
 
   const { rows } = await query(
-    `SELECT id, owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message,
+    `SELECT id, owner_name, email, phone, dog_name, dog_count, service_id, service_name, preferred_dates, message,
             status, payment_status, amount_cents, stripe_payment_id, created_at, updated_at
      FROM bookings WHERE id = $1 AND LOWER(email) = LOWER($2)`,
     [req.params.id, email]

@@ -187,6 +187,10 @@ router.post('/send-payment-link', authenticateToken, requirePermission('write'),
     return res.status(404).json({ error: 'Booking not found' });
   }
 
+  if (booking.status === 'cancelled') {
+    return res.status(400).json({ error: 'Cannot send payment link for a cancelled booking' });
+  }
+
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ['card'],
     line_items: [{

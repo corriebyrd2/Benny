@@ -219,7 +219,7 @@ async function sendBookingReceivedToCustomer({ booking }) {
   });
 }
 
-async function sendBookingApprovedToCustomer({ booking }) {
+async function sendBookingApprovedToCustomer({ booking, checkoutUrl }) {
   const link = customerPortalLink();
   await send({
     to: booking.email,
@@ -227,16 +227,23 @@ async function sendBookingApprovedToCustomer({ booking }) {
     text: [
       `Hi ${booking.owner_name || 'there'},`,
       '',
-      `Good news — your booking is confirmed. Payment details will follow.`,
+      checkoutUrl
+        ? `Good news — your booking is confirmed. You can pay securely using the link below.`
+        : `Good news — your booking is confirmed. Payment details will follow.`,
       '',
       ...bookingSummary(booking),
       '',
+      checkoutUrl ? `Pay ${formatMoney(booking.amount_cents)} securely: ${checkoutUrl}` : null,
       link ? `View your booking: ${link}` : null
     ].filter(Boolean).join('\n'),
     html: `
       <p>Hi ${escapeHtml(booking.owner_name || 'there')},</p>
-      <p>Good news — your booking is <strong>confirmed</strong>. Payment details will follow.</p>
+      <p>Good news — your booking is <strong>confirmed</strong>.${checkoutUrl ? ' You can pay securely using the button below.' : ' Payment details will follow.'}</p>
       ${bookingHtmlBlock(booking)}
+      ${checkoutUrl ? `
+        <p><a href="${checkoutUrl}" style="display:inline-block;background:#ff6b9d;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600;">Pay ${formatMoney(booking.amount_cents)} now</a></p>
+        <p style="color:#666;font-size:12px;">Or copy and paste this link: ${escapeHtml(checkoutUrl)}</p>
+      ` : ''}
       ${link ? `<p><a href="${link}">View your booking</a></p>` : ''}
     `
   });

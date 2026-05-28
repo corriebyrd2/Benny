@@ -1056,8 +1056,10 @@
 
     async function approveBooking(id) {
       try {
-        await apiCall(`/api/bookings/${id}/approve`, { method: 'POST' });
-        showToast('Booking approved — payment requested from customer');
+        const data = await apiCall(`/api/bookings/${id}/approve`, { method: 'POST' });
+        showToast(data && data.checkout_url
+          ? 'Booking approved — confirmation email with payment link sent'
+          : 'Booking approved — payment requested from customer');
         closeModal();
         loadBookings();
         loadDashboard();

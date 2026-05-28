@@ -3,6 +3,7 @@ const { query } = require('../database');
 const { authenticateToken, requirePermission, logAudit } = require('../auth');
 const { authenticateCustomer } = require('../customerAuth');
 const mailer = require('../email');
+const { getStripe } = require('../stripeClient');
 
 const router = express.Router();
 
@@ -262,13 +263,54 @@ router.post('/:id/approve', authenticateToken, requirePermission('write'), async
      WHERE id = $1 RETURNING *`,
     [req.params.id]
   );
-  if (!rows[0]) {
+  const booking = rows[0];
+  if (!booking) {
     return res.status(404).json({ error: 'Booking not found' });
   }
 
-  await mailer.sendBookingApprovedToCustomer({ booking: rows[0] });
+  // Mint a Stripe checkout link so the confirmation email is directly payable.
+  // If Stripe isn't configured (or the call fails), fall back to a link-free
+  // confirmation — the customer can still pay from the portal.
+  let checkoutUrl = null;
+  const stripe = getStripe();
+  if (stripe) {
+    try {
+      const base = `${req.protocol}://${req.get('host')}`;
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: booking.service_name,
+              description: `Booking #${booking.id} for ${booking.dog_name} - Benny and the Pets`
+            },
+            unit_amount: booking.amount_cents
+          },
+          quantity: 1
+        }],
+        mode: 'payment',
+        metadata: { booking_id: booking.id.toString() },
+        success_url: `${base}/my-bookings?email=${encodeURIComponent(booking.email)}&booking=${booking.id}`,
+        cancel_url: `${base}/my-bookings?email=${encodeURIComponent(booking.email)}`
+      });
+      checkoutUrl = session.url;
+      await query(
+        `UPDATE bookings SET
+           stripe_session_id = $2,
+           stripe_session_ids = array_append(stripe_session_ids, $2),
+           updated_at = NOW()
+         WHERE id = $1 AND payment_status != 'paid'`,
+        [booking.id, session.id]
+      );
+    } catch (err) {
+      console.error('[approve] failed to create Stripe checkout session:', err.message);
+    }
+  }
+
+  await mailer.sendBookingApprovedToCustomer({ booking, checkoutUrl });
   await logAudit(req.admin.id, req.admin.email, 'approve', 'bookings', req.params.id, 'success');
-  res.json({ message: 'Booking approved and payment requested' });
+  res.json({ message: 'Booking approved and payment requested', checkout_url: checkoutUrl });
 });
 
 // Admin: Cancel booking with reason

@@ -337,7 +337,7 @@ app.get('/api/admin/clients', authenticateToken, requirePermission('read'), asyn
       query(`SELECT id, owner_name, email, phone, dog_name, service_name, preferred_dates,
                     status, payment_status, amount_cents, customer_id, start_date, end_date,
                     created_at
-             FROM bookings ORDER BY created_at DESC`)
+             FROM bookings WHERE status != 'cancelled' ORDER BY created_at DESC`)
     ]);
 
     const customers = customersRes.rows;
@@ -452,7 +452,6 @@ app.get('/api/admin/clients', authenticateToken, requirePermission('read'), asyn
         ...client,
         total_bookings: client.bookings.length,
         completed_bookings: client.bookings.filter(b => b.status === 'completed').length,
-        cancelled_bookings: client.bookings.filter(b => b.status === 'cancelled').length,
         pending_bookings: client.bookings.filter(b => b.status === 'pending').length,
         confirmed_bookings: client.bookings.filter(b => b.status === 'confirmed').length,
         total_dogs: client.dogs.length,

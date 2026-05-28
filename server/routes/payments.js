@@ -156,6 +156,10 @@ router.post('/request-payment', authenticateToken, requirePermission('write'), a
     return res.status(404).json({ error: 'Booking not found' });
   }
 
+    if (booking.status === 'cancelled') {
+      return res.status(400).json({ error: 'Cannot request payment for a cancelled booking' });
+    }
+
     if (booking.payment_status === 'paid') {
       return res.status(400).json({ error: 'Booking is already paid' });
     }

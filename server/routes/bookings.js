@@ -140,6 +140,14 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
     if (resolvedNames.length === 0) {
       return res.status(400).json({ error: 'At least one dog name is required' });
     }
+    // Names list must agree with the billed cap — otherwise booking.dog_name
+    // would display all submitted dogs while dog_count/amount only cover the
+    // first MAX_DOGS_PER_BOOKING.
+    if (resolvedNames.length > MAX_DOGS_PER_BOOKING) {
+      return res.status(400).json({
+        error: `At most ${MAX_DOGS_PER_BOOKING} dogs per booking`
+      });
+    }
   } else {
     let resolvedDogName = dog_name;
     if (dog_id) {
@@ -281,6 +289,43 @@ router.get('/:id', authenticateToken, requirePermission('read'), async (req, res
   res.json(rows[0]);
 });
 
+// Walk through every Stripe Checkout Session we've ever minted for this
+// booking. If any is already paid, surface that to the caller so they can
+// refuse the re-price (the customer just paid the OLD amount). Open sessions
+// are expired so the customer can't pay a stale link after the admin has
+// changed the price. Best-effort: per-session errors are logged but don't
+// abort the loop — sessions can legitimately be missing, already expired,
+// or already complete.
+async function reconcileStripeSessionsForReprice(stripe, booking) {
+  const sessionIds = Array.isArray(booking.stripe_session_ids) && booking.stripe_session_ids.length > 0
+    ? booking.stripe_session_ids
+    : (booking.stripe_session_id ? [booking.stripe_session_id] : []);
+
+  if (sessionIds.length === 0) return { paidSession: null, expiredAny: false };
+
+  let expiredAny = false;
+  for (const sid of sessionIds) {
+    try {
+      const session = await stripe.checkout.sessions.retrieve(sid);
+      if (session && session.payment_status === 'paid') {
+        return { paidSession: session, expiredAny };
+      }
+      if (session && session.status === 'open') {
+        try {
+          await stripe.checkout.sessions.expire(sid);
+          expiredAny = true;
+        } catch (expireErr) {
+          console.warn('[reprice] failed to expire session', sid, expireErr.message);
+        }
+      }
+    } catch (retrieveErr) {
+      console.warn('[reprice] failed to retrieve session', sid, retrieveErr.message);
+    }
+  }
+
+  return { paidSession: null, expiredAny };
+}
+
 // Admin: Update booking status
 router.put('/:id', authenticateToken, requirePermission('write'), async (req, res) => {
   const { status, payment_status, amount_cents, dog_count } = req.body;
@@ -291,6 +336,8 @@ router.put('/:id', authenticateToken, requirePermission('write'), async (req, re
   // (e.g. correcting a wrongly-marked record).
   const wantsRepricing = amount_cents !== undefined || dog_count !== undefined;
   let existingBooking = null;
+  let postRepriceResetSql = null;
+  let postRepriceResetParams = null;
   if (wantsRepricing) {
     const { rows: existing } = await query('SELECT * FROM bookings WHERE id = $1', [req.params.id]);
     existingBooking = existing[0];
@@ -299,6 +346,53 @@ router.put('/:id', authenticateToken, requirePermission('write'), async (req, re
     }
     if (existingBooking.payment_status === 'paid') {
       return res.status(409).json({ error: 'Cannot change price or dog count on a paid booking' });
+    }
+
+    // If any Stripe Checkout Session was ever minted, the customer may still
+    // have a live link at the old price. Expire those sessions now and force
+    // payment_status back to 'unpaid' so the admin has to mint a fresh link
+    // (via Send Payment Request) before the customer can pay the new amount.
+    const hasSessions =
+      (Array.isArray(existingBooking.stripe_session_ids) && existingBooking.stripe_session_ids.length > 0) ||
+      !!existingBooking.stripe_session_id;
+    if (hasSessions) {
+      const stripe = getStripe();
+      if (!stripe) {
+        return res.status(409).json({
+          error: 'A Stripe payment link is already outstanding for this booking. ' +
+                 'Re-configure Stripe so existing links can be expired before re-pricing.'
+        });
+      }
+      const { paidSession } = await reconcileStripeSessionsForReprice(stripe, existingBooking);
+      if (paidSession) {
+        // Customer paid via the old link in the window between admin opening
+        // the modal and saving the edit. Mark the booking paid and refuse the
+        // re-price so receipts stay consistent with what was actually charged.
+        const paymentIntentId = typeof paidSession.payment_intent === 'string'
+          ? paidSession.payment_intent
+          : (paidSession.payment_intent && paidSession.payment_intent.id) || '';
+        await query(
+          `UPDATE bookings SET
+             payment_status = 'paid',
+             stripe_payment_id = COALESCE(NULLIF($1, ''), stripe_payment_id),
+             status = CASE WHEN status = 'pending' THEN 'confirmed' ELSE status END,
+             updated_at = NOW()
+           WHERE id = $2 AND payment_status != 'paid'`,
+          [paymentIntentId, existingBooking.id]
+        );
+        return res.status(409).json({
+          error: 'Customer just paid via the existing link. Refresh to see the paid status.'
+        });
+      }
+      // Defer the payment_status / stripe_session_id reset until after the
+      // main UPDATE so it isn't overwritten by COALESCE-from-current.
+      postRepriceResetSql =
+        `UPDATE bookings SET
+           payment_status = 'unpaid',
+           stripe_session_id = '',
+           updated_at = NOW()
+         WHERE id = $1`;
+      postRepriceResetParams = [existingBooking.id];
     }
   }
 
@@ -327,6 +421,10 @@ router.put('/:id', authenticateToken, requirePermission('write'), async (req, re
      WHERE id = $5`,
     [status ?? null, payment_status ?? null, finalAmount ?? null, normalizedDogCount, req.params.id]
   );
+
+  if (postRepriceResetSql) {
+    await query(postRepriceResetSql, postRepriceResetParams);
+  }
 
   const { rows: updated } = await query('SELECT * FROM bookings WHERE id = $1', [req.params.id]);
   await logAudit(req.admin.id, req.admin.email, 'update', 'bookings', req.params.id, 'success');

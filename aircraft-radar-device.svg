@@ -1,0 +1,290 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 750" width="1000" height="750">
+  <defs>
+    <!-- Wood desk gradient -->
+    <linearGradient id="desk" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3a2a1a"/>
+      <stop offset="50%" stop-color="#5a3f24"/>
+      <stop offset="100%" stop-color="#2a1d10"/>
+    </linearGradient>
+
+    <!-- Device body gradient -->
+    <linearGradient id="deviceBody" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2a2d33"/>
+      <stop offset="50%" stop-color="#1a1d22"/>
+      <stop offset="100%" stop-color="#0d0f12"/>
+    </linearGradient>
+
+    <!-- Bezel gradient -->
+    <linearGradient id="bezel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4a4d53"/>
+      <stop offset="50%" stop-color="#2a2d33"/>
+      <stop offset="100%" stop-color="#1a1d22"/>
+    </linearGradient>
+
+    <!-- Screen background -->
+    <radialGradient id="screen" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0a2818"/>
+      <stop offset="60%" stop-color="#051a0e"/>
+      <stop offset="100%" stop-color="#020a06"/>
+    </radialGradient>
+
+    <!-- Sonar sweep gradient -->
+    <linearGradient id="sweep" x1="0" y1="0" x2="1" y2="0" gradientUnits="userSpaceOnUse" gradientTransform="rotate(-60 500 400)">
+      <stop offset="0%" stop-color="#00ff88" stop-opacity="0"/>
+      <stop offset="80%" stop-color="#00ff88" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#00ff88" stop-opacity="0.65"/>
+    </linearGradient>
+
+    <!-- Glow filter -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="strongGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Plane symbol -->
+    <symbol id="plane" viewBox="-12 -12 24 24">
+      <path d="M0,-10 L2,-2 L10,2 L10,4 L2,2 L2,7 L5,9 L5,10 L0,9 L-5,10 L-5,9 L-2,7 L-2,2 L-10,4 L-10,2 L-2,-2 Z"
+            fill="#00ff88" stroke="#aaffcc" stroke-width="0.5"/>
+    </symbol>
+
+    <!-- Speaker mesh pattern -->
+    <pattern id="mesh" x="0" y="0" width="6" height="6" patternUnits="userSpaceOnUse">
+      <circle cx="3" cy="3" r="1" fill="#0a0c10"/>
+    </pattern>
+  </defs>
+
+  <!-- Background / desk -->
+  <rect width="1000" height="750" fill="#1a1410"/>
+  <rect y="560" width="1000" height="190" fill="url(#desk)"/>
+
+  <!-- Desk wood grain lines -->
+  <g stroke="#2a1a0a" stroke-width="0.5" opacity="0.4">
+    <line x1="0" y1="600" x2="1000" y2="605"/>
+    <line x1="0" y1="640" x2="1000" y2="638"/>
+    <line x1="0" y1="685" x2="1000" y2="690"/>
+    <line x1="0" y1="720" x2="1000" y2="722"/>
+  </g>
+
+  <!-- Soft ambient glow under device -->
+  <ellipse cx="500" cy="610" rx="280" ry="20" fill="#00ff88" opacity="0.08" filter="url(#glow)"/>
+
+  <!-- Stand / base -->
+  <path d="M380,600 L620,600 L600,565 L400,565 Z" fill="url(#deviceBody)" stroke="#0a0c10" stroke-width="1"/>
+  <ellipse cx="500" cy="600" rx="120" ry="6" fill="#0a0c10"/>
+
+  <!-- Device body (rounded rectangle housing) -->
+  <rect x="160" y="100" width="680" height="475" rx="32" ry="32" fill="url(#deviceBody)" stroke="#0a0c10" stroke-width="2"/>
+
+  <!-- Body highlight -->
+  <rect x="165" y="105" width="670" height="40" rx="28" ry="28" fill="#3a3d43" opacity="0.3"/>
+
+  <!-- Bezel (around screen) -->
+  <rect x="195" y="135" width="610" height="410" rx="18" ry="18" fill="url(#bezel)"/>
+
+  <!-- Screen recess -->
+  <rect x="210" y="150" width="580" height="380" rx="10" ry="10" fill="#020a06"/>
+
+  <!-- ============ SCREEN CONTENT ============ -->
+  <g>
+    <!-- Clip to screen area -->
+    <defs>
+      <clipPath id="screenClip">
+        <rect x="210" y="150" width="580" height="380" rx="10" ry="10"/>
+      </clipPath>
+    </defs>
+
+    <g clip-path="url(#screenClip)">
+      <!-- Screen background -->
+      <rect x="210" y="150" width="580" height="380" fill="url(#screen)"/>
+
+      <!-- Subtle scanline overlay -->
+      <g opacity="0.08">
+        <line x1="210" y1="170" x2="790" y2="170" stroke="#00ff88" stroke-width="0.3"/>
+        <line x1="210" y1="200" x2="790" y2="200" stroke="#00ff88" stroke-width="0.3"/>
+        <line x1="210" y1="230" x2="790" y2="230" stroke="#00ff88" stroke-width="0.3"/>
+        <line x1="210" y1="260" x2="790" y2="260" stroke="#00ff88" stroke-width="0.3"/>
+        <line x1="210" y1="290" x2="790" y2="290" stroke="#00ff88" stroke-width="0.3"/>
+        <line x1="210" y1="320" x2="790" y2="320" stroke="#00ff88" stroke-width="0.3"/>
+        <line x1="210" y1="350" x2="790" y2="350" stroke="#00ff88" stroke-width="0.3"/>
+        <line x1="210" y1="380" x2="790" y2="380" stroke="#00ff88" stroke-width="0.3"/>
+        <line x1="210" y1="410" x2="790" y2="410" stroke="#00ff88" stroke-width="0.3"/>
+        <line x1="210" y1="440" x2="790" y2="440" stroke="#00ff88" stroke-width="0.3"/>
+        <line x1="210" y1="470" x2="790" y2="470" stroke="#00ff88" stroke-width="0.3"/>
+        <line x1="210" y1="500" x2="790" y2="500" stroke="#00ff88" stroke-width="0.3"/>
+      </g>
+
+      <!-- Header text -->
+      <text x="225" y="175" font-family="Courier New, monospace" font-size="11" fill="#00ff88" opacity="0.9">KSFO ◦ LIVE</text>
+      <text x="225" y="190" font-family="Courier New, monospace" font-size="9" fill="#00ff88" opacity="0.6">RANGE 40NM</text>
+
+      <text x="775" y="175" font-family="Courier New, monospace" font-size="11" fill="#00ff88" opacity="0.9" text-anchor="end">14:32:07 PST</text>
+      <text x="775" y="190" font-family="Courier New, monospace" font-size="9" fill="#00ff88" opacity="0.6" text-anchor="end">TRACKING 7</text>
+
+      <!-- Crosshair grid through center -->
+      <g stroke="#00ff88" stroke-width="0.4" opacity="0.35">
+        <line x1="500" y1="220" x2="500" y2="510"/>
+        <line x1="340" y1="365" x2="660" y2="365"/>
+      </g>
+
+      <!-- Sonar concentric rings -->
+      <g fill="none" stroke="#00ff88" stroke-width="0.8">
+        <circle cx="500" cy="365" r="30" opacity="0.55"/>
+        <circle cx="500" cy="365" r="65" opacity="0.45"/>
+        <circle cx="500" cy="365" r="100" opacity="0.4"/>
+        <circle cx="500" cy="365" r="135" opacity="0.32"/>
+      </g>
+
+      <!-- Range labels on rings -->
+      <g font-family="Courier New, monospace" font-size="7" fill="#00ff88" opacity="0.5">
+        <text x="502" y="335">10</text>
+        <text x="502" y="300">20</text>
+        <text x="502" y="265">30</text>
+        <text x="502" y="230">40</text>
+      </g>
+
+      <!-- Compass labels -->
+      <g font-family="Courier New, monospace" font-size="9" fill="#00ff88" opacity="0.65">
+        <text x="500" y="215" text-anchor="middle">N</text>
+        <text x="670" y="368" text-anchor="middle">E</text>
+        <text x="500" y="525" text-anchor="middle">S</text>
+        <text x="330" y="368" text-anchor="middle">W</text>
+      </g>
+
+      <!-- Sweep wedge -->
+      <path d="M 500,365 L 500,225 A 140,140 0 0,1 621,295 Z" fill="url(#sweep)"/>
+      <!-- Sweep leading edge -->
+      <line x1="500" y1="365" x2="621" y2="295" stroke="#00ff88" stroke-width="1.2" opacity="0.9" filter="url(#glow)"/>
+
+      <!-- Center origin dot -->
+      <circle cx="500" cy="365" r="3" fill="#00ff88" filter="url(#strongGlow)"/>
+      <circle cx="500" cy="365" r="1.5" fill="#ffffff"/>
+
+      <!-- ============ AIRCRAFT ============ -->
+
+      <!-- Aircraft 1 - upper right, heading SW -->
+      <g transform="translate(595,275) rotate(225)">
+        <use href="#plane" width="18" height="18" x="-9" y="-9" filter="url(#glow)"/>
+      </g>
+      <g font-family="Courier New, monospace" fill="#00ff88">
+        <line x1="603" y1="270" x2="625" y2="248" stroke="#00ff88" stroke-width="0.6" opacity="0.7"/>
+        <rect x="625" y="225" width="118" height="34" fill="#020a06" stroke="#00ff88" stroke-width="0.6" opacity="0.95"/>
+        <text x="631" y="238" font-size="10" font-weight="bold">N737BA · UA1453</text>
+        <text x="631" y="250" font-size="8" opacity="0.85">LAX → SFO  ·  FL220</text>
+      </g>
+
+      <!-- Aircraft 2 - left side, heading E -->
+      <g transform="translate(395,340) rotate(90)">
+        <use href="#plane" width="18" height="18" x="-9" y="-9" filter="url(#glow)"/>
+      </g>
+      <g font-family="Courier New, monospace" fill="#00ff88">
+        <line x1="386" y1="340" x2="365" y2="318" stroke="#00ff88" stroke-width="0.6" opacity="0.7"/>
+        <rect x="247" y="297" width="118" height="34" fill="#020a06" stroke="#00ff88" stroke-width="0.6" opacity="0.95"/>
+        <text x="253" y="310" font-size="10" font-weight="bold">N512AS · AS287</text>
+        <text x="253" y="322" font-size="8" opacity="0.85">SEA → SFO  ·  FL180</text>
+      </g>
+
+      <!-- Aircraft 3 - lower right, heading NW -->
+      <g transform="translate(580,440) rotate(315)">
+        <use href="#plane" width="18" height="18" x="-9" y="-9" filter="url(#glow)"/>
+      </g>
+      <g font-family="Courier New, monospace" fill="#00ff88">
+        <line x1="588" y1="445" x2="610" y2="465" stroke="#00ff88" stroke-width="0.6" opacity="0.7"/>
+        <rect x="610" y="465" width="118" height="34" fill="#020a06" stroke="#00ff88" stroke-width="0.6" opacity="0.95"/>
+        <text x="616" y="478" font-size="10" font-weight="bold">N829DL · DL1102</text>
+        <text x="616" y="490" font-size="8" opacity="0.85">SFO → JFK  ·  FL340</text>
+      </g>
+
+      <!-- Aircraft 4 - top, heading S, low altitude on approach -->
+      <g transform="translate(515,250) rotate(170)">
+        <use href="#plane" width="16" height="16" x="-8" y="-8" filter="url(#glow)"/>
+      </g>
+      <g font-family="Courier New, monospace" fill="#00ff88">
+        <line x1="525" y1="248" x2="555" y2="232" stroke="#00ff88" stroke-width="0.6" opacity="0.7"/>
+        <rect x="555" y="208" width="118" height="34" fill="#020a06" stroke="#00ff88" stroke-width="0.6" opacity="0.95"/>
+        <text x="561" y="221" font-size="10" font-weight="bold">N1872U · UA208</text>
+        <text x="561" y="233" font-size="8" opacity="0.85">ORD → SFO  ·  FL080</text>
+      </g>
+
+      <!-- Aircraft 5 - lower left, heading NE -->
+      <g transform="translate(430,455) rotate(45)">
+        <use href="#plane" width="16" height="16" x="-8" y="-8" filter="url(#glow)" opacity="0.75"/>
+      </g>
+      <g font-family="Courier New, monospace" fill="#00ff88" opacity="0.85">
+        <line x1="422" y1="460" x2="395" y2="478" stroke="#00ff88" stroke-width="0.5" opacity="0.6"/>
+        <rect x="270" y="478" width="125" height="34" fill="#020a06" stroke="#00ff88" stroke-width="0.5" opacity="0.9"/>
+        <text x="276" y="491" font-size="10" font-weight="bold">N617JB · B6724</text>
+        <text x="276" y="503" font-size="8" opacity="0.85">SFO → BOS  ·  FL310</text>
+      </g>
+
+      <!-- Aircraft 6 - far edge, fading -->
+      <g transform="translate(640,420) rotate(280)" opacity="0.55">
+        <use href="#plane" width="14" height="14" x="-7" y="-7"/>
+      </g>
+      <g font-family="Courier New, monospace" fill="#00ff88" opacity="0.55">
+        <rect x="650" y="410" width="105" height="22" fill="#020a06" stroke="#00ff88" stroke-width="0.4"/>
+        <text x="656" y="424" font-size="9">N455SW · WN1840</text>
+      </g>
+
+      <!-- Aircraft 7 - just past sweep, faint ghost -->
+      <g transform="translate(450,290) rotate(135)" opacity="0.35">
+        <use href="#plane" width="13" height="13" x="-6.5" y="-6.5"/>
+      </g>
+
+      <!-- Center airport label -->
+      <text x="500" y="382" font-family="Courier New, monospace" font-size="8" fill="#aaffcc" text-anchor="middle" opacity="0.9">SFO</text>
+
+      <!-- Footer telemetry -->
+      <text x="225" y="515" font-family="Courier New, monospace" font-size="9" fill="#00ff88" opacity="0.6">ADS-B ◦ RX OK</text>
+      <text x="500" y="515" font-family="Courier New, monospace" font-size="9" fill="#00ff88" opacity="0.6" text-anchor="middle">SWEEP 4s</text>
+      <text x="775" y="515" font-family="Courier New, monospace" font-size="9" fill="#00ff88" opacity="0.6" text-anchor="end">WX CLR ◦ 62°F</text>
+    </g>
+
+    <!-- Screen glass reflection -->
+    <path d="M 215,155 Q 350,160 400,200 L 380,260 Q 290,210 215,210 Z" fill="white" opacity="0.04"/>
+    <path d="M 720,155 Q 760,155 785,170 L 785,220 Q 750,180 720,170 Z" fill="white" opacity="0.03"/>
+  </g>
+
+  <!-- ============ DEVICE EXTERIOR DETAILS ============ -->
+
+  <!-- Top speaker grill (mesh) -->
+  <rect x="280" y="115" width="440" height="14" rx="6" ry="6" fill="url(#mesh)" opacity="0.7"/>
+
+  <!-- Bottom control bar -->
+  <rect x="195" y="540" width="610" height="22" rx="4" ry="4" fill="#0a0c10"/>
+
+  <!-- Knob (left) -->
+  <circle cx="240" cy="551" r="9" fill="#3a3d43" stroke="#0a0c10" stroke-width="1"/>
+  <circle cx="240" cy="551" r="6" fill="#1a1d22"/>
+  <line x1="240" y1="551" x2="240" y2="546" stroke="#00ff88" stroke-width="1.2"/>
+
+  <!-- Indicator LEDs -->
+  <circle cx="285" cy="551" r="2.5" fill="#00ff88" filter="url(#glow)"/>
+  <circle cx="298" cy="551" r="2.5" fill="#ff8800" opacity="0.85"/>
+  <circle cx="311" cy="551" r="2.5" fill="#444" opacity="0.6"/>
+
+  <!-- Center brand text -->
+  <text x="500" y="555" font-family="Helvetica, Arial, sans-serif" font-size="8" fill="#5a5d63" text-anchor="middle" letter-spacing="3">SKYWATCH ◦ 01</text>
+
+  <!-- Right side buttons -->
+  <rect x="720" y="546" width="14" height="10" rx="2" fill="#2a2d33" stroke="#0a0c10" stroke-width="0.5"/>
+  <rect x="740" y="546" width="14" height="10" rx="2" fill="#2a2d33" stroke="#0a0c10" stroke-width="0.5"/>
+  <rect x="760" y="546" width="14" height="10" rx="2" fill="#2a2d33" stroke="#0a0c10" stroke-width="0.5"/>
+
+  <!-- Subtle device body reflection on bottom -->
+  <rect x="160" y="565" width="680" height="8" rx="4" fill="#0a0c10" opacity="0.6"/>
+
+  <!-- Title/caption above device -->
+  <text x="500" y="50" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#e0e0e0" text-anchor="middle" font-weight="300" letter-spacing="6">SKYWATCH</text>
+  <text x="500" y="72" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#888" text-anchor="middle" letter-spacing="3">DESK AIRCRAFT RADAR · CONCEPT RENDERING</text>
+</svg>

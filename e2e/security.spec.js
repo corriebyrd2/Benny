@@ -78,54 +78,6 @@ test.describe('security regressions', () => {
     });
   });
 
-  test.describe('public endpoint rate limits', () => {
-    test('public booking lookup blocks at 30 requests per IP per hour', async ({ request }) => {
-      // Pre-create one matching booking so the lookup body is deterministic.
-      await createPublicBooking(request, { email: 'enum@test.local' });
-      // The public booking POST has its own 30/hr limiter, so we use lookup
-      // (also 30/hr) — the first 30 succeed, the 31st gets a 429.
-      let lastStatus = 200;
-      for (let i = 0; i < 31; i++) {
-        const res = await request.post('/api/bookings/lookup', {
-          data: { email: `noone-${i}@test.local` }
-        });
-        lastStatus = res.status();
-        if (lastStatus === 429) break;
-      }
-      expect(lastStatus).toBe(429);
-    });
-
-    test('public booking creation blocks at 30 per IP per hour', async ({ request }) => {
-      const serviceId = await firstServiceId(request);
-      let lastStatus = 0;
-      for (let i = 0; i < 31; i++) {
-        const res = await request.post('/api/bookings', {
-          data: {
-            owner_name: `Owner ${i}`,
-            email: `flood-${i}@test.local`,
-            dog_name: `Dog${i}`,
-            service_id: serviceId
-          }
-        });
-        lastStatus = res.status();
-        if (lastStatus === 429) break;
-      }
-      expect(lastStatus).toBe(429);
-    });
-
-    test('admin and authenticated customer routes on /api/bookings ignore the public limiter', async ({ request }) => {
-      const adminToken = await loginAdmin(request);
-      // Hammer the admin GET — it shares the /api/bookings prefix but is
-      // mounted past the rate-limit shim, so it should keep returning 200.
-      for (let i = 0; i < 35; i++) {
-        const res = await request.get('/api/bookings', {
-          headers: { authorization: `Bearer ${adminToken}` }
-        });
-        expect(res.status()).toBe(200);
-      }
-    });
-  });
-
   test.describe('customer password policy', () => {
     test('rejects passwords shorter than 10 characters', async ({ request }) => {
       const res = await request.post('/api/customer/register', {
@@ -206,22 +158,20 @@ test.describe('security regressions', () => {
     });
 
     test('skips delivery when the recipient address is malformed', async ({ request }) => {
-      // A booking row with a malformed email still gets stored, but the
-      // outbound email handler refuses to send to that address. We expect
-      // the customer-confirmation email to be absent.
-      const res = await request.post('/api/bookings', {
-        data: {
-          owner_name: 'Bad',
-          email: 'not\r\nan@email.test',
-          dog_name: 'Spot',
-          service_id: await firstServiceId(request)
-        }
+      // The booking's email comes from the customer account. A malformed
+      // address is still stored, but the outbound handler refuses to send to
+      // it, so the customer-confirmation email must be absent.
+      const { token, customer } = await registerCustomer(request, {
+        email: 'not\r\nan@email.test'
       });
-      // Either the route accepts and the mailer drops it, or the mailer
-      // throws and the central error handler returns 500. Both are
-      // acceptable outcomes — what matters is that no email got sent to
-      // an attacker-controlled address.
-      expect([201, 400, 500]).toContain(res.status());
+      const res = await request.post('/api/bookings/customer-book', {
+        headers: { authorization: `Bearer ${token}` },
+        data: { service_id: await firstServiceId(request), dog_name: customer.dogs[0].name }
+      });
+      // Either the mailer drops the bad recipient (201) or throws into the
+      // central error handler (500) — what matters is that no email got sent
+      // to an attacker-controlled address.
+      expect([201, 500]).toContain(res.status());
       const all = await getEmails(request);
       expect(all.find(e => e.to.some(t => /[\r\n]/.test(t)))).toBeFalsy();
     });
@@ -259,14 +209,6 @@ test.describe('security regressions', () => {
   });
 
   test.describe('input edge cases', () => {
-    test('booking lookup with SQL-ish payload returns an empty list, not an error', async ({ request }) => {
-      const res = await request.post('/api/bookings/lookup', {
-        data: { email: "x' OR '1'='1" }
-      });
-      expect(res.status()).toBe(200);
-      expect(await res.json()).toEqual([]);
-    });
-
     test('settings PUT silently drops keys outside the whitelist', async ({ request }) => {
       const token = await loginAdmin(request);
       const res = await request.put('/api/settings', {

@@ -52,22 +52,41 @@ async function firstServiceId(request) {
   return services[0].id;
 }
 
+// Create a booking through the authenticated customer flow. Every booking is
+// tied to an account now (there is no anonymous booking endpoint), so this
+// registers a fresh customer for the given email — or a generated one — and
+// books via /customer-book. Returns the customer-book response plus the
+// email/token/customer so callers can keep acting as that customer.
 async function createPublicBooking(request, overrides = {}) {
-  const serviceId = await firstServiceId(request);
-  const res = await request.post('/api/bookings', {
-    data: {
-      owner_name: 'Public Owner',
-      email: 'publicowner@test.local',
-      phone: '555-0101',
-      dog_name: 'Rex',
-      service_id: serviceId,
-      preferred_dates: 'next weekend',
-      message: 'please be gentle',
-      ...overrides
-    }
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const email = overrides.email || `owner-${suffix}@test.local`;
+  const dogName = overrides.dog_name || 'Rex';
+
+  const { token, customer } = await registerCustomer(request, {
+    name: overrides.owner_name || 'Public Owner',
+    email,
+    phone: overrides.phone || '555-0101',
+    dog_name: dogName
+  });
+
+  const serviceId = overrides.service_id || await firstServiceId(request);
+  const data = {
+    service_id: serviceId,
+    dog_name: dogName,
+    preferred_dates: overrides.preferred_dates || 'next weekend',
+    message: overrides.message || 'please be gentle'
+  };
+  if (overrides.start_date) data.start_date = overrides.start_date;
+  if (overrides.end_date) data.end_date = overrides.end_date;
+  if (overrides.dog_count) data.dog_count = overrides.dog_count;
+
+  const res = await request.post('/api/bookings/customer-book', {
+    headers: { authorization: `Bearer ${token}` },
+    data
   });
   expect(res.status(), await safeBody(res)).toBe(201);
-  return res.json();
+  const body = await res.json();
+  return { ...body, email, token, customer };
 }
 
 async function getEmails(request, filters = {}) {

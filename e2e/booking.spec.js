@@ -13,7 +13,7 @@ test.describe('bookings', () => {
     await resetAll(request);
   });
 
-  test('public booking: creates row, emails owner + customer', async ({ request }) => {
+  test('booking: creates row, emails owner + customer', async ({ request }) => {
     const body = await createPublicBooking(request, {
       owner_name: 'Alice',
       email: 'alice@test.local',
@@ -21,7 +21,7 @@ test.describe('bookings', () => {
     });
     expect(body).toMatchObject({
       id: expect.any(Number),
-      message: 'Booking request submitted',
+      message: 'Booking request submitted successfully!',
       amount_cents: expect.any(Number)
     });
 
@@ -32,32 +32,22 @@ test.describe('bookings', () => {
     expect(toCustomer[0].subject).toContain('Spot');
   });
 
-  test('public booking: rejects missing fields', async ({ request }) => {
-    const res = await request.post('/api/bookings', { data: { owner_name: 'Only Name' } });
-    expect(res.status()).toBe(400);
-  });
-
-  test('public booking: rejects invalid service_id', async ({ request }) => {
-    const res = await request.post('/api/bookings', {
-      data: {
-        owner_name: 'Alice',
-        email: 'a@test.local',
-        dog_name: 'Spot',
-        service_id: 99999
-      }
+  test('customer-book rejects a missing service', async ({ request }) => {
+    const { token } = await registerCustomer(request, { email: 'nosvc@test.local' });
+    const res = await request.post('/api/bookings/customer-book', {
+      headers: { authorization: `Bearer ${token}` },
+      data: { dog_name: 'Spot' }
     });
     expect(res.status()).toBe(400);
   });
 
-  test('lookup by email returns the booking case-insensitively', async ({ request }) => {
-    await createPublicBooking(request, { email: 'LookUp@Test.Local', dog_name: 'Max' });
-    const res = await request.post('/api/bookings/lookup', {
-      data: { email: 'lookup@test.local' }
+  test('customer-book rejects an invalid service_id', async ({ request }) => {
+    const { token, customer } = await registerCustomer(request, { email: 'badsvc@test.local' });
+    const res = await request.post('/api/bookings/customer-book', {
+      headers: { authorization: `Bearer ${token}` },
+      data: { service_id: 99999, dog_name: customer.dogs[0].name }
     });
-    expect(res.status()).toBe(200);
-    const list = await res.json();
-    expect(list.length).toBe(1);
-    expect(list[0].dog_name).toBe('Max');
+    expect(res.status()).toBe(400);
   });
 
   test('customer can create a booking via /customer-book and see it in /my', async ({ request }) => {
@@ -164,16 +154,4 @@ test.describe('bookings', () => {
     expect(got.status()).toBe(404);
   });
 
-  test('public can fetch a single booking with matching email', async ({ request }) => {
-    const b = await createPublicBooking(request, { email: 'verify@test.local' });
-    const ok = await request.post(`/api/bookings/customer/${b.id}`, {
-      data: { email: 'VERIFY@test.local' }
-    });
-    expect(ok.status()).toBe(200);
-
-    const wrong = await request.post(`/api/bookings/customer/${b.id}`, {
-      data: { email: 'someoneelse@test.local' }
-    });
-    expect(wrong.status()).toBe(404);
-  });
 });

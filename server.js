@@ -188,25 +188,7 @@ const passwordResetRequestLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many password reset requests. Try again in an hour.' }
 });
-const publicBookingLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many booking requests. Try again in an hour.' }
-});
-// /api/bookings/lookup returns full PII (phone, dog name, dates, free-text
-// message) for any matching email. Without a limiter, anyone can enumerate
-// customer addresses by submitting candidate emails and observing whether the
-// response array is empty.
-const bookingLookupLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many lookup attempts. Try again in an hour.' }
-});
-app.locals.limiters = { authLimiter, registerLimiter, subscribeLimiter, passwordResetRequestLimiter, publicBookingLimiter, bookingLookupLimiter };
+app.locals.limiters = { authLimiter, registerLimiter, subscribeLimiter, passwordResetRequestLimiter };
 
 // Admin auth
 app.post('/api/auth/login', authLimiter, async (req, res) => {
@@ -307,10 +289,6 @@ app.get('/api/customer/profile', authenticateCustomer, async (req, res) => {
 // Feature routers
 app.use('/api/services', require('./server/routes/services'));
 app.use('/api/photos', require('./server/routes/photos'));
-// Rate-limit only the public booking-creation and lookup endpoints; admin and
-// authenticated customer routes on the same router stay unlimited.
-app.post('/api/bookings', publicBookingLimiter, (req, res, next) => next('route'));
-app.post('/api/bookings/lookup', bookingLookupLimiter, (req, res, next) => next('route'));
 app.use('/api/bookings', require('./server/routes/bookings'));
 app.use('/api/payments', require('./server/routes/payments'));
 app.use('/api/dogs', require('./server/routes/dogs'));

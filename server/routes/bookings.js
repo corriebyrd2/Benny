@@ -63,48 +63,10 @@ router.get('/availability', async (req, res) => {
   res.json({ date, count, capacity, available: count < capacity });
 });
 
-// Public: Create a booking
-router.post('/', async (req, res) => {
-  const { owner_name, email, phone, dog_name, service_id, preferred_dates, message, start_date, end_date, dog_count } = req.body;
-
-  if (!owner_name || !email || !dog_name || !service_id) {
-    return res.status(400).json({ error: 'Missing required fields: owner_name, email, dog_name, service_id' });
-  }
-
-  const { rows: serviceRows } = await query('SELECT * FROM services WHERE id = $1', [service_id]);
-  const service = serviceRows[0];
-  if (!service) {
-    return res.status(400).json({ error: 'Invalid service selected' });
-  }
-
-  const dogs = normalizeDogCount(dog_count);
-  const amount_cents = computeAmountCents(service, start_date, end_date, dogs);
-
-  const { rows } = await query(
-    `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, start_date, end_date, dog_count)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
-    [
-      owner_name, email, phone || '', dog_name,
-      service_id, service.name,
-      preferred_dates || '', message || '',
-      amount_cents,
-      start_date || null, end_date || null,
-      dogs
-    ]
-  );
-  const booking = rows[0];
-
-  await Promise.all([
-    mailer.sendNewBookingToOwner({ booking }),
-    mailer.sendBookingReceivedToCustomer({ booking })
-  ]);
-
-  res.status(201).json({
-    id: booking.id,
-    message: 'Booking request submitted',
-    amount_cents
-  });
-});
+// Note: there is no anonymous booking-creation route. Every booking must be
+// tied to a customer account, so bookings are created only via the
+// authenticated /customer-book route below (which sets customer_id). The
+// public website already requires login before booking.
 
 // Authenticated customer: Get my bookings
 router.get('/my', authenticateCustomer, async (req, res) => {
@@ -220,41 +182,9 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
   });
 });
 
-// Public: Look up bookings by email
-router.post('/lookup', async (req, res) => {
-  const { email } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: 'Email is required' });
-  }
-
-  const { rows } = await query(
-    `SELECT id, owner_name, email, phone, dog_name, dog_count, service_id, service_name, preferred_dates, message,
-            status, payment_status, amount_cents, created_at, updated_at
-     FROM bookings WHERE LOWER(email) = LOWER($1) ORDER BY created_at DESC`,
-    [email]
-  );
-  res.json(rows);
-});
-
-// Public: Get a single booking by ID + email verification
-router.post('/customer/:id', async (req, res) => {
-  const { email } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: 'Email is required for verification' });
-  }
-
-  const { rows } = await query(
-    `SELECT id, owner_name, email, phone, dog_name, dog_count, service_id, service_name, preferred_dates, message,
-            status, payment_status, amount_cents, stripe_payment_id, created_at, updated_at
-     FROM bookings WHERE id = $1 AND LOWER(email) = LOWER($2)`,
-    [req.params.id, email]
-  );
-
-  if (!rows[0]) {
-    return res.status(404).json({ error: 'Booking not found or email does not match' });
-  }
-  res.json(rows[0]);
-});
+// Note: the anonymous email-based lookup routes (POST /lookup and
+// POST /customer/:id) were removed along with anonymous booking creation.
+// Customers view their bookings through the authenticated /my route above.
 
 // Admin: Get all bookings
 router.get('/', authenticateToken, requirePermission('read'), async (req, res) => {
@@ -466,8 +396,12 @@ router.post('/:id/approve', authenticateToken, requirePermission('write'), async
         }],
         mode: 'payment',
         metadata: { booking_id: booking.id.toString() },
-        success_url: `${base}/my-bookings?email=${encodeURIComponent(booking.email)}&booking=${booking.id}`,
-        cancel_url: `${base}/my-bookings?email=${encodeURIComponent(booking.email)}`
+        // Match the portal "Pay Now" return URL (?payment=success) so the
+        // client-side Stripe reconciliation runs on return. Without it, a
+        // customer paying via the approval email whose webhook is delayed or
+        // misconfigured lands back on a page still marked unpaid.
+        success_url: `${base}/my-bookings?payment=success&booking=${booking.id}`,
+        cancel_url: `${base}/my-bookings?payment=cancelled&booking=${booking.id}`
       });
       checkoutUrl = session.url;
       await query(

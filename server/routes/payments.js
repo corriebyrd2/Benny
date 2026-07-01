@@ -202,8 +202,12 @@ router.post('/send-payment-link', authenticateToken, requirePermission('write'),
     }],
     mode: 'payment',
     metadata: { booking_id: booking.id.toString() },
-    success_url: `${req.protocol}://${req.get('host')}/my-bookings?email=${encodeURIComponent(booking.email)}&booking=${booking.id}`,
-    cancel_url: `${req.protocol}://${req.get('host')}/my-bookings?email=${encodeURIComponent(booking.email)}`
+    // Return to the same ?payment=success URL the portal "Pay Now" flow uses so
+    // the client-side Stripe reconciliation (see customer.html) runs. Otherwise
+    // an email-link payer whose webhook is delayed/missing lands on a page that
+    // still shows the booking as unpaid even though Stripe charged them.
+    success_url: `${req.protocol}://${req.get('host')}/my-bookings?payment=success&booking=${booking.id}`,
+    cancel_url: `${req.protocol}://${req.get('host')}/my-bookings?payment=cancelled&booking=${booking.id}`
   });
 
   await query(

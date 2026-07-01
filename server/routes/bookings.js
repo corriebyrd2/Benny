@@ -466,8 +466,12 @@ router.post('/:id/approve', authenticateToken, requirePermission('write'), async
         }],
         mode: 'payment',
         metadata: { booking_id: booking.id.toString() },
-        success_url: `${base}/my-bookings?email=${encodeURIComponent(booking.email)}&booking=${booking.id}`,
-        cancel_url: `${base}/my-bookings?email=${encodeURIComponent(booking.email)}`
+        // Match the portal "Pay Now" return URL (?payment=success) so the
+        // client-side Stripe reconciliation runs on return. Without it, a
+        // customer paying via the approval email whose webhook is delayed or
+        // misconfigured lands back on a page still marked unpaid.
+        success_url: `${base}/my-bookings?payment=success&booking=${booking.id}`,
+        cancel_url: `${base}/my-bookings?payment=cancelled&booking=${booking.id}`
       });
       checkoutUrl = session.url;
       await query(

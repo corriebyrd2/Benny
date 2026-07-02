@@ -35,6 +35,10 @@ function install() {
         subject: msg.subject,
         text: msg.text,
         html: msg.html,
+        templateId: msg.templateId,
+        dynamicTemplateData: msg.dynamicTemplateData,
+        categories: msg.categories || [],
+        customArgs: msg.customArgs || {},
         at: new Date().toISOString()
       });
     }

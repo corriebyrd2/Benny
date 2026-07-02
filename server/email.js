@@ -5,6 +5,8 @@ const FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL;
 const FROM_NAME = process.env.SENDGRID_FROM_NAME || 'Benny and the Pets';
 const OWNER_EMAIL = process.env.OWNER_NOTIFICATION_EMAIL || process.env.ADMIN_EMAIL;
 const PUBLIC_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+const BOOKING_RECEIVED_TEMPLATE_ID = process.env.SENDGRID_BOOKING_RECEIVED_TEMPLATE_ID;
+const BOOKING_CONFIRMED_TEMPLATE_ID = process.env.SENDGRID_BOOKING_CONFIRMED_TEMPLATE_ID;
 
 let configured = false;
 if (API_KEY && FROM_EMAIL) {
@@ -145,7 +147,24 @@ function customerPortalLink() {
   return PUBLIC_URL ? `${PUBLIC_URL}/my-bookings` : null;
 }
 
-async function send({ to, subject, html, text }) {
+function bookingTemplateData(booking, extra = {}) {
+  const stay = stayLine(booking);
+  return {
+    booking_id: booking.id,
+    owner_name: booking.owner_name || 'there',
+    customer_email: booking.email,
+    dog_name: booking.dog_name,
+    service_name: booking.service_name,
+    amount: formatMoney(booking.amount_cents),
+    amount_cents: Number(booking.amount_cents || 0),
+    preferred_dates: booking.preferred_dates || '',
+    stay: stay || '',
+    portal_url: customerPortalLink() || '',
+    ...extra
+  };
+}
+
+async function send({ to, subject, html, text, templateId, dynamicTemplateData, categories, customArgs }) {
   if (!to) {
     console.warn(`[email] skipped (no recipient): ${subject}`);
     return;
@@ -155,13 +174,21 @@ async function send({ to, subject, html, text }) {
     return;
   }
   try {
-    await transport.send({
+    const msg = {
       to,
       from: { email: FROM_EMAIL || 'noreply@example.test', name: FROM_NAME },
       subject: oneLine(subject),
-      text,
-      html
-    });
+      categories,
+      customArgs
+    };
+    if (templateId) {
+      msg.templateId = templateId;
+      msg.dynamicTemplateData = dynamicTemplateData || {};
+    } else {
+      msg.text = text;
+      msg.html = html;
+    }
+    await transport.send(msg);
   } catch (err) {
     const detail = err.response?.body?.errors || err.message;
     console.error('[email] send failed:', subject, '→', to, detail);
@@ -215,7 +242,14 @@ async function sendBookingReceivedToCustomer({ booking }) {
       <p>Thanks for booking with Benny and the Pets! We've received your request and will confirm shortly.</p>
       ${bookingHtmlBlock(booking)}
       ${link ? `<p><a href="${link}">View your booking</a></p>` : ''}
-    `
+    `,
+    templateId: BOOKING_RECEIVED_TEMPLATE_ID,
+    dynamicTemplateData: bookingTemplateData(booking, {
+      subject: `We got your booking request for ${booking.dog_name}`,
+      status_label: 'Request received'
+    }),
+    categories: ['booking', 'booking_received'],
+    customArgs: { booking_id: String(booking.id), email_type: 'booking_received' }
   });
 }
 
@@ -245,7 +279,16 @@ async function sendBookingApprovedToCustomer({ booking, checkoutUrl }) {
         <p style="color:#666;font-size:12px;">Or copy and paste this link: ${escapeHtml(checkoutUrl)}</p>
       ` : ''}
       ${link ? `<p><a href="${link}">View your booking</a></p>` : ''}
-    `
+    `,
+    templateId: BOOKING_CONFIRMED_TEMPLATE_ID,
+    dynamicTemplateData: bookingTemplateData(booking, {
+      subject: `Your booking for ${booking.dog_name} is confirmed`,
+      status_label: 'Confirmed',
+      checkout_url: checkoutUrl || '',
+      has_checkout_url: Boolean(checkoutUrl)
+    }),
+    categories: ['booking', 'booking_confirmed'],
+    customArgs: { booking_id: String(booking.id), email_type: 'booking_confirmed' }
   });
 }
 

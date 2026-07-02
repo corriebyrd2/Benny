@@ -32,6 +32,15 @@ function authenticateToken(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+    // Customer and admin JWTs are signed with the same secret, so a valid
+    // signature alone is not enough — a customer token would otherwise satisfy
+    // authenticateToken and (via requirePermission's 'viewer' fallback) reach
+    // read-only admin routes like /api/admin/clients, exposing every client's
+    // PII. Admin tokens carry a role and no `type`; reject anything marked as a
+    // customer token.
+    if (decoded.type === 'customer') {
+      return res.status(403).json({ error: 'Invalid or expired token' });
+    }
     req.admin = decoded;
     next();
   } catch (err) {

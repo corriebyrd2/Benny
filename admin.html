@@ -1533,6 +1533,14 @@
             </div>
           </div>
           <div class="form-field">
+            <label>Billing (how the price is charged)</label>
+            <select id="svcBillingUnit">
+              <option value="session" ${(service?.billing_unit || 'session') === 'session' ? 'selected' : ''}>Per session — flat fee</option>
+              <option value="night" ${service?.billing_unit === 'night' ? 'selected' : ''}>Per night — × nights of stay</option>
+              <option value="day" ${service?.billing_unit === 'day' ? 'selected' : ''}>Per day — × days of stay</option>
+            </select>
+          </div>
+          <div class="form-field">
             <label>Perks (one per line)</label>
             <textarea id="svcPerks" rows="4" placeholder="Private suites\nEvening walk\nBreakfast">${escapeHtml(perks)}</textarea>
           </div>
@@ -1573,7 +1581,8 @@
         perks: document.getElementById('svcPerks').value.split('\n').filter(p => p.trim()),
         stripe_price_id: document.getElementById('svcStripeId').value,
         is_featured: document.getElementById('svcFeatured').checked,
-        active: document.getElementById('svcActive').checked
+        active: document.getElementById('svcActive').checked,
+        billing_unit: document.getElementById('svcBillingUnit').value
       };
 
       try {

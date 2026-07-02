@@ -255,6 +255,34 @@ test.describe('bookings', () => {
     expect(customerReceipts.some(e => /Payment received/i.test(e.subject))).toBe(false);
   });
 
+  test('billing follows billing_unit, not the price label text', async ({ request }) => {
+    const token = await loginAdmin(request);
+    const services = await (await request.get('/api/services')).json();
+    const boarding = services.find(s => s.billing_unit === 'night');
+    expect(boarding, 'expected a seeded per-night service').toBeTruthy();
+
+    // 3-night stay -> rate * 3.
+    const b1 = await createPublicBooking(request, {
+      email: 'bill1@test.local', service_id: boarding.id,
+      start_date: '2026-06-01', end_date: '2026-06-04'
+    });
+    expect(b1.amount_cents).toBe(boarding.price_cents * 3);
+
+    // Relabel so the text no longer contains "night"; billing_unit stays 'night'.
+    const upd = await request.put(`/api/services/${boarding.id}`, {
+      headers: { authorization: `Bearer ${token}` },
+      data: { price_label: 'Flat rate per overnight stay' }
+    });
+    expect(upd.status()).toBe(200);
+
+    const b2 = await createPublicBooking(request, {
+      email: 'bill2@test.local', service_id: boarding.id,
+      start_date: '2026-06-01', end_date: '2026-06-04'
+    });
+    // Still billed per night despite the label no longer saying "night".
+    expect(b2.amount_cents).toBe(boarding.price_cents * 3);
+  });
+
   test('public can fetch a single booking with matching email', async ({ request }) => {
     const b = await createPublicBooking(request, { email: 'verify@test.local' });
     const ok = await request.post(`/api/bookings/customer/${b.id}`, {

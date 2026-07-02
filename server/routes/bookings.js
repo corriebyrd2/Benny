@@ -61,20 +61,29 @@ function nightsBetween(startDate, endDate) {
   return Math.round(ms / MS_PER_DAY);
 }
 
+// The billing unit is stored on the service (billing_unit: night | day |
+// session). Older rows created before that column fall back to the legacy
+// price_label heuristic so their pricing is unchanged.
+function billingUnitFor(service) {
+  const unit = String(service.billing_unit || '').toLowerCase();
+  if (unit === 'night' || unit === 'day' || unit === 'session') return unit;
+  const label = String(service.price_label || '').toLowerCase();
+  if (label.includes('night')) return 'night';
+  if (label.includes('day')) return 'day';
+  return 'session';
+}
+
 // Boarding/daycare are billed per-night/per-day, so the total must scale with
-// the length of stay; grooming/training are per-session (flat). The schema has
-// no unit column, so we infer the unit from the service's price_label. Every
-// service rate is also per-dog — a booking for two pups doubles the price.
+// the length of stay; grooming/training are per-session (flat). Every service
+// rate is also per-dog — a booking for two pups doubles the price.
 function computeAmountCents(service, startDate, endDate, dogCount) {
   const base = Number(service.price_cents) || 0;
   const count = normalizeDogCount(dogCount);
-  const label = String(service.price_label || '').toLowerCase();
-  const perNight = label.includes('night');
-  const perDay = label.includes('day');
-  if ((!perNight && !perDay) || !startDate || !endDate) return base * count;
+  const unit = billingUnitFor(service);
+  if (unit === 'session' || !startDate || !endDate) return base * count;
   const nights = nightsBetween(startDate, endDate);
   // Per-night charges the number of nights; per-day charges inclusive days.
-  const qty = perNight ? Math.max(1, nights) : Math.max(1, nights + 1);
+  const qty = unit === 'night' ? Math.max(1, nights) : Math.max(1, nights + 1);
   return base * qty * count;
 }
 

@@ -124,27 +124,27 @@ async function seed() {
         'Cozy suites with bedtime stories (yes, really) and midnight check-ins. Your pup sleeps like royalty.',
         '\u{1F3E0}',
         JSON.stringify(['Private suites', 'Evening walk included', 'Breakfast & dinner']),
-        4500, 'From $45/night', false, 1],
+        4500, 'From $45/night', false, 1, 'night'],
       ['Doggy Daycare',
         'A full day of socialization, play, and structured activities. Your dog will come home happily exhausted!',
         '\u2600\uFE0F',
         JSON.stringify(['Supervised group play', 'Nap time included', 'Photo updates']),
-        3000, 'From $30/day', true, 2],
+        3000, 'From $30/day', true, 2, 'day'],
       ['Spa & Grooming',
         'Bath time shouldn\'t be a battle. Our gentle groomers make every pup feel pampered and pretty.',
         '\u{1F6C0}',
         JSON.stringify(['Bath & blow-dry', 'Nail trimming', 'Coat brushing']),
-        3500, 'From $35/session', false, 3],
+        3500, 'From $35/session', false, 3, 'session'],
       ['Training Sessions',
         'Positive reinforcement training that makes learning fun. From basics to impressive tricks!',
         '\u{1F3C3}',
         JSON.stringify(['1-on-1 sessions', 'Certified trainers', 'Progress reports']),
-        5000, 'From $50/session', false, 4]
+        5000, 'From $50/session', false, 4, 'session']
     ];
     for (const s of seeds) {
       await pool.query(
-        `INSERT INTO services (name, description, icon, perks, price_cents, price_label, is_featured, display_order)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        `INSERT INTO services (name, description, icon, perks, price_cents, price_label, is_featured, display_order, billing_unit)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         s
       );
     }

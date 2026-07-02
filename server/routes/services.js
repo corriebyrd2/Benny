@@ -4,6 +4,11 @@ const { authenticateToken, requirePermission, logAudit } = require('../auth');
 
 const router = express.Router();
 
+const VALID_BILLING_UNITS = new Set(['night', 'day', 'session']);
+function normalizeBillingUnit(val) {
+  return VALID_BILLING_UNITS.has(val) ? val : 'session';
+}
+
 function parsePerks(services) {
   for (const s of services) {
     try { s.perks = JSON.parse(s.perks || '[]'); } catch { s.perks = []; }
@@ -27,17 +32,18 @@ router.get('/all', authenticateToken, requirePermission('read'), async (req, res
 
 // Admin: Create a service
 router.post('/', authenticateToken, requirePermission('write'), async (req, res) => {
-  const { name, description, icon, perks, price_cents, price_label, is_featured, display_order, stripe_price_id } = req.body;
+  const { name, description, icon, perks, price_cents, price_label, is_featured, display_order, stripe_price_id, billing_unit } = req.body;
 
   const { rows } = await query(
-    `INSERT INTO services (name, description, icon, perks, price_cents, price_label, is_featured, display_order, stripe_price_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+    `INSERT INTO services (name, description, icon, perks, price_cents, price_label, is_featured, display_order, stripe_price_id, billing_unit)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
     [
       name, description, icon || '',
       JSON.stringify(perks || []),
       price_cents || 0, price_label || '',
       !!is_featured, display_order || 0,
-      stripe_price_id || ''
+      stripe_price_id || '',
+      normalizeBillingUnit(billing_unit)
     ]
   );
 
@@ -47,7 +53,7 @@ router.post('/', authenticateToken, requirePermission('write'), async (req, res)
 
 // Admin: Update a service
 router.put('/:id', authenticateToken, requirePermission('write'), async (req, res) => {
-  const { name, description, icon, perks, price_cents, price_label, is_featured, display_order, active, stripe_price_id } = req.body;
+  const { name, description, icon, perks, price_cents, price_label, is_featured, display_order, active, stripe_price_id, billing_unit } = req.body;
 
   await query(
     `UPDATE services SET
@@ -61,8 +67,9 @@ router.put('/:id', authenticateToken, requirePermission('write'), async (req, re
        display_order = COALESCE($8, display_order),
        active = COALESCE($9, active),
        stripe_price_id = COALESCE($10, stripe_price_id),
+       billing_unit = COALESCE($11, billing_unit),
        updated_at = NOW()
-     WHERE id = $11`,
+     WHERE id = $12`,
     [
       name ?? null,
       description ?? null,
@@ -74,6 +81,7 @@ router.put('/:id', authenticateToken, requirePermission('write'), async (req, re
       display_order ?? null,
       active !== undefined ? !!active : null,
       stripe_price_id ?? null,
+      billing_unit !== undefined ? normalizeBillingUnit(billing_unit) : null,
       req.params.id
     ]
   );

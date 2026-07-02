@@ -7,6 +7,25 @@ const { getStripe } = require('../stripeClient');
 
 const router = express.Router();
 
+// Send the right notification once a booking flips to paid. A payment that
+// lands on a CANCELLED booking (e.g. a stale link paid in the race before its
+// session could be expired) must not be treated as a normal confirmation — we
+// alert the owner to refund instead of emailing the customer a receipt for a
+// booking that no longer exists.
+async function notifyPaid(bookingId) {
+  const { rows } = await query('SELECT * FROM bookings WHERE id = $1', [bookingId]);
+  const booking = rows[0];
+  if (!booking) return;
+  if (booking.status === 'cancelled') {
+    await mailer.sendPaymentOnCancelledBookingToOwner({ booking });
+    return;
+  }
+  await Promise.all([
+    mailer.sendPaymentReceivedToCustomer({ booking }),
+    mailer.sendPaymentReceivedToOwner({ booking })
+  ]);
+}
+
 // Reconcile a booking's payment status with Stripe. Webhooks are the primary
 // path, but they can fail silently (misconfigured endpoint, missing secret,
 // transient network error). This helper retrieves the Checkout Session (or
@@ -67,20 +86,18 @@ async function syncBookingFromStripe(stripe, booking) {
   );
 
   if (result.rowCount > 0) {
-    const { rows } = await query('SELECT * FROM bookings WHERE id = $1', [booking.id]);
-    if (rows[0]) {
-      await Promise.all([
-        mailer.sendPaymentReceivedToCustomer({ booking: rows[0] }),
-        mailer.sendPaymentReceivedToOwner({ booking: rows[0] })
-      ]);
-    }
+    await notifyPaid(booking.id);
   }
 
   return { changed: result.rowCount > 0, payment_status: 'paid' };
 }
 
-// Public: Create a payment intent for a booking
-router.post('/create-payment-intent', async (req, res) => {
+// Legacy PaymentIntent flow. The live frontend pays via Checkout Sessions
+// (customer-checkout / send-payment-link), not these endpoints, so they are
+// gated to admins rather than left open: an unauthenticated caller could
+// otherwise mint Stripe PaymentIntents for any booking id and overwrite its
+// stripe_payment_id.
+router.post('/create-payment-intent', authenticateToken, requirePermission('write'), async (req, res) => {
   const stripe = getStripe();
   if (!stripe) {
     return res.status(503).json({ error: 'Stripe is not configured. Please add your Stripe keys to the .env file.' });
@@ -119,8 +136,10 @@ router.post('/create-payment-intent', async (req, res) => {
   });
 });
 
-// Public: Confirm payment completed (called after successful Stripe payment)
-router.post('/confirm-payment', async (req, res) => {
+// Legacy confirm endpoint for the PaymentIntent flow above. Same reasoning:
+// gated to admins. Real payment confirmation happens through the signed Stripe
+// webhook and the customer/admin sync routes.
+router.post('/confirm-payment', authenticateToken, requirePermission('write'), async (req, res) => {
   const stripe = getStripe();
   if (!stripe) {
     return res.status(503).json({ error: 'Stripe is not configured' });
@@ -301,26 +320,21 @@ router.post('/webhook', async (req, res) => {
     return res.status(400).json({ error: `Webhook signature verification failed: ${err.message}` });
   }
 
-  async function notifyPaid(bookingId) {
-    const { rows } = await query('SELECT * FROM bookings WHERE id = $1', [bookingId]);
-    if (!rows[0]) return;
-    await Promise.all([
-      mailer.sendPaymentReceivedToCustomer({ booking: rows[0] }),
-      mailer.sendPaymentReceivedToOwner({ booking: rows[0] })
-    ]);
-  }
-
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object;
         const bookingId = session.metadata.booking_id;
         if (bookingId) {
+          // Confirm the booking on payment — but never resurrect a cancelled
+          // one. If a stale link is somehow paid after cancellation, record the
+          // payment (so the money is accounted for) yet keep it cancelled; the
+          // notifyPaid branch then alerts the owner to refund.
           const result = await query(
             `UPDATE bookings SET
                payment_status = 'paid',
                stripe_payment_id = $1,
-               status = 'confirmed',
+               status = CASE WHEN status = 'cancelled' THEN status ELSE 'confirmed' END,
                updated_at = NOW()
              WHERE id = $2 AND payment_status != 'paid'`,
             [session.payment_intent, bookingId]

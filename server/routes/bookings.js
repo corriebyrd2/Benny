@@ -10,10 +10,48 @@ const router = express.Router();
 const MS_PER_DAY = 86400000;
 const MAX_DOGS_PER_BOOKING = 10;
 
+// Allowed values for the two independent status columns. Used to reject typos
+// or arbitrary strings on the admin update route so the data stays queryable
+// (the dashboard/clients aggregations group on these exact values).
+const VALID_STATUS = new Set(['pending', 'confirmed', 'completed', 'cancelled']);
+const VALID_PAYMENT_STATUS = new Set(['unpaid', 'requested', 'paid']);
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Validate an optional YYYY-MM-DD date range. Returns an error message or null.
+// ISO dates compare correctly as strings, so end < start is a lexical check.
+function validateDateRange(startDate, endDate) {
+  if (startDate && !DATE_RE.test(startDate)) return 'start_date must be in YYYY-MM-DD format';
+  if (endDate && !DATE_RE.test(endDate)) return 'end_date must be in YYYY-MM-DD format';
+  if (startDate && endDate && endDate < startDate) return 'end_date cannot be before start_date';
+  return null;
+}
+
 function normalizeDogCount(value) {
   const n = parseInt(value, 10);
   if (!Number.isFinite(n) || n < 1) return 1;
   return Math.min(MAX_DOGS_PER_BOOKING, n);
+}
+
+// Expire any still-open Stripe Checkout Session tied to a booking. Called when a
+// booking is cancelled so a customer can't pay a now-stale link (which would
+// otherwise revive the cancelled booking and take their money). Best-effort:
+// per-session errors are logged, never thrown, and a missing/expired session is
+// a no-op.
+async function expireOpenStripeSessions(stripe, booking) {
+  const sessionIds = Array.isArray(booking.stripe_session_ids) && booking.stripe_session_ids.length > 0
+    ? booking.stripe_session_ids
+    : (booking.stripe_session_id ? [booking.stripe_session_id] : []);
+  for (const sid of sessionIds) {
+    try {
+      const session = await stripe.checkout.sessions.retrieve(sid);
+      if (session && session.status === 'open') {
+        await stripe.checkout.sessions.expire(sid);
+      }
+    } catch (err) {
+      console.warn('[cancel] failed to expire session', sid, err.message);
+    }
+  }
 }
 
 // Number of nights between two YYYY-MM-DD dates (0 if end <= start or invalid).
@@ -23,20 +61,29 @@ function nightsBetween(startDate, endDate) {
   return Math.round(ms / MS_PER_DAY);
 }
 
+// The billing unit is stored on the service (billing_unit: night | day |
+// session). Older rows created before that column fall back to the legacy
+// price_label heuristic so their pricing is unchanged.
+function billingUnitFor(service) {
+  const unit = String(service.billing_unit || '').toLowerCase();
+  if (unit === 'night' || unit === 'day' || unit === 'session') return unit;
+  const label = String(service.price_label || '').toLowerCase();
+  if (label.includes('night')) return 'night';
+  if (label.includes('day')) return 'day';
+  return 'session';
+}
+
 // Boarding/daycare are billed per-night/per-day, so the total must scale with
-// the length of stay; grooming/training are per-session (flat). The schema has
-// no unit column, so we infer the unit from the service's price_label. Every
-// service rate is also per-dog — a booking for two pups doubles the price.
+// the length of stay; grooming/training are per-session (flat). Every service
+// rate is also per-dog — a booking for two pups doubles the price.
 function computeAmountCents(service, startDate, endDate, dogCount) {
   const base = Number(service.price_cents) || 0;
   const count = normalizeDogCount(dogCount);
-  const label = String(service.price_label || '').toLowerCase();
-  const perNight = label.includes('night');
-  const perDay = label.includes('day');
-  if ((!perNight && !perDay) || !startDate || !endDate) return base * count;
+  const unit = billingUnitFor(service);
+  if (unit === 'session' || !startDate || !endDate) return base * count;
   const nights = nightsBetween(startDate, endDate);
   // Per-night charges the number of nights; per-day charges inclusive days.
-  const qty = perNight ? Math.max(1, nights) : Math.max(1, nights + 1);
+  const qty = unit === 'night' ? Math.max(1, nights) : Math.max(1, nights + 1);
   return base * qty * count;
 }
 
@@ -69,6 +116,11 @@ router.post('/', async (req, res) => {
 
   if (!owner_name || !email || !dog_name || !service_id) {
     return res.status(400).json({ error: 'Missing required fields: owner_name, email, dog_name, service_id' });
+  }
+
+  const dateError = validateDateRange(start_date, end_date);
+  if (dateError) {
+    return res.status(400).json({ error: dateError });
   }
 
   const { rows: serviceRows } = await query('SELECT * FROM services WHERE id = $1', [service_id]);
@@ -121,6 +173,11 @@ router.get('/my', authenticateCustomer, async (req, res) => {
 router.post('/customer-book', authenticateCustomer, async (req, res) => {
   const { dog_name, dog_id, dog_names, service_id, preferred_dates, message, start_date, end_date, dog_count } = req.body;
 
+  const dateError = validateDateRange(start_date, end_date);
+  if (dateError) {
+    return res.status(400).json({ error: dateError });
+  }
+
   // New shape: dog_names is an array of names (saved + typed). The count is
   // derived from the array length, so the client can't desync count from
   // selection. Old shape (dog_id or dog_name + dog_count) still works for
@@ -171,7 +228,7 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
   }
 
   const { rows: serviceRows } = await query(
-    'SELECT * FROM services WHERE id = $1 AND active = 1',
+    'SELECT * FROM services WHERE id = $1 AND active = TRUE',
     [service_id]
   );
   const service = serviceRows[0];
@@ -330,6 +387,15 @@ async function reconcileStripeSessionsForReprice(stripe, booking) {
 router.put('/:id', authenticateToken, requirePermission('write'), async (req, res) => {
   const { status, payment_status, amount_cents, dog_count } = req.body;
 
+  // Reject unknown status values so the dashboard/clients aggregations, which
+  // group on exact strings, never silently miss a mistyped record.
+  if (status !== undefined && status !== null && !VALID_STATUS.has(status)) {
+    return res.status(400).json({ error: `Invalid status. Must be one of: ${[...VALID_STATUS].join(', ')}` });
+  }
+  if (payment_status !== undefined && payment_status !== null && !VALID_PAYMENT_STATUS.has(payment_status)) {
+    return res.status(400).json({ error: `Invalid payment_status. Must be one of: ${[...VALID_PAYMENT_STATUS].join(', ')}` });
+  }
+
   // Block re-pricing or dog-count changes on a settled booking — the customer
   // has already paid the original amount, so silently changing it here would
   // misrepresent the receipt. Status/payment_status edits still go through
@@ -433,14 +499,37 @@ router.put('/:id', authenticateToken, requirePermission('write'), async (req, re
 
 // Admin: Approve booking (confirms + auto-requests payment)
 router.post('/:id/approve', authenticateToken, requirePermission('write'), async (req, res) => {
+  // Load current state first so re-approving is a no-op instead of minting a
+  // second payment link and emailing the customer a duplicate confirmation.
+  const { rows: existingRows } = await query('SELECT * FROM bookings WHERE id = $1', [req.params.id]);
+  const existing = existingRows[0];
+  if (!existing) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+  if (existing.status === 'cancelled') {
+    return res.status(400).json({ error: 'Cannot approve a cancelled booking' });
+  }
+  if (existing.payment_status === 'paid') {
+    return res.status(400).json({ error: 'Booking is already paid' });
+  }
+
+  // Only the pending -> confirmed transition mints a link and emails. The
+  // conditional UPDATE also settles concurrent/duplicate approvals: whichever
+  // request doesn't win the transition falls through to the no-op branch. To
+  // re-send a payment link for an already-confirmed booking, use Send Payment
+  // Link, which is purpose-built for that.
   const { rows } = await query(
     `UPDATE bookings SET status = 'confirmed', payment_status = 'requested', updated_at = NOW()
-     WHERE id = $1 RETURNING *`,
+     WHERE id = $1 AND status = 'pending' RETURNING *`,
     [req.params.id]
   );
   const booking = rows[0];
   if (!booking) {
-    return res.status(404).json({ error: 'Booking not found' });
+    return res.json({
+      message: 'Booking already approved',
+      already_approved: true,
+      checkout_url: null
+    });
   }
 
   // Mint a Stripe checkout link so the confirmation email is directly payable.
@@ -492,14 +581,26 @@ router.post('/:id/approve', authenticateToken, requirePermission('write'), async
 router.post('/:id/cancel', authenticateToken, requirePermission('write'), async (req, res) => {
   const { reason } = req.body;
 
+  const { rows: existingRows } = await query('SELECT * FROM bookings WHERE id = $1', [req.params.id]);
+  const existing = existingRows[0];
+  if (!existing) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  // Kill any live payment link before cancelling. Otherwise a customer holding
+  // a still-open Checkout link from the confirmation email could pay it after
+  // cancellation, and the webhook would mark the booking paid — taking money
+  // for a booking that no longer exists.
+  const stripe = getStripe();
+  if (stripe) {
+    await expireOpenStripeSessions(stripe, existing);
+  }
+
   const { rows } = await query(
     `UPDATE bookings SET status = 'cancelled', cancel_reason = $1, updated_at = NOW()
      WHERE id = $2 RETURNING *`,
     [reason || '', req.params.id]
   );
-  if (!rows[0]) {
-    return res.status(404).json({ error: 'Booking not found' });
-  }
 
   await mailer.sendBookingCancelledToCustomer({ booking: rows[0], reason: reason || '' });
   await logAudit(req.admin.id, req.admin.email, 'cancel', 'bookings', req.params.id, reason || '');

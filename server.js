@@ -544,7 +544,7 @@ app.get('/api/dashboard/stats', authenticateToken, requirePermission('read'), as
     query("SELECT COUNT(*)::int AS count FROM bookings WHERE status = 'pending'"),
     query("SELECT COUNT(*)::int AS count FROM bookings WHERE status = 'confirmed'"),
     query('SELECT COUNT(*)::int AS count FROM photos'),
-    query('SELECT COUNT(*)::int AS count FROM services WHERE active = 1'),
+    query('SELECT COUNT(*)::int AS count FROM services WHERE active = TRUE'),
     query("SELECT COUNT(*)::int AS count FROM bookings WHERE payment_status = 'paid'"),
     query("SELECT COALESCE(SUM(amount_cents), 0)::bigint AS total FROM bookings WHERE payment_status = 'paid'"),
     query('SELECT * FROM bookings ORDER BY created_at DESC LIMIT 5')

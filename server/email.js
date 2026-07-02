@@ -387,6 +387,32 @@ async function sendPasswordResetToCustomer({ to, name, resetLink }) {
   });
 }
 
+// A payment arrived for a booking that has already been cancelled — almost
+// always a stale Checkout link paid in the race before its session expired.
+// The owner needs to know so they can refund; there is no customer receipt.
+async function sendPaymentOnCancelledBookingToOwner({ booking }) {
+  if (!OWNER_EMAIL) return;
+  await send({
+    to: OWNER_EMAIL,
+    subject: `⚠️ Payment received on a CANCELLED booking — #${booking.id} (refund needed)`,
+    text: [
+      `A payment of ${formatMoney(booking.amount_cents)} was received for booking #${booking.id}, which is CANCELLED.`,
+      'This usually means the customer paid a stale link. Review and refund in Stripe.',
+      '',
+      ...bookingSummary(booking),
+      `Customer: ${booking.owner_name} <${booking.email}>`,
+      booking.cancel_reason ? `Cancellation reason: ${booking.cancel_reason}` : null
+    ].filter(Boolean).join('\n'),
+    html: `
+      <p>A payment of <strong>${formatMoney(booking.amount_cents)}</strong> was received for booking #${booking.id}, which is <strong>CANCELLED</strong>.</p>
+      <p>This usually means the customer paid a stale link. Review and <strong>refund in Stripe</strong>.</p>
+      ${bookingHtmlBlock(booking)}
+      <p><strong>Customer:</strong> ${escapeHtml(booking.owner_name)} &lt;${escapeHtml(booking.email)}&gt;</p>
+      ${booking.cancel_reason ? `<p><strong>Cancellation reason:</strong> ${escapeHtml(booking.cancel_reason)}</p>` : ''}
+    `
+  });
+}
+
 async function sendPaymentReceivedToOwner({ booking }) {
   if (!OWNER_EMAIL) return;
   await send({
@@ -416,5 +442,6 @@ module.exports = {
   sendPaymentLinkToCustomer,
   sendPaymentReceivedToCustomer,
   sendPaymentReceivedToOwner,
+  sendPaymentOnCancelledBookingToOwner,
   sendPasswordResetToCustomer
 };

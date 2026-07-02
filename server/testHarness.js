@@ -47,20 +47,33 @@ function install() {
   // Stripe stub. Returns deterministic URLs; the real Stripe SDK is never called.
   // Webhook verification still uses the real SDK via the test route below.
   let sessionCounter = 0;
+  const sessions = new Map();
   stripeClient.setClient({
     checkout: {
       sessions: {
         async create({ metadata, line_items, success_url, cancel_url }) {
           sessionCounter += 1;
           const id = `cs_test_${sessionCounter}_${Date.now()}`;
-          return {
+          const session = {
             id,
             url: `https://stripe.test/checkout/${id}`,
+            status: 'open',
+            payment_status: 'unpaid',
             metadata,
             line_items,
             success_url,
             cancel_url
           };
+          sessions.set(id, session);
+          return session;
+        },
+        async retrieve(id) {
+          return sessions.get(id) || { id, status: 'complete', payment_status: 'unpaid' };
+        },
+        async expire(id) {
+          const s = sessions.get(id);
+          if (s) s.status = 'expired';
+          return s || { id, status: 'expired' };
         }
       }
     },

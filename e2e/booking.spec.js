@@ -133,6 +133,39 @@ test.describe('bookings', () => {
     expect(body.cancel_reason).toBe('unexpected closure');
   });
 
+  test('approving twice sends only one confirmation email (idempotent)', async ({ request }) => {
+    const booking = await createPublicBooking(request, { email: 'idem@test.local' });
+    const token = await loginAdmin(request);
+
+    const first = await request.post(`/api/bookings/${booking.id}/approve`, {
+      headers: { authorization: `Bearer ${token}` }
+    });
+    expect(first.status()).toBe(200);
+    expect((await first.json()).already_approved).toBeFalsy();
+
+    const second = await request.post(`/api/bookings/${booking.id}/approve`, {
+      headers: { authorization: `Bearer ${token}` }
+    });
+    expect(second.status()).toBe(200);
+    expect((await second.json()).already_approved).toBe(true);
+
+    const confirmations = await getEmails(request, { to: 'idem@test.local' });
+    expect(confirmations.filter(e => /confirmed/i.test(e.subject)).length).toBe(1);
+  });
+
+  test('cannot approve a cancelled booking', async ({ request }) => {
+    const booking = await createPublicBooking(request, { email: 'cxl@test.local' });
+    const token = await loginAdmin(request);
+    await request.post(`/api/bookings/${booking.id}/cancel`, {
+      headers: { authorization: `Bearer ${token}` },
+      data: { reason: 'closed' }
+    });
+    const res = await request.post(`/api/bookings/${booking.id}/approve`, {
+      headers: { authorization: `Bearer ${token}` }
+    });
+    expect(res.status()).toBe(400);
+  });
+
   test('admin can filter by status', async ({ request }) => {
     await createPublicBooking(request, { email: 'p1@test.local' });
     const b2 = await createPublicBooking(request, { email: 'p2@test.local' });

@@ -490,14 +490,37 @@ router.put('/:id', authenticateToken, requirePermission('write'), async (req, re
 
 // Admin: Approve booking (confirms + auto-requests payment)
 router.post('/:id/approve', authenticateToken, requirePermission('write'), async (req, res) => {
+  // Load current state first so re-approving is a no-op instead of minting a
+  // second payment link and emailing the customer a duplicate confirmation.
+  const { rows: existingRows } = await query('SELECT * FROM bookings WHERE id = $1', [req.params.id]);
+  const existing = existingRows[0];
+  if (!existing) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+  if (existing.status === 'cancelled') {
+    return res.status(400).json({ error: 'Cannot approve a cancelled booking' });
+  }
+  if (existing.payment_status === 'paid') {
+    return res.status(400).json({ error: 'Booking is already paid' });
+  }
+
+  // Only the pending -> confirmed transition mints a link and emails. The
+  // conditional UPDATE also settles concurrent/duplicate approvals: whichever
+  // request doesn't win the transition falls through to the no-op branch. To
+  // re-send a payment link for an already-confirmed booking, use Send Payment
+  // Link, which is purpose-built for that.
   const { rows } = await query(
     `UPDATE bookings SET status = 'confirmed', payment_status = 'requested', updated_at = NOW()
-     WHERE id = $1 RETURNING *`,
+     WHERE id = $1 AND status = 'pending' RETURNING *`,
     [req.params.id]
   );
   const booking = rows[0];
   if (!booking) {
-    return res.status(404).json({ error: 'Booking not found' });
+    return res.json({
+      message: 'Booking already approved',
+      already_approved: true,
+      checkout_url: null
+    });
   }
 
   // Mint a Stripe checkout link so the confirmation email is directly payable.

@@ -14,7 +14,7 @@ function parsePerks(services) {
 // Public: Get all active services
 router.get('/', async (req, res) => {
   const { rows } = await query(
-    'SELECT * FROM services WHERE active = 1 ORDER BY display_order ASC'
+    'SELECT * FROM services WHERE active = TRUE ORDER BY display_order ASC'
   );
   res.json(parsePerks(rows));
 });
@@ -36,7 +36,7 @@ router.post('/', authenticateToken, requirePermission('write'), async (req, res)
       name, description, icon || '',
       JSON.stringify(perks || []),
       price_cents || 0, price_label || '',
-      is_featured ? 1 : 0, display_order || 0,
+      !!is_featured, display_order || 0,
       stripe_price_id || ''
     ]
   );
@@ -70,9 +70,9 @@ router.put('/:id', authenticateToken, requirePermission('write'), async (req, re
       perks ? JSON.stringify(perks) : null,
       price_cents ?? null,
       price_label ?? null,
-      is_featured !== undefined ? (is_featured ? 1 : 0) : null,
+      is_featured !== undefined ? !!is_featured : null,
       display_order ?? null,
-      active !== undefined ? (active ? 1 : 0) : null,
+      active !== undefined ? !!active : null,
       stripe_price_id ?? null,
       req.params.id
     ]

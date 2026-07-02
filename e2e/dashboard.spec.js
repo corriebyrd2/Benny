@@ -67,7 +67,7 @@ test.describe('dashboard + services + photos (admin)', () => {
     const newList = await list2.json();
     expect(newList.length).toBe(initial + 1);
     const created = newList.find(s => s.id === id);
-    expect(created.is_featured).toBe(1);
+    expect(created.is_featured).toBe(true);
     expect(created.perks).toEqual(['perk one', 'perk two']);
 
     const update = await request.put(`/api/services/${id}`, {

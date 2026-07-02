@@ -92,8 +92,12 @@ async function syncBookingFromStripe(stripe, booking) {
   return { changed: result.rowCount > 0, payment_status: 'paid' };
 }
 
-// Public: Create a payment intent for a booking
-router.post('/create-payment-intent', async (req, res) => {
+// Legacy PaymentIntent flow. The live frontend pays via Checkout Sessions
+// (customer-checkout / send-payment-link), not these endpoints, so they are
+// gated to admins rather than left open: an unauthenticated caller could
+// otherwise mint Stripe PaymentIntents for any booking id and overwrite its
+// stripe_payment_id.
+router.post('/create-payment-intent', authenticateToken, requirePermission('write'), async (req, res) => {
   const stripe = getStripe();
   if (!stripe) {
     return res.status(503).json({ error: 'Stripe is not configured. Please add your Stripe keys to the .env file.' });
@@ -132,8 +136,10 @@ router.post('/create-payment-intent', async (req, res) => {
   });
 });
 
-// Public: Confirm payment completed (called after successful Stripe payment)
-router.post('/confirm-payment', async (req, res) => {
+// Legacy confirm endpoint for the PaymentIntent flow above. Same reasoning:
+// gated to admins. Real payment confirmation happens through the signed Stripe
+// webhook and the customer/admin sync routes.
+router.post('/confirm-payment', authenticateToken, requirePermission('write'), async (req, res) => {
   const stripe = getStripe();
   if (!stripe) {
     return res.status(503).json({ error: 'Stripe is not configured' });

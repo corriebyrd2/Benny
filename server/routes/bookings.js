@@ -219,7 +219,7 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
   }
 
   const { rows: serviceRows } = await query(
-    'SELECT * FROM services WHERE id = $1 AND active = 1',
+    'SELECT * FROM services WHERE id = $1 AND active = TRUE',
     [service_id]
   );
   const service = serviceRows[0];

@@ -1542,7 +1542,7 @@
           </div>
           <div style="display:flex;gap:16px;">
             <label><input type="checkbox" id="svcFeatured" ${service?.is_featured ? 'checked' : ''}> Featured</label>
-            <label><input type="checkbox" id="svcActive" ${service?.active !== 0 ? 'checked' : ''}> Active</label>
+            <label><input type="checkbox" id="svcActive" ${(service ? service.active : true) ? 'checked' : ''}> Active</label>
           </div>
         </form>
       `;

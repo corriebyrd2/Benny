@@ -916,6 +916,55 @@
       font-style: italic;
     }
 
+    .dog-documents {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px dashed #eee;
+    }
+    .dog-documents h4 {
+      margin-bottom: 8px;
+      color: var(--dark);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .dog-doc-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .dog-doc-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      background: #fff;
+      border: 1px solid #eee;
+      border-radius: 10px;
+      font-size: 0.9rem;
+    }
+    .dog-doc-item .btn-link {
+      color: var(--primary);
+      font-weight: 700;
+      text-decoration: none;
+      background: none;
+      border: 0;
+      padding: 0;
+      cursor: pointer;
+      text-align: left;
+    }
+    .dog-doc-item .btn-link:hover { text-decoration: underline; }
+    .dog-doc-empty { color: var(--text-light); font-size: 0.9rem; margin-bottom: 10px; }
+    .dog-doc-upload {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .dog-doc-upload input[type="file"] { max-width: 260px; }
+
     .dog-card-actions {
       display: flex;
       gap: 8px;
@@ -1389,12 +1438,16 @@
       return '<span class="badge badge-unpaid">Unpaid</span>';
     }
 
-    function authHeaders() {
+    function authOnlyHeaders() {
       if (!token) {
         logout();
         throw new Error('Not logged in');
       }
-      return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+      return { 'Authorization': 'Bearer ' + token };
+    }
+
+    function authHeaders() {
+      return { 'Content-Type': 'application/json', ...authOnlyHeaders() };
     }
 
     async function safeJson(res) {
@@ -2137,6 +2190,7 @@
               ${d.age ? `<span><strong>Age:</strong> ${escapeHtml(d.age)}</span>` : ''}
             </div>
             ${d.notes ? `<div class="dog-card-notes">${escapeHtml(d.notes)}</div>` : ''}
+            ${renderDogDocuments(d)}
           </div>
           <div class="dog-card-actions">
             <button class="btn-icon" onclick="showEditDogForm(${d.id})" title="Edit">&#9998;</button>
@@ -2144,6 +2198,93 @@
           </div>
         </div>
       `).join('');
+    }
+
+    function formatFileSize(bytes) {
+      const n = Number(bytes) || 0;
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+      return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function renderDogDocuments(dog) {
+      const docs = Array.isArray(dog.documents) ? dog.documents : [];
+      const list = docs.length
+        ? `<div class="dog-doc-list">${docs.map(doc => `
+            <div class="dog-doc-item">
+              <button type="button" class="btn-link" onclick="downloadDogDocument(${doc.id})">&#128196; ${escapeHtml(doc.original_name)}</button>
+              <span>${formatFileSize(doc.size_bytes)}</span>
+            </div>
+          `).join('')}</div>`
+        : '<div class="dog-doc-empty">No documents uploaded yet.</div>';
+      return `
+        <div class="dog-documents">
+          <h4>&#128196; Documents</h4>
+          ${list}
+          <form class="dog-doc-upload" onsubmit="uploadDogDocument(event, ${dog.id})">
+            <input type="file" name="document" required>
+            <button type="submit" class="btn btn-secondary">Upload</button>
+          </form>
+        </div>
+      `;
+    }
+
+    function filenameFromDisposition(header) {
+      const match = String(header || '').match(/filename=\"?([^\";]+)\"?/i);
+      return match ? decodeURIComponent(match[1]) : 'dog-document';
+    }
+
+    async function downloadDogDocument(docId) {
+      try {
+        const res = await fetch('/api/dogs/documents/' + docId + '/download', { headers: authOnlyHeaders() });
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) { logout(); return; }
+          throw new Error('Failed to download document');
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filenameFromDisposition(res.headers.get('Content-Disposition'));
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function uploadDogDocument(e, dogId) {
+      e.preventDefault();
+      const form = e.currentTarget;
+      const fileInput = form.querySelector('input[type="file"]');
+      if (!fileInput.files.length) return;
+      const formData = new FormData();
+      formData.append('document', fileInput.files[0]);
+      const btn = form.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      btn.textContent = 'Uploading...';
+      try {
+        const res = await fetch('/api/dogs/' + dogId + '/documents', {
+          method: 'POST',
+          headers: authOnlyHeaders(),
+          body: formData
+        });
+        const data = await safeJson(res);
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) { logout(); return; }
+          throw new Error(data.error || 'Failed to upload document');
+        }
+        showToast('Document uploaded!', 'success');
+        await loadDogs();
+        renderDogsList();
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Upload';
+      }
     }
 
     function showAddDogForm() {

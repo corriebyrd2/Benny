@@ -139,6 +139,8 @@ function buildRouter() {
       // for FKs, but RESTART IDENTITY resets SERIALs so tests have predictable ids.
       await pool.query(`
         TRUNCATE TABLE
+          email_events,
+          dog_documents,
           dogs,
           bookings,
           customers,

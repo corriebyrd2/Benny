@@ -9,10 +9,58 @@ const {
   resetAll,
   loginAdmin,
   registerCustomer,
+  createPublicBooking,
   getEmails,
   TINY_PNG,
   STRONG_PASSWORD
 } = require('./utils');
+
+
+test.describe('SendGrid event webhooks', () => {
+  test.beforeEach(async ({ request }) => {
+    await resetAll(request);
+  });
+
+  test('persists events and updates booking delivery status', async ({ request }) => {
+    const booking = await createPublicBooking(request, { email: 'deliverystatus@test.local' });
+
+    const eventRes = await request.post('/api/sendgrid/events', {
+      data: [{
+        email: 'deliverystatus@test.local',
+        event: 'delivered',
+        timestamp: 1800000000,
+        sg_event_id: `evt-${booking.id}`,
+        sg_message_id: `msg-${booking.id}`,
+        booking_id: String(booking.id),
+        email_type: 'booking_received'
+      }]
+    });
+    expect(eventRes.status()).toBe(202);
+    await expect(eventRes.json()).resolves.toMatchObject({ received: 1, inserted: 1 });
+
+    const adminToken = await loginAdmin(request);
+    const bookingRes = await request.get(`/api/bookings/${booking.id}`, {
+      headers: { authorization: `Bearer ${adminToken}` }
+    });
+    expect(bookingRes.status()).toBe(200);
+    await expect(bookingRes.json()).resolves.toMatchObject({
+      id: booking.id,
+      email_delivery_status: 'delivered',
+      email_delivery_last_event: 'delivered'
+    });
+
+    const eventsRes = await request.get(`/api/sendgrid/events/booking/${booking.id}`, {
+      headers: { authorization: `Bearer ${adminToken}` }
+    });
+    expect(eventsRes.status()).toBe(200);
+    const events = await eventsRes.json();
+    expect(events[0]).toMatchObject({
+      event_type: 'delivered',
+      booking_id: booking.id,
+      email_type: 'booking_received'
+    });
+  });
+});
 
 test.describe('subscribers (newsletter)', () => {
   test.beforeEach(async ({ request }) => {

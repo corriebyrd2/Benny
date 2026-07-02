@@ -110,9 +110,10 @@ app.use(cors((req, cb) => {
   cb(null, { origin: true, credentials: true });
 }));
 
-// Stripe webhook needs the raw body for signature verification, so it must be
+// Webhooks need the raw body for signature verification, so they must be
 // mounted BEFORE express.json() consumes the stream.
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
+app.use('/api/sendgrid/events', express.raw({ type: 'application/json' }), require('./server/routes/sendgridEvents').router);
 app.use(express.json({ limit: '1mb' }));
 // body-parser 2.x (bundled with Express 5) leaves req.body undefined when the
 // incoming request has no JSON body — empty body, missing/wrong Content-Type,
@@ -331,9 +332,11 @@ const { authenticateToken, requirePermission } = require('./server/auth');
 // render without a second round-trip.
 app.get('/api/admin/clients', authenticateToken, requirePermission('read'), async (req, res, next) => {
   try {
-    const [customersRes, dogsRes, bookingsRes] = await Promise.all([
+    const [customersRes, dogsRes, documentsRes, bookingsRes] = await Promise.all([
       query('SELECT id, name, email, phone, created_at FROM customers ORDER BY created_at DESC'),
       query('SELECT id, customer_id, name, breed, weight, age, notes, created_at FROM dogs'),
+      query(`SELECT id, dog_id, original_name, mime_type, size_bytes, uploaded_at
+             FROM dog_documents ORDER BY uploaded_at DESC`),
       query(`SELECT id, owner_name, email, phone, dog_name, service_name, preferred_dates,
                     status, payment_status, amount_cents, customer_id, start_date, end_date,
                     dog_count, created_at
@@ -342,6 +345,12 @@ app.get('/api/admin/clients', authenticateToken, requirePermission('read'), asyn
 
     const customers = customersRes.rows;
     const dogs = dogsRes.rows;
+    const documents = documentsRes.rows;
+    const documentsByDogId = new Map();
+    for (const doc of documents) {
+      if (!documentsByDogId.has(doc.dog_id)) documentsByDogId.set(doc.dog_id, []);
+      documentsByDogId.get(doc.dog_id).push(doc);
+    }
     const bookings = bookingsRes.rows;
 
     const customersById = new Map(customers.map(c => [c.id, c]));
@@ -399,6 +408,7 @@ app.get('/api/admin/clients', authenticateToken, requirePermission('read'), asyn
         weight: d.weight || '',
         age: d.age || '',
         notes: d.notes || '',
+        documents: documentsByDogId.get(d.id) || [],
         created_at: d.created_at,
         source: 'profile'
       });
@@ -443,6 +453,7 @@ app.get('/api/admin/clients', authenticateToken, requirePermission('read'), asyn
           weight: '',
           age: '',
           notes: '',
+          documents: [],
           created_at: b.created_at,
           source: 'booking'
         });

@@ -512,6 +512,16 @@
       font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 4px;
       background: #FFF3CD; color: #856404; text-transform: uppercase; letter-spacing: 0.3px;
     }
+    .dog-docs-admin {
+      margin-top: 8px; padding-top: 8px; border-top: 1px dashed #eee;
+      display: flex; flex-direction: column; gap: 5px;
+    }
+    .dog-docs-admin .doc-link {
+      color: var(--primary); text-decoration: none; font-size: 0.8rem; font-weight: 700;
+      word-break: break-word; background: none; border: 0; padding: 0; cursor: pointer; text-align: left;
+    }
+    .dog-docs-admin .doc-link:hover { text-decoration: underline; }
+    .dog-docs-empty { color: var(--text-light); font-size: 0.78rem; margin-top: 8px; }
 
     .dog-count-pill {
       display: inline-block; padding: 1px 8px; border-radius: 50px;
@@ -1006,6 +1016,38 @@
 
     function formatCents(cents) {
       return '$' + (cents / 100).toFixed(2);
+    }
+
+    function formatFileSize(bytes) {
+      const n = Number(bytes) || 0;
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+      return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function filenameFromDisposition(header) {
+      const match = String(header || '').match(/filename="?([^";]+)"?/i);
+      return match ? decodeURIComponent(match[1]) : 'dog-document';
+    }
+
+    async function downloadDogDocumentAdmin(docId) {
+      try {
+        const res = await fetch('/api/dogs/admin/documents/' + docId + '/download', {
+          headers: { Authorization: 'Bearer ' + token }
+        });
+        if (!res.ok) throw new Error('Failed to download document');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filenameFromDisposition(res.headers.get('Content-Disposition'));
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        showToast(err.message, true);
+      }
     }
 
     function statusBadge(status) {
@@ -2093,11 +2135,18 @@
         const sourceTag = d.source === 'booking'
           ? ' <span class="source-tag" title="Mentioned in a booking but no full profile">From booking</span>'
           : '';
+        const docs = Array.isArray(d.documents) ? d.documents : [];
+        const docsHtml = docs.length
+          ? `<div class="dog-docs-admin">${docs.map(doc => `
+              <button type="button" class="doc-link" onclick="downloadDogDocumentAdmin(${doc.id})">&#128196; ${escapeHtml(doc.original_name)} (${formatFileSize(doc.size_bytes)})</button>
+            `).join('')}</div>`
+          : (d.source === 'profile' ? '<div class="dog-docs-empty">No docs uploaded</div>' : '');
         return `
           <div class="dog-pill">
             <div class="dog-name">&#128054; ${escapeHtml(d.name)}${sourceTag}</div>
             ${meta.length ? `<div class="dog-meta">${meta.join('')}</div>` : ''}
             ${d.notes ? `<div class="dog-notes">${escapeHtml(d.notes)}</div>` : ''}
+            ${docsHtml}
           </div>
         `;
       }).join('');

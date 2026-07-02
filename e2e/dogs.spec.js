@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { resetAll, registerCustomer } = require('./utils');
+const { resetAll, registerCustomer, loginAdmin } = require('./utils');
 
 test.describe('dogs (customer profiles)', () => {
   test.beforeEach(async ({ request }) => {
@@ -57,6 +57,51 @@ test.describe('dogs (customer profiles)', () => {
       headers: { authorization: `Bearer ${token}` }
     });
     expect((await list3.json()).length).toBe(1);
+  });
+
+
+  test('customer uploads dog documents and admin can see and download them', async ({ request }) => {
+    const { token } = await registerCustomer(request, { email: 'docs-owner@test.local', dog_name: 'Paperwork' });
+    const dogsRes = await request.get('/api/dogs', {
+      headers: { authorization: `Bearer ${token}` }
+    });
+    const dog = (await dogsRes.json())[0];
+
+    const upload = await request.post(`/api/dogs/${dog.id}/documents`, {
+      headers: { authorization: `Bearer ${token}` },
+      multipart: {
+        document: {
+          name: 'vaccines.txt',
+          mimeType: 'text/plain',
+          buffer: Buffer.from('rabies: current')
+        }
+      }
+    });
+    expect(upload.status()).toBe(201);
+    const uploaded = await upload.json();
+    expect(uploaded.document.original_name).toBe('vaccines.txt');
+
+    const afterUpload = await request.get('/api/dogs', {
+      headers: { authorization: `Bearer ${token}` }
+    });
+    const dogWithDocs = (await afterUpload.json()).find(d => d.id === dog.id);
+    expect(dogWithDocs.documents).toHaveLength(1);
+    expect(dogWithDocs.documents[0].original_name).toBe('vaccines.txt');
+
+    const adminToken = await loginAdmin(request);
+    const adminDogs = await request.get('/api/dogs/admin/all', {
+      headers: { authorization: `Bearer ${adminToken}` }
+    });
+    expect(adminDogs.status()).toBe(200);
+    const adminDog = (await adminDogs.json()).find(d => d.id === dog.id);
+    expect(adminDog.owner_email).toBe('docs-owner@test.local');
+    expect(adminDog.documents[0].original_name).toBe('vaccines.txt');
+
+    const download = await request.get(`/api/dogs/admin/documents/${adminDog.documents[0].id}/download`, {
+      headers: { authorization: `Bearer ${adminToken}` }
+    });
+    expect(download.status()).toBe(200);
+    expect(await download.text()).toBe('rabies: current');
   });
 
   test('customer cannot touch another customer\'s dogs', async ({ request }) => {

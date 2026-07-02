@@ -57,12 +57,16 @@ In the service → **Variables** tab, add:
 | `ADMIN_PASSWORD` | A strong password for the first admin login |
 | `NEON_DATABASE_URL` | The **pooled** connection string from the Neon dashboard |
 | `UPLOAD_DIR` | `/data/uploads` |
+| `DOG_DOC_UPLOAD_DIR` | Optional private dog-document directory; defaults beside `UPLOAD_DIR` |
 | `STRIPE_SECRET_KEY` | Your `sk_test_...` (switch to `sk_live_...` at go-live) |
 | `STRIPE_PUBLISHABLE_KEY` | Your `pk_test_...` / `pk_live_...` |
 | `STRIPE_WEBHOOK_SECRET` | Fill in after step 6 |
 | `SENDGRID_API_KEY` | API key from SendGrid (Mail Send permission) |
 | `SENDGRID_FROM_EMAIL` | **Verified** sender email |
 | `SENDGRID_FROM_NAME` | Display name (optional, defaults to "Benny and the Pets") |
+| `SENDGRID_BOOKING_RECEIVED_TEMPLATE_ID` | Optional Dynamic Template ID for booking request receipt emails |
+| `SENDGRID_BOOKING_CONFIRMED_TEMPLATE_ID` | Optional Dynamic Template ID for booking confirmation emails |
+| `SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY` | Public key from SendGrid Event Webhook security settings |
 | `OWNER_NOTIFICATION_EMAIL` | Where new-booking / payment notifications go (defaults to `ADMIN_EMAIL`) |
 | `PUBLIC_URL` | `https://bennyandthepets.com` — used for links in emails |
 
@@ -112,10 +116,59 @@ warning — it will not crash.
 3. Set `SENDGRID_FROM_EMAIL` to the verified sender.
 4. Set `PUBLIC_URL` to `https://bennyandthepets.com` so links in emails
    point to the right place.
+5. Optional but recommended: create SendGrid **Dynamic Templates** for customer
+   booking receipts and booking confirmations, then set
+   `SENDGRID_BOOKING_RECEIVED_TEMPLATE_ID` and
+   `SENDGRID_BOOKING_CONFIRMED_TEMPLATE_ID`. Without these IDs, the app uses
+   its built-in HTML/text email copy. Template data includes `booking_id`,
+   `owner_name`, `dog_name`, `service_name`, `amount`, `stay`, `portal_url`,
+   and (for confirmations) `checkout_url` / `has_checkout_url`.
 
 Send a test: trigger a booking from `/my-bookings` — both the owner and the
-customer should receive email within seconds. Check SendGrid → **Activity** if
-a send is missing.
+customer should receive email within seconds. Approve that booking from `/admin`
+to verify the SendGrid confirmation template and checkout link. Check SendGrid →
+**Activity** if a send is missing.
+
+### Recommended SendGrid improvements
+
+- Use **Domain Authentication** rather than only Single Sender Verification so
+  SPF/DKIM align with `bennyandthepets.com`, improving deliverability.
+- Add SendGrid **Event Webhooks** for delivered, bounced, deferred, dropped,
+  spam-report, and unsubscribe events. The app accepts those events at
+  `/api/sendgrid/events`, verifies signed requests when
+  `SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY` is set, stores each event in
+  `email_events`, and updates booking/subscriber delivery status from
+  `custom_args.booking_id` / `email_type`.
+- Keep booking emails on Dynamic Templates so copy and branding changes can ship
+  without a code deploy; use versioned templates and test data before making a
+  version active.
+- Create separate API keys for production and staging with only **Mail Send**
+  permission, and rotate them periodically.
+
+### 5b. Configure SendGrid Event Webhooks
+
+1. SendGrid dashboard → **Settings → Mail Settings → Event Webhook**.
+2. Endpoint URL: `https://bennyandthepets.com/api/sendgrid/events`.
+3. Enable signed Event Webhook requests and copy the verification public key
+   into Railway as `SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY`. In non-production, the
+   app accepts unsigned events only when this key is unset; production requires
+   a valid signature.
+4. Select at least these events: `processed`, `delivered`, `deferred`,
+   `bounce`, `dropped`, `spamreport`, `unsubscribe`, and
+   `group_unsubscribe`.
+5. SendGrid event payloads are persisted in `email_events`. Events containing
+   `booking_id` update the booking's `email_delivery_status`, and events
+   matching a newsletter subscriber update subscriber suppression/unsubscribe
+   fields.
+
+## 5c. Dog document uploads
+
+Customers can upload documents to their dog profiles (for example vaccine
+records, care instructions, or forms). These files are stored outside the
+public `/uploads` static tree by default and are only served through authenticated
+customer/admin download endpoints. On Railway, keep `UPLOAD_DIR` on the mounted
+volume (for example `/data/uploads`); dog documents default to `/data/dog-documents`.
+Set `DOG_DOC_UPLOAD_DIR` only if you want a different private path.
 
 ## 6. Configure the Stripe webhook
 

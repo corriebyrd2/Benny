@@ -63,6 +63,8 @@ In the service → **Variables** tab, add:
 | `SENDGRID_API_KEY` | API key from SendGrid (Mail Send permission) |
 | `SENDGRID_FROM_EMAIL` | **Verified** sender email |
 | `SENDGRID_FROM_NAME` | Display name (optional, defaults to "Benny and the Pets") |
+| `SENDGRID_BOOKING_RECEIVED_TEMPLATE_ID` | Optional Dynamic Template ID for booking request receipt emails |
+| `SENDGRID_BOOKING_CONFIRMED_TEMPLATE_ID` | Optional Dynamic Template ID for booking confirmation emails |
 | `OWNER_NOTIFICATION_EMAIL` | Where new-booking / payment notifications go (defaults to `ADMIN_EMAIL`) |
 | `PUBLIC_URL` | `https://bennyandthepets.com` — used for links in emails |
 
@@ -112,10 +114,31 @@ warning — it will not crash.
 3. Set `SENDGRID_FROM_EMAIL` to the verified sender.
 4. Set `PUBLIC_URL` to `https://bennyandthepets.com` so links in emails
    point to the right place.
+5. Optional but recommended: create SendGrid **Dynamic Templates** for customer
+   booking receipts and booking confirmations, then set
+   `SENDGRID_BOOKING_RECEIVED_TEMPLATE_ID` and
+   `SENDGRID_BOOKING_CONFIRMED_TEMPLATE_ID`. Without these IDs, the app uses
+   its built-in HTML/text email copy. Template data includes `booking_id`,
+   `owner_name`, `dog_name`, `service_name`, `amount`, `stay`, `portal_url`,
+   and (for confirmations) `checkout_url` / `has_checkout_url`.
 
 Send a test: trigger a booking from `/my-bookings` — both the owner and the
-customer should receive email within seconds. Check SendGrid → **Activity** if
-a send is missing.
+customer should receive email within seconds. Approve that booking from `/admin`
+to verify the SendGrid confirmation template and checkout link. Check SendGrid →
+**Activity** if a send is missing.
+
+### Recommended SendGrid improvements
+
+- Use **Domain Authentication** rather than only Single Sender Verification so
+  SPF/DKIM align with `bennyandthepets.com`, improving deliverability.
+- Add SendGrid **Event Webhooks** for delivered, bounced, deferred, dropped,
+  spam-report, and unsubscribe events, then store those events against
+  `custom_args.booking_id` for support visibility.
+- Keep booking emails on Dynamic Templates so copy and branding changes can ship
+  without a code deploy; use versioned templates and test data before making a
+  version active.
+- Create separate API keys for production and staging with only **Mail Send**
+  permission, and rotate them periodically.
 
 ## 6. Configure the Stripe webhook
 

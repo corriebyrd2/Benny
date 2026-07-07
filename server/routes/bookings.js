@@ -277,41 +277,11 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
   });
 });
 
-// Public: Look up bookings by email
-router.post('/lookup', async (req, res) => {
-  const { email } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: 'Email is required' });
-  }
-
-  const { rows } = await query(
-    `SELECT id, owner_name, email, phone, dog_name, dog_count, service_id, service_name, preferred_dates, message,
-            status, payment_status, amount_cents, created_at, updated_at
-     FROM bookings WHERE LOWER(email) = LOWER($1) ORDER BY created_at DESC`,
-    [email]
-  );
-  res.json(rows);
-});
-
-// Public: Get a single booking by ID + email verification
-router.post('/customer/:id', async (req, res) => {
-  const { email } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: 'Email is required for verification' });
-  }
-
-  const { rows } = await query(
-    `SELECT id, owner_name, email, phone, dog_name, dog_count, service_id, service_name, preferred_dates, message,
-            status, payment_status, amount_cents, stripe_payment_id, created_at, updated_at
-     FROM bookings WHERE id = $1 AND LOWER(email) = LOWER($2)`,
-    [req.params.id, email]
-  );
-
-  if (!rows[0]) {
-    return res.status(404).json({ error: 'Booking not found or email does not match' });
-  }
-  res.json(rows[0]);
-});
+// NOTE: There is deliberately no unauthenticated "look up bookings by email"
+// endpoint. Knowing an email address must never be enough to read someone
+// else's bookings (phone, dog names, free-text messages, amounts). Customers
+// see their own bookings via GET /my (JWT-scoped by customer_id); guests get
+// status updates by email. Don't reintroduce email-only lookup here.
 
 // Admin: Get all bookings
 router.get('/', authenticateToken, requirePermission('read'), async (req, res) => {

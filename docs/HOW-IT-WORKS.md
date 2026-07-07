@@ -303,7 +303,7 @@ Here is every major tool the site relies on and what each one does.
 - **Login tokens (JWT)** — after logging in, customers and admins carry a secure
   digital "pass" (admins' expire after 24 hours, customers' after 7 days).
 - **Rate limiting** — caps how often someone can attempt logins, registrations,
-  password resets, bookings, and lookups, to block abuse and guessing attacks.
+  password resets, and bookings, to block abuse and guessing attacks.
 - **Security headers (Helmet), CORS rules, and input checks** — standard
   protections that harden the site against common web attacks.
 - **Audit log** — a permanent record of admin actions.

@@ -79,22 +79,6 @@ test.describe('security regressions', () => {
   });
 
   test.describe('public endpoint rate limits', () => {
-    test('public booking lookup blocks at 30 requests per IP per hour', async ({ request }) => {
-      // Pre-create one matching booking so the lookup body is deterministic.
-      await createPublicBooking(request, { email: 'enum@test.local' });
-      // The public booking POST has its own 30/hr limiter, so we use lookup
-      // (also 30/hr) — the first 30 succeed, the 31st gets a 429.
-      let lastStatus = 200;
-      for (let i = 0; i < 31; i++) {
-        const res = await request.post('/api/bookings/lookup', {
-          data: { email: `noone-${i}@test.local` }
-        });
-        lastStatus = res.status();
-        if (lastStatus === 429) break;
-      }
-      expect(lastStatus).toBe(429);
-    });
-
     test('public booking creation blocks at 30 per IP per hour', async ({ request }) => {
       const serviceId = await firstServiceId(request);
       let lastStatus = 0;
@@ -259,12 +243,11 @@ test.describe('security regressions', () => {
   });
 
   test.describe('input edge cases', () => {
-    test('booking lookup with SQL-ish payload returns an empty list, not an error', async ({ request }) => {
-      const res = await request.post('/api/bookings/lookup', {
-        data: { email: "x' OR '1'='1" }
+    test('customer login with SQL-ish payload fails cleanly, not with an error', async ({ request }) => {
+      const res = await request.post('/api/customer/login', {
+        data: { email: "x' OR '1'='1", password: "x' OR '1'='1" }
       });
-      expect(res.status()).toBe(200);
-      expect(await res.json()).toEqual([]);
+      expect(res.status()).toBe(401);
     });
 
     test('settings PUT silently drops keys outside the whitelist', async ({ request }) => {
@@ -277,6 +260,115 @@ test.describe('security regressions', () => {
       const out = await res.json();
       expect(out.contact_email).toBe('new@test.local');
       expect(out.evil_key).toBeUndefined();
+    });
+  });
+
+  test.describe('cross-customer data isolation', () => {
+    // Two customers, each with their own dog and booking. Every customer-facing
+    // route must scope by the authenticated customer's id — customer A must
+    // never be able to read or mutate B's data, even with valid ids in hand.
+    async function twoCustomersWithBookings(request) {
+      const a = await registerCustomer(request, { email: 'cust-a@test.local', dog_name: 'Alpha' });
+      const b = await registerCustomer(request, { email: 'cust-b@test.local', dog_name: 'Bravo' });
+      const serviceId = await firstServiceId(request);
+
+      async function book(token, dogName) {
+        const res = await request.post('/api/bookings/customer-book', {
+          headers: { authorization: `Bearer ${token}` },
+          data: { service_id: serviceId, dog_name: dogName }
+        });
+        expect(res.status()).toBe(201);
+        return (await res.json()).id;
+      }
+
+      return {
+        a: { ...a, dogId: a.customer.dogs[0].id, bookingId: await book(a.token, 'Alpha') },
+        b: { ...b, dogId: b.customer.dogs[0].id, bookingId: await book(b.token, 'Bravo') }
+      };
+    }
+
+    test('GET /api/bookings/my returns only the caller’s bookings', async ({ request }) => {
+      const { a } = await twoCustomersWithBookings(request);
+      const res = await request.get('/api/bookings/my', {
+        headers: { authorization: `Bearer ${a.token}` }
+      });
+      expect(res.status()).toBe(200);
+      const list = await res.json();
+      expect(list.length).toBe(1);
+      expect(list[0].email).toBe('cust-a@test.local');
+      expect(list[0].dog_name).toBe('Alpha');
+    });
+
+    // Checkout ownership is covered in payment.spec.js and dog update/delete
+    // ownership in dogs.spec.js; this suite covers the remaining scoped reads.
+
+    test('a customer cannot sync payment state for another customer’s booking', async ({ request }) => {
+      const { a, b } = await twoCustomersWithBookings(request);
+      const sync = await request.post(`/api/payments/sync/${b.bookingId}`, {
+        headers: { authorization: `Bearer ${a.token}` }
+      });
+      expect(sync.status()).toBe(404);
+    });
+
+    test('GET /api/dogs returns only the caller’s dogs', async ({ request }) => {
+      const { a } = await twoCustomersWithBookings(request);
+      const mine = await request.get('/api/dogs', {
+        headers: { authorization: `Bearer ${a.token}` }
+      });
+      expect(mine.status()).toBe(200);
+      const dogs = await mine.json();
+      expect(dogs.map(d => d.name)).toEqual(['Alpha']);
+    });
+
+    test('a customer cannot touch documents on another customer’s dog', async ({ request }) => {
+      const { a, b } = await twoCustomersWithBookings(request);
+
+      // A cannot upload a document to B's dog.
+      const upload = await request.post(`/api/dogs/${b.dogId}/documents`, {
+        headers: { authorization: `Bearer ${a.token}` },
+        multipart: {
+          document: { name: 'vaccine.png', mimeType: 'image/png', buffer: TINY_PNG }
+        }
+      });
+      expect(upload.status()).toBe(404);
+
+      // B uploads a document to their own dog...
+      const ownUpload = await request.post(`/api/dogs/${b.dogId}/documents`, {
+        headers: { authorization: `Bearer ${b.token}` },
+        multipart: {
+          document: { name: 'vaccine.png', mimeType: 'image/png', buffer: TINY_PNG }
+        }
+      });
+      expect(ownUpload.status()).toBe(201);
+      const docId = (await ownUpload.json()).document.id;
+
+      // ...which A can neither download nor delete.
+      const download = await request.get(`/api/dogs/documents/${docId}/download`, {
+        headers: { authorization: `Bearer ${a.token}` }
+      });
+      expect(download.status()).toBe(404);
+
+      const del = await request.delete(`/api/dogs/documents/${docId}`, {
+        headers: { authorization: `Bearer ${a.token}` }
+      });
+      expect(del.status()).toBe(404);
+
+      // Still intact for its owner.
+      const ownDownload = await request.get(`/api/dogs/documents/${docId}/download`, {
+        headers: { authorization: `Bearer ${b.token}` }
+      });
+      expect(ownDownload.status()).toBe(200);
+    });
+
+    test('a customer cannot read another customer’s profile data', async ({ request }) => {
+      const { a } = await twoCustomersWithBookings(request);
+      const res = await request.get('/api/customer/profile', {
+        headers: { authorization: `Bearer ${a.token}` }
+      });
+      expect(res.status()).toBe(200);
+      const profile = await res.json();
+      expect(profile.email).toBe('cust-a@test.local');
+      expect(profile.dogs.map(d => d.name)).toEqual(['Alpha']);
     });
   });
 });

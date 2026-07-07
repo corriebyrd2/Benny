@@ -12,3 +12,6 @@ uploads/*
 /test-results/
 /playwright-report/
 /playwright/.cache/
+
+# Dog document uploads (runtime data, like uploads/)
+dog-documents/

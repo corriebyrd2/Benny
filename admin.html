@@ -210,6 +210,8 @@
     .badge-paid { background: #D4EDDA; color: #155724; }
     .badge-unpaid { background: #FFF3CD; color: #856404; }
     .badge-requested { background: #CCE5FF; color: #004085; }
+    .badge-approved { background: #D4EDDA; color: #155724; }
+    .badge-rejected { background: #F8D7DA; color: #721C24; }
 
     /* Section panels */
     .panel { display: none; }
@@ -626,6 +628,9 @@
         <a href="#" data-panel="photos">
           <span class="nav-icon">&#128247;</span> Homepage Photos
         </a>
+        <a href="#" data-panel="reviews">
+          <span class="nav-icon">&#11088;</span> Reviews
+        </a>
         <a href="#" data-panel="settings">
           <span class="nav-icon">&#9881;&#65039;</span> Company Info
         </a>
@@ -793,6 +798,43 @@
         </p>
         <div id="photosBySection">
           <div style="text-align:center; color: var(--text-light); padding: 40px;">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Reviews Panel -->
+      <div class="panel" id="panel-reviews">
+        <div class="page-header">
+          <h1>Customer Reviews</h1>
+          <select id="reviewFilter" class="btn btn-outline btn-sm" style="cursor:pointer;">
+            <option value="">All Reviews</option>
+            <option value="pending" selected>Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+        <p style="color:var(--text-light); margin-bottom:24px; max-width:760px;">
+          Reviews submitted from the homepage land here as <strong>Pending</strong>.
+          Approved reviews appear in the homepage &quot;Happy Tails&quot; carousel after
+          the built-in testimonials; pending and rejected reviews are never shown publicly.
+        </p>
+        <div class="card">
+          <div class="card-body" style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Reviewer</th>
+                  <th>Rating</th>
+                  <th style="min-width:280px;">Review</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="reviewsTable">
+                <tr><td colspan="6" style="text-align:center; color: var(--text-light);">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -1145,6 +1187,7 @@
         case 'clients': loadClients(); break;
         case 'services': loadServices(); break;
         case 'photos': loadPhotos(); break;
+        case 'reviews': loadReviews(); break;
         case 'settings': loadSettings(); break;
         case 'payments': loadPayments(); break;
         case 'campaigns': loadCampaigns(); break;
@@ -1866,6 +1909,84 @@
         await apiCall(`/api/photos/${id}`, { method: 'DELETE' });
         showToast('Photo deleted');
         loadPhotos();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
+    // --- Reviews ---
+    function ratingStars(rating) {
+      const n = Math.min(5, Math.max(1, parseInt(rating, 10) || 5));
+      return '&#11088;'.repeat(n);
+    }
+
+    async function loadReviews() {
+      try {
+        const filter = document.getElementById('reviewFilter').value;
+        const query = filter ? `?status=${filter}` : '';
+        const reviews = await apiCall('/api/reviews/all' + query);
+        const tbody = document.getElementById('reviewsTable');
+
+        if (reviews.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-light);">
+            No ${filter || ''} reviews${filter === 'pending' ? ' waiting for approval' : ''}.
+          </td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = reviews.map(r => {
+          const actions = [];
+          if (r.status !== 'approved') {
+            actions.push(`<button class="btn btn-sm btn-success" onclick="setReviewStatus(${r.id}, 'approved')">Approve</button>`);
+          }
+          if (r.status !== 'rejected') {
+            actions.push(`<button class="btn btn-sm btn-warning" onclick="setReviewStatus(${r.id}, 'rejected')">${r.status === 'approved' ? 'Remove from site' : 'Reject'}</button>`);
+          }
+          actions.push(`<button class="btn btn-sm btn-danger" onclick="deleteReview(${r.id})">Delete</button>`);
+          return `
+          <tr>
+            <td style="white-space:nowrap;">${formatDate(r.created_at)}</td>
+            <td>
+              <strong>${escapeHtml(r.reviewer_name)}</strong>
+              ${r.pet_name ? `<br><small style="color:var(--text-light)">&#128054; ${escapeHtml(r.pet_name)}</small>` : ''}
+            </td>
+            <td style="white-space:nowrap;">${ratingStars(r.rating)}</td>
+            <td style="max-width:420px;">${escapeHtml(r.review_text)}</td>
+            <td>${statusBadge(r.status)}</td>
+            <td style="white-space:nowrap;">
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">${actions.join('')}</div>
+            </td>
+          </tr>
+          `;
+        }).join('');
+      } catch (err) {
+        showToast('Failed to load reviews', true);
+      }
+    }
+
+    document.getElementById('reviewFilter').addEventListener('change', loadReviews);
+
+    async function setReviewStatus(id, status) {
+      try {
+        await apiCall(`/api/reviews/${id}/status`, {
+          method: 'PUT',
+          body: JSON.stringify({ status })
+        });
+        showToast(status === 'approved'
+          ? 'Review approved — it now appears on the homepage'
+          : 'Review hidden from the homepage');
+        loadReviews();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
+    async function deleteReview(id) {
+      if (!confirm('Permanently delete this review?')) return;
+      try {
+        await apiCall(`/api/reviews/${id}`, { method: 'DELETE' });
+        showToast('Review deleted');
+        loadReviews();
       } catch (err) {
         showToast(err.message, true);
       }

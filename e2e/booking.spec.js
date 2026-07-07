@@ -50,15 +50,14 @@ test.describe('bookings', () => {
     expect(res.status()).toBe(400);
   });
 
-  test('lookup by email returns the booking case-insensitively', async ({ request }) => {
+  test('email-only booking lookup no longer exists', async ({ request }) => {
+    // Removed: knowing an email must never be enough to read someone else's
+    // bookings. Registered customers use GET /my; guests are notified by email.
     await createPublicBooking(request, { email: 'LookUp@Test.Local', dog_name: 'Max' });
     const res = await request.post('/api/bookings/lookup', {
       data: { email: 'lookup@test.local' }
     });
-    expect(res.status()).toBe(200);
-    const list = await res.json();
-    expect(list.length).toBe(1);
-    expect(list[0].dog_name).toBe('Max');
+    expect(res.status()).toBe(404);
   });
 
   test('customer can create a booking via /customer-book and see it in /my', async ({ request }) => {
@@ -283,16 +282,13 @@ test.describe('bookings', () => {
     expect(b2.amount_cents).toBe(boarding.price_cents * 3);
   });
 
-  test('public can fetch a single booking with matching email', async ({ request }) => {
+  test('email-verified single-booking fetch no longer exists', async ({ request }) => {
+    // Removed: booking ids are sequential and emails are guessable, so
+    // id + email was not real verification.
     const b = await createPublicBooking(request, { email: 'verify@test.local' });
-    const ok = await request.post(`/api/bookings/customer/${b.id}`, {
+    const res = await request.post(`/api/bookings/customer/${b.id}`, {
       data: { email: 'VERIFY@test.local' }
     });
-    expect(ok.status()).toBe(200);
-
-    const wrong = await request.post(`/api/bookings/customer/${b.id}`, {
-      data: { email: 'someoneelse@test.local' }
-    });
-    expect(wrong.status()).toBe(404);
+    expect(res.status()).toBe(404);
   });
 });

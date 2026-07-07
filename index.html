@@ -309,6 +309,27 @@
           <button class="carousel-btn next" id="carouselNext" aria-label="Next testimonial">&#8594;</button>
         </div>
       </div>
+
+      <div class="review-submit">
+        <h3>Share Your Story &#128062;</h3>
+        <p>Had a pawsome experience? Tell the pack about it! Your review will appear here once it's approved.</p>
+        <form id="reviewForm">
+          <div class="review-form-row">
+            <input type="text" id="reviewName" placeholder="Your name" maxlength="80" required>
+            <input type="text" id="reviewPetName" placeholder="Your pup's name (optional)" maxlength="80">
+          </div>
+          <div class="review-rating" id="reviewRating" role="radiogroup" aria-label="Rating">
+            <button type="button" class="review-star active" data-rating="1" aria-label="1 star">&#11088;</button>
+            <button type="button" class="review-star active" data-rating="2" aria-label="2 stars">&#11088;</button>
+            <button type="button" class="review-star active" data-rating="3" aria-label="3 stars">&#11088;</button>
+            <button type="button" class="review-star active" data-rating="4" aria-label="4 stars">&#11088;</button>
+            <button type="button" class="review-star active" data-rating="5" aria-label="5 stars">&#11088;</button>
+          </div>
+          <textarea id="reviewText" rows="4" placeholder="Tell us about your pup's stay..." maxlength="1000" required></textarea>
+          <button type="submit" class="btn btn-primary">Submit Review &#128054;</button>
+          <p class="review-form-msg" id="reviewFormMsg"></p>
+        </form>
+      </div>
     </div>
   </section>
 

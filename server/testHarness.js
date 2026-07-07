@@ -158,6 +158,7 @@ function buildRouter() {
           bookings,
           customers,
           photos,
+          reviews,
           services,
           subscribers,
           audit_logs,

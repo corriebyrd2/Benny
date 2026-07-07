@@ -351,23 +351,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Testimonials Carousel ---
   const track = document.getElementById('testimonialTrack');
-  const cards = track.querySelectorAll('.testimonial-card');
   const prevBtn = document.getElementById('carouselPrev');
   const nextBtn = document.getElementById('carouselNext');
   const dotsContainer = document.getElementById('carouselDots');
   let currentSlide = 0;
-  const totalSlides = cards.length;
+  let totalSlides = track.querySelectorAll('.testimonial-card').length;
   let autoPlayInterval;
 
-  // Create dots
-  cards.forEach((_, i) => {
-    const dot = document.createElement('button');
-    dot.classList.add('carousel-dot');
-    dot.setAttribute('aria-label', `Go to testimonial ${i + 1}`);
-    if (i === 0) dot.classList.add('active');
-    dot.addEventListener('click', () => goToSlide(i));
-    dotsContainer.appendChild(dot);
-  });
+  // (Re)build the dots — called once for the hardcoded cards and again after
+  // approved reviews from the API are appended to the track.
+  function buildCarouselDots() {
+    totalSlides = track.querySelectorAll('.testimonial-card').length;
+    dotsContainer.innerHTML = '';
+    for (let i = 0; i < totalSlides; i++) {
+      const dot = document.createElement('button');
+      dot.classList.add('carousel-dot');
+      dot.setAttribute('aria-label', `Go to testimonial ${i + 1}`);
+      if (i === currentSlide) dot.classList.add('active');
+      dot.addEventListener('click', () => goToSlide(i));
+      dotsContainer.appendChild(dot);
+    }
+  }
+
+  buildCarouselDots();
 
   function goToSlide(index) {
     currentSlide = index;
@@ -418,6 +424,90 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }, { passive: true });
 
+  // --- Approved Reviews (appended after the hardcoded testimonials) ---
+  async function loadDynamicReviews() {
+    try {
+      const res = await fetch('/api/reviews');
+      if (!res.ok) return;
+      const reviews = await res.json();
+      if (!Array.isArray(reviews) || reviews.length === 0) return;
+
+      reviews.forEach(r => {
+        const rating = Math.min(5, Math.max(1, parseInt(r.rating, 10) || 5));
+        const subtitle = r.pet_name ? `${r.pet_name}'s human` : 'Happy pack member';
+        const card = document.createElement('div');
+        card.className = 'testimonial-card';
+        card.innerHTML = `
+          <div class="testimonial-stars">${'⭐'.repeat(rating)}</div>
+          <p>"${escapeText(r.review_text)}"</p>
+          <div class="testimonial-author">
+            <div class="author-avatar">\u{1F43E}</div>
+            <div>
+              <strong>${escapeText(r.reviewer_name)}</strong>
+              <span>${escapeText(subtitle)}</span>
+            </div>
+          </div>
+        `;
+        track.appendChild(card);
+      });
+
+      buildCarouselDots();
+    } catch (e) {
+      // API not available, keep static content
+    }
+  }
+
+  loadDynamicReviews();
+
+  // --- Review Submission Form ---
+  const reviewForm = document.getElementById('reviewForm');
+  if (reviewForm) {
+    const stars = reviewForm.querySelectorAll('.review-star');
+    let selectedRating = 5;
+
+    stars.forEach(star => {
+      star.addEventListener('click', () => {
+        selectedRating = parseInt(star.getAttribute('data-rating'), 10);
+        stars.forEach(s => {
+          s.classList.toggle('active', parseInt(s.getAttribute('data-rating'), 10) <= selectedRating);
+        });
+      });
+    });
+
+    reviewForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('reviewFormMsg');
+      const btn = reviewForm.querySelector('button[type="submit"]');
+      msg.className = 'review-form-msg';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/api/reviews', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            reviewer_name: document.getElementById('reviewName').value.trim(),
+            pet_name: document.getElementById('reviewPetName').value.trim(),
+            rating: selectedRating,
+            review_text: document.getElementById('reviewText').value.trim()
+          })
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || 'Something went wrong. Please try again.');
+
+        reviewForm.reset();
+        selectedRating = 5;
+        stars.forEach(s => s.classList.add('active'));
+        msg.textContent = 'Thanks for sharing! Your review will appear once it’s approved. \u{1F389}';
+        msg.classList.add('success');
+      } catch (err) {
+        msg.textContent = err.message;
+        msg.classList.add('error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
 
   // --- Newsletter Form ---
   const newsletterForm = document.getElementById('newsletterForm');

@@ -19,6 +19,13 @@ if (!process.env.E2E_DATABASE_URL) {
 const PORT = process.env.E2E_PORT || '3901';
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
+// Resolve the signing secret ONCE and give the same value to both the server
+// under test and the test process. Specs that need to derive a signed value —
+// e.g. an unsubscribe token — must sign with the key the server verifies with,
+// and reading it from a second source is how they silently diverge.
+const JWT_SECRET = process.env.E2E_JWT_SECRET || 'e2e-test-secret-do-not-use-in-prod';
+process.env.JWT_SECRET = JWT_SECRET;
+
 module.exports = defineConfig({
   testDir: './e2e',
   fullyParallel: false,
@@ -46,7 +53,7 @@ module.exports = defineConfig({
       TEST_MODE: '1',
       PORT,
       NEON_DATABASE_URL: process.env.E2E_DATABASE_URL,
-      JWT_SECRET: process.env.E2E_JWT_SECRET || 'e2e-test-secret-do-not-use-in-prod',
+      JWT_SECRET,
       ADMIN_EMAIL: process.env.E2E_ADMIN_EMAIL || 'admin@test.local',
       ADMIN_PASSWORD: process.env.E2E_ADMIN_PASSWORD || 'test-admin-password-e2e',
       STRIPE_SECRET_KEY: 'sk_test_e2e_stub',

@@ -42,7 +42,7 @@ function install() {
         at: new Date().toISOString()
       });
     }
-  });
+  }, { markConfigured: true });
 
   // Stripe stub. Returns deterministic URLs; the real Stripe SDK is never called.
   // Webhook verification still uses the real SDK via the test route below.

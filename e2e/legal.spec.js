@@ -255,3 +255,47 @@ test.describe('newsletter consent and unsubscribe', () => {
     expect(bad.status()).toBe(200);
   });
 });
+
+test.describe('unsubscribe is honoured by campaigns', () => {
+  const { loginAdmin } = require('./utils');
+
+  test.beforeEach(async ({ request }) => { await resetAll(request); });
+
+  test('an unsubscribed address is excluded from the audience and the send', async ({ request }) => {
+    const staying = 'stays@test.local';
+    const leaving = 'leaves@test.local';
+    for (const email of [staying, leaving]) {
+      expect((await request.post('/api/subscribe',
+        { data: { email, marketing_consent: true } })).status()).toBe(200);
+    }
+
+    const token = await loginAdmin(request);
+    const before = await (await request.get('/api/campaigns/stats', {
+      headers: { authorization: `Bearer ${token}` }
+    })).json();
+    expect(before.subscriberCount).toBe(2);
+
+    // Unsubscribe with a valid signed link, the way an email client would.
+    const { unsubscribeToken } = require('../server/unsubscribeToken');
+    const out = await request.get(
+      `/api/subscribe/unsubscribe?e=${encodeURIComponent(leaving)}&t=${unsubscribeToken(leaving)}`);
+    expect(out.status()).toBe(200);
+
+    const after = await (await request.get('/api/campaigns/stats', {
+      headers: { authorization: `Bearer ${token}` }
+    })).json();
+    expect(after.subscriberCount).toBe(1);
+
+    const send = await request.post('/api/campaigns', {
+      headers: { authorization: `Bearer ${token}` },
+      data: { subject: 'Post-unsubscribe', html: '<p>Hi</p>', plain: 'Hi' }
+    });
+    expect(send.status(), await safeBody(send)).toBe(202);
+    expect((await send.json()).recipientCount).toBe(1);
+
+    const sent = await (await request.get('/api/__test__/emails?subject=Post-unsubscribe')).json();
+    expect(sent.length).toBe(1);
+    expect(sent[0].bcc).toContain(staying);
+    expect(sent[0].bcc).not.toContain(leaving);
+  });
+});

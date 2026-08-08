@@ -1,34 +1,11 @@
 const express = require('express');
-const crypto = require('crypto');
 const { query } = require('../database');
+const { tokenMatches } = require('../unsubscribeToken');
 
 const router = express.Router();
 
 // Matches RFC-5322-ish emails — good enough as a first-line validation.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// Unsubscribe links must work from an email client with no session, and must
-// not let anyone unsubscribe an address they don't know. A keyed HMAC of the
-// address satisfies both without storing a per-subscriber token: the link is
-// unguessable, stable, and verifiable in constant time.
-function unsubscribeToken(email) {
-  const secret = process.env.JWT_SECRET || '';
-  return crypto.createHmac('sha256', secret)
-    .update(`unsubscribe:${String(email).toLowerCase().trim()}`)
-    .digest('hex')
-    .slice(0, 32);
-}
-
-function tokenMatches(email, token) {
-  const expected = Buffer.from(unsubscribeToken(email));
-  const given = Buffer.from(String(token || ''));
-  return expected.length === given.length && crypto.timingSafeEqual(expected, given);
-}
-
-function unsubscribeUrl(baseUrl, email) {
-  const params = new URLSearchParams({ e: email, t: unsubscribeToken(email) });
-  return `${baseUrl.replace(/\/$/, '')}/api/subscribe/unsubscribe?${params.toString()}`;
-}
 
 // Public: subscribe to the newsletter. Idempotent by (lower) email.
 //
@@ -102,5 +79,3 @@ bookings are not marketing and will still be sent.</p>
 });
 
 module.exports = router;
-module.exports.unsubscribeToken = unsubscribeToken;
-module.exports.unsubscribeUrl = unsubscribeUrl;

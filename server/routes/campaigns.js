@@ -7,7 +7,9 @@ const router = express.Router();
 
 // Admin: audience size — powers the "X recipients" hint in the UI.
 router.get('/stats', authenticateToken, requirePermission('read'), async (req, res) => {
-  const { rows } = await query('SELECT COUNT(*)::int AS count FROM subscribers');
+  const { rows } = await query(
+    'SELECT COUNT(*)::int AS count FROM subscribers WHERE unsubscribed_at IS NULL'
+  );
   res.json({ subscriberCount: rows[0].count });
 });
 
@@ -25,7 +27,11 @@ router.post('/', authenticateToken, requirePermission('write'), async (req, res)
   }
 
   try {
-    const { rows } = await query('SELECT email FROM subscribers ORDER BY id');
+    // Never send marketing to someone who opted out. The unsubscribe link
+    // existed nowhere before this, so nothing was filtering on it either.
+    const { rows } = await query(
+      'SELECT email FROM subscribers WHERE unsubscribed_at IS NULL ORDER BY id'
+    );
     const recipients = rows.map(r => r.email);
     const result = await mailer.sendMarketingCampaign({ subject, html, plain, recipients });
     await logAudit(req.admin.id, req.admin.email, 'send', 'campaign', null,

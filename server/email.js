@@ -24,8 +24,17 @@ let transport = {
   }
 };
 
-function setTransport(t) {
+// Replace the transport. The test harness also passes { markConfigured: true }
+// so that "is email configured?" stops depending on whether a SENDGRID_API_KEY
+// happens to be present in the environment.
+//
+// This mattered: sendMarketingCampaign() short-circuits to
+// { recipientCount: 0 } when unconfigured, so the campaign test passed on any
+// machine with an ambient SendGrid key and failed on CI, which has none. A test
+// suite must not read a real secret to decide how the code behaves.
+function setTransport(t, { markConfigured = false } = {}) {
   transport = t;
+  if (markConfigured) configured = true;
 }
 
 // SendGrid's Mail Send API caps total recipients (to+cc+bcc) at 1000 per call.

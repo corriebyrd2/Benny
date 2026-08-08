@@ -5,7 +5,7 @@ const { authenticateCustomer } = require('../customerAuth');
 const mailer = require('../email');
 const { getStripe } = require('../stripeClient');
 const { recordBookingEvent } = require('../bookingAudit');
-const { quoteBooking, stripeLineItems } = require('../pricing');
+const { quoteBooking, stripeLineItems, refundForCancellation, formatAmount } = require('../pricing');
 
 const router = express.Router();
 
@@ -487,6 +487,179 @@ router.post('/sync-admin/:booking_id', authenticateToken, requirePermission('wri
     payment_status: result.payment_status,
     updated: result.changed
   });
+});
+
+// How much of a booking is still refundable, under the published cancellation
+// policy. Exposed so an admin sees the same figure the customer was promised
+// BEFORE committing to it, rather than typing a number from memory.
+function refundQuoteFor(booking) {
+  const paid = Number(booking.amount_cents) || 0;
+  const alreadyRefunded = Number(booking.refunded_cents) || 0;
+
+  // Hours until the stay begins. A booking with no start date has no deadline
+  // to measure against, so it is treated as a full refund — the customer should
+  // not lose money because we never captured a date.
+  let hoursBeforeStart = Infinity;
+  if (booking.start_date) {
+    // A DATE column comes back from pg as a Date object, whose default string
+    // form is "Mon Sep 01 2026 ..." — slicing that gives "Mon Sep 01", which
+    // parses to NaN and silently produced an "unknown" refund tier.
+    const iso = booking.start_date instanceof Date
+      ? booking.start_date.toISOString().slice(0, 10)
+      : String(booking.start_date).slice(0, 10);
+    const start = Date.parse(`${iso}T00:00:00Z`);
+    if (Number.isFinite(start)) hoursBeforeStart = (start - Date.now()) / 3600000;
+  }
+
+  const policy = refundForCancellation({ amountPaidCents: paid, hoursBeforeStart });
+  const remaining = Math.max(0, policy.refund_cents - alreadyRefunded);
+  return {
+    tier: policy.tier,
+    hours_before_start: Number.isFinite(hoursBeforeStart) ? Math.round(hoursBeforeStart) : null,
+    amount_paid_cents: paid,
+    already_refunded_cents: alreadyRefunded,
+    policy_refund_cents: policy.refund_cents,
+    refundable_now_cents: remaining,
+    retained_cents: policy.retained_cents,
+    summary: `${formatAmount(remaining)} refundable of ${formatAmount(paid)} paid`
+  };
+}
+
+// Admin: what the cancellation policy says this booking is owed.
+router.get('/refund-quote/:booking_id', authenticateToken, requirePermission('read'), async (req, res, next) => {
+  try {
+    const { rows } = await query('SELECT * FROM bookings WHERE id = $1', [req.params.booking_id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Booking not found' });
+    res.json(refundQuoteFor(rows[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Admin: issue a refund.
+//
+// The amount defaults to what the published cancellation policy owes; an
+// explicit amount is allowed (an owner may choose to be more generous) but is
+// capped at what was actually paid, so a typo cannot refund more than the
+// customer ever handed over.
+router.post('/refund/:booking_id', authenticateToken, requirePermission('write'), async (req, res, next) => {
+  try {
+    const { rows } = await query('SELECT * FROM bookings WHERE id = $1', [req.params.booking_id]);
+    const booking = rows[0];
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+    const paid = Number(booking.amount_cents) || 0;
+    const alreadyRefunded = Number(booking.refunded_cents) || 0;
+
+    // Order matters. A fully refunded booking WAS paid, so testing "is it paid?"
+    // first answered "this booking has not been paid" — true of the current
+    // status, and misleading about what actually happened.
+    if (booking.payment_status === 'refunded' || (paid > 0 && alreadyRefunded >= paid)) {
+      return res.status(400).json({ error: 'This booking has already been fully refunded' });
+    }
+    if (!['paid', 'partially_refunded'].includes(booking.payment_status)) {
+      return res.status(400).json({ error: 'This booking has not been paid, so there is nothing to refund' });
+    }
+
+    const quote = refundQuoteFor(booking);
+    let amount = req.body?.amount_cents === undefined
+      ? quote.refundable_now_cents
+      : Math.round(Number(req.body.amount_cents));
+
+    if (!Number.isInteger(amount) || amount <= 0) {
+      return res.status(400).json({ error: 'Refund amount must be a positive number of cents' });
+    }
+    if (amount + alreadyRefunded > paid) {
+      return res.status(400).json({
+        error: `Cannot refund more than was paid. At most ${formatAmount(paid - alreadyRefunded)} remains.`
+      });
+    }
+
+    const stripe = getStripe();
+    if (!stripe) {
+      return res.status(503).json({ error: 'Stripe is not configured, so a refund cannot be issued here' });
+    }
+    if (!booking.stripe_payment_id) {
+      return res.status(409).json({
+        error: 'No payment reference is recorded for this booking. Refund it in the Stripe dashboard and record it here.'
+      });
+    }
+
+    let refund;
+    try {
+      refund = await stripe.refunds.create({
+        payment_intent: booking.stripe_payment_id,
+        amount,
+        metadata: { booking_id: String(booking.id) }
+      });
+    } catch (err) {
+      console.error('[refund] Stripe refused the refund for booking', booking.id, err.message);
+      return res.status(502).json({ error: `The payment provider refused the refund: ${err.message}` });
+    }
+
+    const totalRefunded = alreadyRefunded + amount;
+    const newStatus = totalRefunded >= paid ? 'refunded' : 'partially_refunded';
+
+    // Record the refund before updating the booking: an orphaned refund row is
+    // recoverable, a booking that claims a refund with no record is not.
+    await query(
+      `INSERT INTO refunds (booking_id, amount_cents, reason, tier, stripe_refund_id,
+                            stripe_payment_id, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (stripe_refund_id) WHERE stripe_refund_id <> '' DO NOTHING`,
+      [booking.id, amount, String(req.body?.reason || '').slice(0, 500), quote.tier,
+        refund.id || '', booking.stripe_payment_id, req.admin.email || '']
+    );
+
+    await query(
+      `UPDATE bookings SET refunded_cents = $2, payment_status = $3, updated_at = NOW()
+       WHERE id = $1`,
+      [booking.id, totalRefunded, newStatus]
+    );
+
+    await recordBookingEvent({
+      bookingId: booking.id,
+      event: 'refund_issued',
+      from: { payment_status: booking.payment_status },
+      to: { payment_status: newStatus },
+      amountCents: amount,
+      actorType: 'admin',
+      actorId: req.admin.id,
+      detail: `${quote.tier} tier; stripe ${refund.id || 'n/a'}`
+    });
+
+    try {
+      await mailer.sendRefundIssuedToCustomer({ booking, amountCents: amount, tier: quote.tier });
+    } catch (err) {
+      console.error('[refund] customer notification failed for booking', booking.id, err.message);
+    }
+
+    await logAudit(req.admin.id, req.admin.email, 'refund', 'payments', String(booking.id),
+      `${amount} cents`);
+
+    res.json({
+      message: 'Refund issued',
+      amount_cents: amount,
+      total_refunded_cents: totalRefunded,
+      payment_status: newStatus,
+      stripe_refund_id: refund.id || null
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Admin: the refund history for a booking.
+router.get('/refunds/:booking_id', authenticateToken, requirePermission('read'), async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      'SELECT * FROM refunds WHERE booking_id = $1 ORDER BY created_at DESC',
+      [req.params.booking_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Admin: Get Stripe config status

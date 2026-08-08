@@ -207,6 +207,32 @@ async function send({ to, subject, html, text, templateId, dynamicTemplateData, 
 // A guest enquiry — someone who is not ready to create an account. The
 // database row is the record of truth; this is only the notification, so the
 // caller treats a failure here as non-fatal.
+// Sent when money goes back. A refund the customer only discovers from their
+// bank statement is a support ticket waiting to happen.
+async function sendRefundIssuedToCustomer({ booking, amountCents, tier }) {
+  if (!booking || !booking.email) return;
+  const amount = `$${(Number(amountCents || 0) / 100).toFixed(2)}`;
+  const lines = [
+    `We've refunded ${amount} for your booking of ${booking.service_name}.`,
+    '',
+    'It usually takes 5-10 business days to appear, depending on your bank.',
+    '',
+    'Our cancellation and refund policy explains how the amount is worked out.'
+  ];
+  await send({
+    to: booking.email,
+    subject: `Refund issued — ${amount}`,
+    text: lines.join('\n'),
+    html: `
+      <p>We've refunded <strong>${escapeHtml(amount)}</strong> for your booking of
+      ${escapeHtml(booking.service_name)}.</p>
+      <p>It usually takes 5&ndash;10 business days to appear, depending on your bank.</p>
+      ${PUBLIC_URL ? `<p><a href="${PUBLIC_URL}/legal/cancellation-policy">How refunds are calculated</a></p>` : ''}`,
+    categories: ['refund'],
+    customArgs: { booking_id: String(booking.id), refund_tier: String(tier || '') }
+  });
+}
+
 async function sendInquiryToOwner({ inquiry }) {
   if (!OWNER_EMAIL) return;
   const link = PUBLIC_URL ? `${PUBLIC_URL}/admin` : null;
@@ -478,6 +504,7 @@ async function sendPaymentReceivedToOwner({ booking }) {
 module.exports = {
   setTransport,
   sendInquiryToOwner,
+  sendRefundIssuedToCustomer,
   sendMarketingCampaign,
   sendNewBookingToOwner,
   sendBookingReceivedToCustomer,

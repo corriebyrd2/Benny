@@ -1,10 +1,11 @@
 const express = require('express');
-const { query } = require('../database');
+const { query, getClient } = require('../database');
 const { authenticateToken, requirePermission, logAudit } = require('../auth');
 const { authenticateCustomer } = require('../customerAuth');
 const mailer = require('../email');
 const { getStripe } = require('../stripeClient');
 const { quoteBooking, stripeLineItems } = require('../pricing');
+const { recordBookingEvent, listBookingEvents } = require('../bookingAudit');
 
 const router = express.Router();
 
@@ -76,31 +77,114 @@ function bookableError(service) {
   return null;
 }
 
-// Public: Check availability for a given date
-// Returns count of non-cancelled bookings that overlap the requested date.
-// Capacity is fixed at 10 slots per day.
-router.get('/availability', async (req, res) => {
-  const { date } = req.query;
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return res.status(400).json({ error: 'date query param required (YYYY-MM-DD)' });
-  }
+// Daily capacity, in dogs. Configurable so the owner can set it to the real
+// number rather than the 10 that was hard-coded in the availability endpoint.
+const DAILY_CAPACITY = Math.max(1, Number(process.env.DAILY_CAPACITY || 10));
 
-  const { rows } = await query(
-    `SELECT COUNT(*)::int AS count FROM bookings
+// How many dogs are already booked in on a given date. Counts DOGS, not
+// bookings: one booking for four dogs consumes four places. The old
+// availability endpoint counted bookings, so it under-reported occupancy for
+// every multi-dog stay.
+async function bookedDogsOn(client, date) {
+  const { rows } = await client.query(
+    `SELECT COALESCE(SUM(GREATEST(dog_count, 1)), 0)::int AS dogs
+     FROM bookings
      WHERE status != 'cancelled'
        AND start_date IS NOT NULL
        AND start_date <= $1
        AND COALESCE(end_date, start_date) >= $1`,
     [date]
   );
+  return rows[0].dogs;
+}
 
-  const count = rows[0].count;
-  const capacity = 10;
-  res.json({ date, count, capacity, available: count < capacity });
+// Every date a stay occupies, inclusive of both ends.
+function datesInStay(startDate, endDate) {
+  if (!startDate) return [];
+  const out = [];
+  const start = Date.parse(`${startDate}T00:00:00Z`);
+  const end = Date.parse(`${(endDate || startDate)}T00:00:00Z`);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return [];
+  // A guard against a pathological range consuming the request.
+  const MAX_NIGHTS = 366;
+  for (let t = start, i = 0; t <= end && i <= MAX_NIGHTS; t += 86400000, i++) {
+    out.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+/**
+ * Reserve capacity and insert, atomically.
+ *
+ * Booking creation never consulted capacity at all — the availability endpoint
+ * reported it, and nothing enforced it, so a full day could be booked
+ * arbitrarily many times. Checking and then inserting in two statements would
+ * still lose a race between two simultaneous requests, so the check and the
+ * insert run inside one transaction guarded by an advisory lock keyed on the
+ * first date of the stay.
+ *
+ * Returns { booking } or { conflict: { date, booked, capacity, requested } }.
+ */
+async function insertBookingWithCapacity({ dates, dogs, insertSql, insertParams }) {
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    if (dates.length > 0) {
+      // Serialise concurrent bookings that touch the same first date.
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [dates[0]]);
+
+      for (const date of dates) {
+        const booked = await bookedDogsOn(client, date);
+        if (booked + dogs > DAILY_CAPACITY) {
+          await client.query('ROLLBACK');
+          return {
+            conflict: { date, booked, capacity: DAILY_CAPACITY, requested: dogs }
+          };
+        }
+      }
+    }
+
+    const { rows } = await client.query(insertSql, insertParams);
+    await client.query('COMMIT');
+    return { booking: rows[0] };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+function capacityError(conflict) {
+  const remaining = Math.max(0, conflict.capacity - conflict.booked);
+  return remaining === 0
+    ? `We're fully booked on ${conflict.date}. Please choose different dates or contact us.`
+    : `We only have room for ${remaining} more dog${remaining === 1 ? '' : 's'} on ${conflict.date}. ` +
+      `Please choose different dates or contact us.`;
+}
+
+// Public: Check availability for a given date
+// Reports how many DOG PLACES are taken on the requested date.
+router.get('/availability', async (req, res) => {
+  const { date } = req.query;
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: 'date query param required (YYYY-MM-DD)' });
+  }
+
+  const count = await bookedDogsOn({ query }, date);
+  res.json({
+    date,
+    count,
+    capacity: DAILY_CAPACITY,
+    remaining: Math.max(0, DAILY_CAPACITY - count),
+    available: count < DAILY_CAPACITY
+  });
 });
 
 // Public: Create a booking
-router.post('/', async (req, res) => {
+router.post('/', async (req, res, next) => {
+  try {
   const { owner_name, email, phone, dog_name, service_id, preferred_dates, message, start_date, end_date, dog_count } = req.body;
 
   if (!owner_name || !email || !dog_name || !service_id) {
@@ -122,10 +206,12 @@ router.post('/', async (req, res) => {
   const dogs = normalizeDogCount(dog_count);
   const amount_cents = computeAmountCents(service, start_date, end_date, dogs);
 
-  const { rows } = await query(
-    `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, start_date, end_date, dog_count)
+  const { booking, conflict } = await insertBookingWithCapacity({
+    dates: datesInStay(start_date, end_date),
+    dogs,
+    insertSql: `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, start_date, end_date, dog_count)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
-    [
+    insertParams: [
       owner_name, email, phone || '', dog_name,
       service_id, service.name,
       preferred_dates || '', message || '',
@@ -133,8 +219,10 @@ router.post('/', async (req, res) => {
       start_date || null, end_date || null,
       dogs
     ]
-  );
-  const booking = rows[0];
+  });
+  if (conflict) {
+    return res.status(409).json({ error: capacityError(conflict), conflict });
+  }
 
   await Promise.all([
     mailer.sendNewBookingToOwner({ booking }),
@@ -146,6 +234,9 @@ router.post('/', async (req, res) => {
     message: 'Booking request submitted',
     amount_cents
   });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Authenticated customer: Get my bookings
@@ -160,7 +251,8 @@ router.get('/my', authenticateCustomer, async (req, res) => {
 });
 
 // Authenticated customer: Create a booking
-router.post('/customer-book', authenticateCustomer, async (req, res) => {
+router.post('/customer-book', authenticateCustomer, async (req, res, next) => {
+  try {
   const { dog_name, dog_id, dog_names, service_id, preferred_dates, message, start_date, end_date, dog_count } = req.body;
 
   const dateError = validateDateRange(start_date, end_date);
@@ -241,10 +333,12 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
   const resolvedDogName = resolvedNames.join(', ');
   const amount_cents = computeAmountCents(service, start_date, end_date, dogs);
 
-  const { rows } = await query(
-    `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, customer_id, start_date, end_date, dog_count)
+  const { booking, conflict } = await insertBookingWithCapacity({
+    dates: datesInStay(start_date, end_date),
+    dogs,
+    insertSql: `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, customer_id, start_date, end_date, dog_count)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
-    [
+    insertParams: [
       customer.name, customer.email, customer.phone || '',
       resolvedDogName, service_id, service.name,
       preferred_dates || '', message || '',
@@ -252,8 +346,10 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
       start_date || null, end_date || null,
       dogs
     ]
-  );
-  const booking = rows[0];
+  });
+  if (conflict) {
+    return res.status(409).json({ error: capacityError(conflict), conflict });
+  }
 
   await Promise.all([
     mailer.sendNewBookingToOwner({ booking }),
@@ -266,6 +362,9 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
     service_name: service.name,
     amount_cents
   });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // NOTE: There is deliberately no unauthenticated "look up bookings by email"
@@ -296,6 +395,16 @@ router.get('/', authenticateToken, requirePermission('read'), async (req, res) =
 
   const { rows } = await query(sql, params);
   res.json(rows);
+});
+
+// Admin: the immutable transition trail for one booking. This is what makes a
+// payment dispute answerable.
+router.get('/:id/events', authenticateToken, requirePermission('read'), async (req, res, next) => {
+  try {
+    res.json(await listBookingEvents(req.params.id));
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Admin: Get single booking
@@ -570,8 +679,32 @@ router.post('/:id/cancel', authenticateToken, requirePermission('write'), async 
   );
 
   await mailer.sendBookingCancelledToCustomer({ booking: rows[0], reason: reason || '' });
+  await recordBookingEvent({
+    bookingId: Number(req.params.id),
+    event: 'cancelled',
+    from: { status: existing.status, payment_status: existing.payment_status },
+    to: { status: 'cancelled', payment_status: rows[0].payment_status },
+    actorType: 'admin',
+    actorId: req.admin.id,
+    detail: reason || ''
+  });
   await logAudit(req.admin.id, req.admin.email, 'cancel', 'bookings', req.params.id, reason || '');
-  res.json({ message: 'Booking cancelled' });
+
+  // Cancelling a PAID booking used to keep the money with no prompt and no
+  // record. Surface what the published policy owes so the refund is a decision
+  // rather than an oversight.
+  const paidCents = Number(existing.amount_cents) || 0;
+  const refundedCents = Number(existing.refunded_cents) || 0;
+  const owesRefund = ['paid', 'partially_refunded'].includes(existing.payment_status)
+    && refundedCents < paidCents;
+
+  res.json({
+    message: 'Booking cancelled',
+    refund_due: owesRefund,
+    refund_hint: owesRefund
+      ? 'This booking was paid. Check the refund quote and issue a refund if one is owed.'
+      : null
+  });
 });
 
 // Admin: Mark booking as completed and paid

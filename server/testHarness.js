@@ -77,6 +77,17 @@ function install() {
         }
       }
     },
+    refunds: {
+      async create({ payment_intent, amount, metadata }) {
+        return {
+          id: `re_test_${Date.now()}_${Math.round(Math.random() * 1e6)}`,
+          payment_intent,
+          amount,
+          metadata,
+          status: 'succeeded'
+        };
+      }
+    },
     paymentIntents: {
       async create({ amount, metadata, description }) {
         const id = `pi_test_${Date.now()}`;
@@ -158,6 +169,7 @@ function buildRouter() {
           email_events,
           document_events,
           inquiries,
+          refunds,
           sessions,
           stripe_events,
           booking_events,

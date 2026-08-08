@@ -156,6 +156,7 @@ function buildRouter() {
       await pool.query(`
         TRUNCATE TABLE
           email_events,
+          document_events,
           stripe_events,
           booking_events,
           dog_documents,

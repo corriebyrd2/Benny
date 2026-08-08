@@ -95,6 +95,15 @@ const TINY_PNG = Buffer.from(
   'hex'
 );
 
+// A minimal but structurally real PDF. Document uploads are validated by
+// magic bytes, so fixtures have to be genuine files of an allowed type.
+const TINY_PDF = Buffer.from(
+  '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n' +
+  '2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\n' +
+  'trailer<</Root 1 0 R>>\n%%EOF\n',
+  'latin1'
+);
+
 // Strong password that satisfies the policy in server/customerAuth.js
 // (>=10 chars, contains a letter and a digit). Used by every fixture that
 // creates a customer so individual specs don't have to invent one.
@@ -105,6 +114,7 @@ module.exports = {
   ADMIN_PASSWORD,
   STRONG_PASSWORD,
   TINY_PNG,
+  TINY_PDF,
   resetAll,
   safeBody,
   loginAdmin,

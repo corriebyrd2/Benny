@@ -473,7 +473,9 @@ app.get('/api/admin/clients', authenticateToken, requirePermission('read'), asyn
     const [customersRes, dogsRes, documentsRes, bookingsRes] = await Promise.all([
       query('SELECT id, name, email, phone, created_at FROM customers ORDER BY created_at DESC'),
       query('SELECT id, customer_id, name, breed, weight, age, notes, created_at FROM dogs'),
-      query(`SELECT id, dog_id, original_name, mime_type, size_bytes, uploaded_at
+      query(`SELECT id, dog_id, original_name,
+                    COALESCE(NULLIF(detected_mime, ''), mime_type) AS mime_type,
+                    size_bytes, scan_status, uploaded_at
              FROM dog_documents ORDER BY uploaded_at DESC`),
       query(`SELECT id, owner_name, email, phone, dog_name, service_name, preferred_dates,
                     status, payment_status, amount_cents, customer_id, start_date, end_date,

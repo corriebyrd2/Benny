@@ -67,26 +67,26 @@ test.describe('dogs (customer profiles)', () => {
     });
     const dog = (await dogsRes.json())[0];
 
+    // Document uploads are now content-validated: a .txt file is refused, so
+    // this fixture is a real (minimal) PDF. See e2e/documents.spec.js for the
+    // rejection cases.
+    const { TINY_PDF } = require('./utils');
     const upload = await request.post(`/api/dogs/${dog.id}/documents`, {
       headers: { authorization: `Bearer ${token}` },
       multipart: {
-        document: {
-          name: 'vaccines.txt',
-          mimeType: 'text/plain',
-          buffer: Buffer.from('rabies: current')
-        }
+        document: { name: 'vaccines.pdf', mimeType: 'application/pdf', buffer: TINY_PDF }
       }
     });
     expect(upload.status()).toBe(201);
     const uploaded = await upload.json();
-    expect(uploaded.document.original_name).toBe('vaccines.txt');
+    expect(uploaded.document.original_name).toBe('vaccines.pdf');
 
     const afterUpload = await request.get('/api/dogs', {
       headers: { authorization: `Bearer ${token}` }
     });
     const dogWithDocs = (await afterUpload.json()).find(d => d.id === dog.id);
     expect(dogWithDocs.documents).toHaveLength(1);
-    expect(dogWithDocs.documents[0].original_name).toBe('vaccines.txt');
+    expect(dogWithDocs.documents[0].original_name).toBe('vaccines.pdf');
 
     const adminToken = await loginAdmin(request);
     const adminDogs = await request.get('/api/dogs/admin/all', {
@@ -95,13 +95,15 @@ test.describe('dogs (customer profiles)', () => {
     expect(adminDogs.status()).toBe(200);
     const adminDog = (await adminDogs.json()).find(d => d.id === dog.id);
     expect(adminDog.owner_email).toBe('docs-owner@test.local');
-    expect(adminDog.documents[0].original_name).toBe('vaccines.txt');
+    expect(adminDog.documents[0].original_name).toBe('vaccines.pdf');
 
     const download = await request.get(`/api/dogs/admin/documents/${adminDog.documents[0].id}/download`, {
       headers: { authorization: `Bearer ${adminToken}` }
     });
     expect(download.status()).toBe(200);
-    expect(await download.text()).toBe('rabies: current');
+    expect(download.headers()['content-type']).toContain('application/pdf');
+    expect(download.headers()['content-disposition']).toContain('attachment');
+    expect((await download.body()).equals(TINY_PDF)).toBe(true);
   });
 
   test('customer cannot touch another customer\'s dogs', async ({ request }) => {

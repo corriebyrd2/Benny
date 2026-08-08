@@ -249,9 +249,16 @@ NEON_DATABASE_URL="$SCRATCH_URL" NODE_ENV=production node server.js
 # 6. Delete the branch
 ```
 
+An automated version of exactly this runs in CI and can be run locally:
+
+```sh
+npm run drill:restore
+```
+
 | Drill date | Dump | Time to restore | Result |
 |---|---|---|---|
-| _(none yet — blocked on production Neon access)_ | | | |
+| 2026-08-08 | scratch, seeded (62.6 KB) | 239 ms | Pass — row counts, content, foreign keys, sequences and CHECK constraints all verified after restore |
+| _(production dump — still blocked on Neon access)_ | | | |
 
 Object storage (R2) holds uploaded photos and pet documents. It has its own
 durability but **no versioning is configured**, so a deletion is permanent.
@@ -364,12 +371,63 @@ affect customer-facing latency, but it needs pagination before that point.
 
 ## 9. Open operational items
 
-1. No automated off-Neon backup, and **no completed restore drill**.
+Closed since this list was written:
+
+- **Restore drill** — `npm run drill:restore` dumps a seeded database, restores
+  it into a scratch one, and verifies row counts, content, foreign keys,
+  sequences and CHECK constraints. It runs in CI on every push. What remains
+  open is running it against a *production* dump, which needs Neon access.
+- **Migration reversal** — every migration from 0014 onward has an executable
+  reversal in `server/migrations/down/`, and `npm run drill:migrations` proves
+  up -> down -> up lands on a byte-identical schema fingerprint. Migrations
+  0001-0013 predate this; rolling back past them means restoring a backup, and
+  the drill says so rather than implying otherwise.
+- **Metrics** — `/metrics` serves Prometheus text (request counts, latency
+  histogram, 4xx/5xx, auth failures, webhook outcomes, upload rejections, email
+  failures) and `/readyz` is distinct from `/healthz`. No personal data and no
+  per-path labels, so the label set cannot be grown by probing random URLs.
+  Still missing: something to *scrape* it, and an external uptime probe.
+- **Dependency and secret scanning** — CI runs `npm run check:secrets` and
+  `npm audit --audit-level=high --omit=dev` before anything else. Both are
+  currently clean.
+- **Client pagination** — `/api/admin/clients` is bounded (default 500, hard
+  ceiling 5000) and reports `truncated` and `limit` so a partial list can never
+  be mistaken for a complete one.
+- **Session sweeping** — `npm run retention` reports what the retention policy
+  would delete and `npm run retention:apply` deletes it. Dry run is the default.
+
+Still open:
+
+1. No automated off-Neon backup of the production database (the drill proves
+   the *procedure*; nothing is scheduled to produce the dumps).
 2. No object versioning on the R2 bucket.
-3. No metrics, tracing or external uptime probe.
-4. No dependency/secret scanning in CI (`npm audit` reports advisories today).
-5. No staging environment — changes go from CI straight to production.
-6. `/api/admin/clients` needs pagination before the client count grows.
-7. Expired session rows are never swept. They are harmless (resolveSession
-   rejects them) but the table grows without bound:
-   `DELETE FROM sessions WHERE expires_at < NOW() - INTERVAL '30 days';`
+3. Nothing scrapes `/metrics`, and there is no external uptime probe.
+4. No staging environment — changes go from CI straight to production.
+5. No malware scanner is wired up. The integration point exists and both the
+   quarantine and scanner-error paths are tested; uploads are recorded honestly
+   as `not_scanned` until `MALWARE_SCAN_COMMAND` is set.
+
+### A deliberate CSP trade-off
+
+The policy splits style handling:
+
+```
+style-src-elem  'self' 'nonce-<per-request>'   # strict
+style-src-attr  'unsafe-inline'                # the exception
+```
+
+A single nonce-bearing `style-src` silently dropped **every** `style="..."`
+attribute in the two portals — a CSP nonce has no mechanism for attributes —
+which broke grid layouts and left elements meant to start hidden permanently
+visible. A blocked style attribute produces no visible error, so this shipped
+unnoticed until a console-error assertion caught it.
+
+What the exception cannot reach: script (`script-src` is nonce-locked and
+`script-src-attr` is `'none'`), and the CSS exfiltration channels — `img-src`,
+`font-src` and `connect-src` are all same-origin, so an injected
+`background: url(https://attacker/...)` never leaves the box. `e2e/headers.spec.js`
+asserts both halves so the strict half cannot quietly regress.
+
+The alternative — removing all ~140 style attributes from `admin.html` and
+`customer.html` — is the stricter fix and remains available; it was judged too
+large a mechanical change to land safely alongside the rest of this work.

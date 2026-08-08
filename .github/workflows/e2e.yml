@@ -52,6 +52,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Cheap, fast gates that need no database and no browser. They run first
+      # so a leaked credential or a known-vulnerable dependency fails the run in
+      # seconds rather than after the full suite.
+      - name: Secret scan
+        run: npm run check:secrets
+
+      - name: Dependency audit (high and critical)
+        run: npm audit --audit-level=high --omit=dev
+
       - name: Resolve the test database URL
         run: |
           if [ -n "${{ secrets.E2E_DATABASE_URL }}" ]; then
@@ -73,11 +82,39 @@ jobs:
         # placeholder contact details. See DEPLOY.md.
         run: npm run check:launch || true
 
+      # Proves the reversals in server/migrations/down/ actually run and that
+      # up -> down -> up lands on an identical schema. A migration that cannot
+      # be reversed is only discovered during an incident otherwise.
+      - name: Migration reversal drill
+        run: npm run drill:migrations
+
+      # Proves a dump can be restored into an empty database with row counts,
+      # foreign keys, sequences and constraints intact. An untested backup is
+      # not a backup. Needs pg_dump/pg_restore matching the server major
+      # version — the runner's bundled client can be older than the service
+      # container, and pg_dump refuses to dump a newer server.
+      - name: Install postgresql-client 16
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          pg_dump --version
+
+      - name: Backup and restore drill
+        run: npm run drill:restore
+
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium firefox webkit
 
       - name: Run Playwright tests
         run: npm test
+
+      # Firefox and WebKit run the subset tagged @xbrowser: the flows where an
+      # engine difference would actually cost a booking.
+      - name: Cross-browser tests (Firefox, WebKit)
+        run: npm run test:xbrowser
 
       - name: Upload report on failure
         if: failure()

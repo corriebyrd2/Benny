@@ -13,7 +13,15 @@
     "test:headed": "playwright test --headed",
     "test:debug": "PWDEBUG=1 playwright test",
     "check:launch": "node scripts/check-launch.js",
+    "check:secrets": "node scripts/scan-secrets.js",
+    "drill:migrations": "node scripts/migration-drill.js",
+    "drill:restore": "node scripts/restore-drill.js",
+    "retention": "node scripts/retention.js",
+    "retention:apply": "node scripts/retention.js --apply",
     "test:unit": "node --test \"tests/unit/**/*.test.js\"",
+    "test:xbrowser": "playwright test --project=firefox --project=webkit",
+    "test:visual": "VISUAL_BASELINES=1 playwright test --project=visual",
+    "test:visual:update": "VISUAL_BASELINES=1 playwright test --project=visual --update-snapshots",
     "test:all": "npm run test:unit && npx playwright test"
   },
   "repository": {

@@ -105,6 +105,9 @@ and control, which is what a screen reader consumes.
 | Gallery captions had **no semantic relationship** to their image | `<figure>` / `<figcaption>` |
 | Mobile nav was **unusable at 769–968 px** (wrapped to a 197 px navbar) | Drawer breakpoint aligned with the layout breakpoint |
 | Inputs below 16 px caused **iOS zoom on focus**, leaving the page scrolled sideways | Held at 16 px on small screens |
+| The admin **service form's labels had no `for`**, and the booking modal's dog-count and amount inputs had no accessible name at all | `for` on every label; `aria-label` on the two inline number inputs; both modals are now scanned |
+| The "forgot password" / "back to login" links were an inline `#ff6b9d` at **2.9:1** | `.auth-link` using `--primary-strong` (5.18:1), underlined |
+| The admin sidebar footer was absolutely positioned over the nav list, making the **last item unreachable by pointer** | Sidebar is a flex column; the footer is a normal child with `margin-top: auto` |
 
 ## Known limitations
 
@@ -114,10 +117,12 @@ Stated rather than papered over:
    accessibility tree, which is what NVDA/JAWS/VoiceOver consume, but that is
    not the same as hearing the result. A pass with NVDA on Windows and VoiceOver
    on macOS/iOS is outstanding.
-2. **Only Chromium** is exercised automatically. Firefox and WebKit are
-   configured for manual runs but are not in CI.
-3. **`admin.html` and `customer.html` are large hand-written pages.** Their
-   current views scan clean, but views reachable only with specific data
+2. **Firefox and WebKit run only the `@xbrowser` subset** (52 tests), which
+   includes reflow and skip-link behaviour but not the axe scans — those run in
+   Chromium only.
+3. **`admin.html` and `customer.html` are large hand-written pages.** The
+   sign-in views, both dashboards, the settings form, the service form and the
+   booking detail modal now scan clean. Views reachable only with specific data
    (a booking in an unusual state, a long document list) have not all been
    scanned.
 4. **No user testing** with people who rely on assistive technology.

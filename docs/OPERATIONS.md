@@ -79,14 +79,16 @@ works.
 
 1. Generate the new value.
 2. Set it in Railway. The service restarts.
-3. Everyone is signed out and signs in again.
-4. Announce it beforehand unless you are rotating *because* of a compromise, in
-   which case do it immediately.
+3. Expect a few unsubscribe-link complaints; point people at the account-level
+   opt-out.
 
-Note this is also the key for unsubscribe-link HMACs and the IP hashes on
-policy acceptances — after rotation, previously issued unsubscribe links stop
-verifying. If you rotate, expect unsubscribe complaints; the account-level
-opt-out still works.
+To sign everyone out deliberately — after a suspected compromise — revoke the
+sessions instead, which is now possible:
+
+```sql
+UPDATE sessions SET revoked_at = NOW(), revoked_reason = 'incident'
+WHERE revoked_at IS NULL;
+```
 
 ### Rotating `ADMIN_PASSWORD`
 

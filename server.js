@@ -526,6 +526,7 @@ app.use('/api/reviews', require('./server/routes/reviews'));
 app.post('/api/inquiries', inquiryLimiter, (req, res, next) => next('route'));
 app.use('/api/inquiries', require('./server/routes/inquiries'));
 app.use('/api/campaigns', require('./server/routes/campaigns'));
+app.use('/api/customer/account', require('./server/routes/account'));
 app.use('/api/settings', require('./server/routes/settings'));
 
 // Public: the policy catalogue and which policies must be accepted where. The

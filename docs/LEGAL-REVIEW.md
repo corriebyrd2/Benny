@@ -37,18 +37,17 @@ each is listed in `docs/OWNER-CHECKLIST.md` §7 and marked inline in the text as
 4. Add a row to the table above: reviewer, date, and what was actually reviewed.
 5. Run `npx playwright test e2e/legal.spec.js`.
 
-## Two things the code claims that the policies currently over-claim
+## Previously flagged over-claims — now resolved
 
-Flagging these because publishing a policy that promises something the software
-does not do is worse than publishing nothing.
+The drafted Privacy Policy promised a machine-readable data export and
+self-service account deletion when neither existed. Both are now implemented
+and covered by tests (`e2e/account.spec.js`), and the policy text describes what
+the software actually does, including that paid bookings are anonymised rather
+than deleted because they are financial records.
 
-1. **The Privacy Policy says a machine-readable data export is available.**
-   It is not implemented.
-2. **The Privacy Policy says account deletion removes personal data and
-   uploaded documents.** Self-service account deletion is not implemented.
-
-Both must be built, or the wording changed, before the Privacy Policy is
-finalised. See `docs/PRIVACY-INVENTORY.md` "Known gaps".
+Remaining engineering gaps that touch privacy commitments are listed in
+`docs/PRIVACY-INVENTORY.md` — none of them currently contradict the published
+text.
 
 ## What the acceptance machinery already does
 

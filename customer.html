@@ -349,6 +349,14 @@
       transform: translateY(-2px);
     }
 
+    .btn-danger {
+      background: var(--danger-strong);
+      color: var(--white);
+    }
+    .btn-danger:hover {
+      background: #96271c;
+    }
+
     .btn-outline {
       background: transparent;
       color: var(--dark);
@@ -1241,6 +1249,7 @@
         <button class="dash-tab active" data-panel="book">Book a Service</button>
         <button class="dash-tab" data-panel="bookings">My Bookings</button>
         <button class="dash-tab" data-panel="dogs">My Dogs</button>
+        <button class="dash-tab" data-panel="privacy">My Data</button>
       </div>
 
       <!-- Book a Service Panel -->
@@ -1316,6 +1325,64 @@
       </div>
 
       <!-- My Dogs Panel -->
+      <div class="dash-panel" id="panelPrivacy">
+        <div class="booking-form-card">
+          <h2>Your data</h2>
+          <p style="color:var(--text-light);margin-bottom:20px;">
+            Everything we hold about you, and how to take it with you or remove
+            it. What we collect and why is set out in our
+            <a href="/legal/privacy" target="_blank" rel="noopener">Privacy Policy</a>.
+          </p>
+
+          <h3 style="margin-top:8px;">Download a copy</h3>
+          <p style="color:var(--text-light);">
+            A machine-readable JSON file containing your profile, dogs, document
+            details, bookings and the policy versions you accepted. Document
+            files themselves stay in <strong>My Dogs</strong> &mdash; download
+            them there.
+          </p>
+          <form id="exportForm" data-submit="submitExport">
+            <div class="form-group">
+              <label for="exportPassword">Confirm your password</label>
+              <input type="password" id="exportPassword" autocomplete="current-password" required>
+            </div>
+            <button type="submit" class="btn btn-primary" id="exportBtn">Download my data</button>
+            <p class="form-msg" id="exportMsg" role="status" aria-live="polite"></p>
+          </form>
+
+          <hr style="margin:32px 0;border:none;border-top:1px solid #eee;">
+
+          <h3>Sign out other devices</h3>
+          <p style="color:var(--text-light);">
+            Ends every other signed-in session but keeps you signed in here.
+          </p>
+          <button class="btn btn-outline" data-action="revokeOtherSessions">Sign out other devices</button>
+          <p class="form-msg" id="sessionsMsg" role="status" aria-live="polite"></p>
+
+          <hr style="margin:32px 0;border:none;border-top:1px solid #eee;">
+
+          <h3 style="color:var(--danger-strong);">Delete your account</h3>
+          <div id="deletionPreview" style="color:var(--text-light);margin-bottom:12px;"></div>
+          <p style="color:var(--text-light);">
+            This cannot be undone. Bookings you have already paid for are
+            financial records we have to keep &mdash; your name, contact details,
+            dog names and messages are erased from them.
+          </p>
+          <form id="deleteAccountForm" data-submit="submitAccountDeletion">
+            <div class="form-group">
+              <label for="deletePassword">Confirm your password</label>
+              <input type="password" id="deletePassword" autocomplete="current-password" required>
+            </div>
+            <div class="consent-row">
+              <input type="checkbox" id="deleteConfirm">
+              <label for="deleteConfirm">I understand this permanently deletes my account and cannot be undone.</label>
+            </div>
+            <button type="submit" class="btn btn-danger" id="deleteAccountBtn">Delete my account</button>
+            <p class="form-msg" id="deleteMsg" role="status" aria-live="polite"></p>
+          </form>
+        </div>
+      </div>
+
       <div class="dash-panel" id="panelDogs">
         <div class="booking-form-card">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
@@ -1436,6 +1503,117 @@
       document.getElementById('panel' + panel.charAt(0).toUpperCase() + panel.slice(1)).classList.add('active');
       if (panel === 'bookings') loadBookings();
       if (panel === 'dogs') renderDogsList();
+      if (panel === 'privacy') loadDeletionPreview();
+    }
+
+    // --- Your data: export, session control, deletion ---
+
+    async function loadDeletionPreview() {
+      const el = document.getElementById('deletionPreview');
+      try {
+        const res = await authedFetch('/api/customer/account/deletion-preview');
+        const preview = await safeJson(res);
+        const d = preview.will_be_deleted;
+        el.textContent =
+          `This will delete your profile, ${d.dogs} dog profile(s) and ` +
+          `${d.documents} document(s), and sign you out everywhere. ` +
+          `${preview.will_be_anonymised.bookings} booking(s) will be kept without your details.`;
+      } catch {
+        el.textContent = '';
+      }
+    }
+
+    async function submitExport(event) {
+      event.preventDefault();
+      const msg = document.getElementById('exportMsg');
+      const btn = document.getElementById('exportBtn');
+      const password = document.getElementById('exportPassword').value;
+      msg.className = 'form-msg';
+      msg.textContent = '';
+      btn.disabled = true;
+
+      try {
+        const res = await authedFetch('/api/customer/account/export', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        if (!res.ok) throw new Error((await safeJson(res)).error || 'Export failed');
+
+        // The response is a file, so turn it into a download rather than
+        // rendering it.
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `benny-and-the-pets-data-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        document.getElementById('exportPassword').value = '';
+        msg.classList.add('success');
+        msg.textContent = 'Your data has been downloaded.';
+      } catch (err) {
+        msg.classList.add('error');
+        msg.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function revokeOtherSessions() {
+      const msg = document.getElementById('sessionsMsg');
+      msg.className = 'form-msg';
+      try {
+        const res = await authedFetch('/api/customer/sessions/revoke-others', { method: 'POST' });
+        if (!res.ok) throw new Error((await safeJson(res)).error || 'Could not sign other devices out');
+        msg.classList.add('success');
+        msg.textContent = 'Other devices have been signed out.';
+      } catch (err) {
+        msg.classList.add('error');
+        msg.textContent = err.message;
+      }
+    }
+
+    async function submitAccountDeletion(event) {
+      event.preventDefault();
+      const msg = document.getElementById('deleteMsg');
+      const btn = document.getElementById('deleteAccountBtn');
+      const password = document.getElementById('deletePassword').value;
+      const confirmed = document.getElementById('deleteConfirm');
+      msg.className = 'form-msg';
+      msg.textContent = '';
+
+      // Deliberately unticked, and checked before anything irreversible runs.
+      if (!confirmed.checked) {
+        confirmed.focus();
+        msg.classList.add('error');
+        msg.textContent = 'Please confirm you understand this cannot be undone.';
+        return;
+      }
+
+      btn.disabled = true;
+      try {
+        const res = await authedFetch('/api/customer/account', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        if (!res.ok) throw new Error((await safeJson(res)).error || 'Could not delete your account');
+
+        signedIn = false;
+        customer = null;
+        sessionStorage.removeItem('customerProfile');
+        showAuth();
+        showToast('Your account has been deleted.', 'success');
+      } catch (err) {
+        msg.classList.add('error');
+        msg.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     // --- Toast ---
@@ -1498,7 +1676,7 @@
     // Every authenticated fetch goes through here so a 401 has exactly one
     // meaning everywhere: the session ended, show the sign-in screen.
     async function authedFetch(url, options = {}) {
-      const res = await authedFetch(url, {
+      const res = await fetch(url, {
         credentials: 'same-origin',
         ...options,
         headers: { ...authOnlyHeaders(), ...(options.headers || {}) }

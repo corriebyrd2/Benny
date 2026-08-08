@@ -88,24 +88,26 @@ consent that clears the prior opt-out and records a new timestamp.
 
 Listed rather than glossed over. None of these is fixed by this change set.
 
-1. **Sessions are still bearer tokens in `localStorage`.** A JWT with a 7-day
-   lifetime for customers (24 hours for admins) is stored where any script on
-   the page can read it. The CSP added here removes the realistic injection
-   route, but the correct fix is an HttpOnly, Secure, SameSite cookie with
-   server-side revocation. Until then there is **no way to revoke a session** —
-   logout only clears the client copy, and a password reset does not invalidate
-   tokens already issued.
-2. **No self-service data export.** The privacy policy says a machine-readable
-   export is available; it is not implemented.
-3. **No self-service account deletion.** Same — stated in the policy,
-   not implemented.
-4. **No malware scanning** on uploaded documents.
-5. **No automated backups or a tested restore.** See `DEPLOY.md`.
-6. **No documented processor list.** The policy names categories; the actual
+1. **No malware scanning** on uploaded documents. The integration point exists
+   (`server/malwareScan.js`) and records `scan_status = 'not_scanned'` honestly;
+   no scanner is wired up.
+2. **No automated backups or a tested restore.** See `docs/OPERATIONS.md`.
+3. **No automated retention enforcement.** Retention periods are documented but
+   nothing deletes anything on a schedule.
+4. **No documented processor list.** The policy names categories; the actual
    vendor list and the data-processing agreements are an owner task.
 
-Items 1–3 are the ones that make the published privacy policy currently
-*over-claim*, and they should be built before that policy is finalised.
+### Closed since the first version of this document
+
+- **Sessions.** Replaced the localStorage JWT with a server-side session in an
+  HttpOnly cookie. Sessions are now revocable, expire on idle as well as
+  absolutely, and a password reset invalidates every session issued before it.
+- **Data export.** `POST /api/customer/account/export`, and "My Data" in the
+  portal. Requires password re-entry.
+- **Account deletion.** `DELETE /api/customer/account`. Deletes the profile,
+  pets, documents (files as well as rows), sessions and marketing subscription;
+  anonymises bookings that are financial records. Requires password re-entry
+  and an explicit, unticked confirmation.
 
 ## For counsel
 

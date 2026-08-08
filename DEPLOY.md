@@ -32,7 +32,7 @@ Schema is created automatically on first boot via `server/migrations/*.sql`.
    `node server.js`. `railway.json` locks this in and wires a health check at
    `/healthz`.
 
-## 3. Attach a persistent volume (uploads only)
+## 4. Attach a persistent volume (uploads only)
 
 The database lives on Neon, so it survives redeploys automatically. **Uploaded
 photos** still sit on the Railway container's filesystem, which is ephemeral —
@@ -70,6 +70,43 @@ In the service → **Variables** tab, add:
 | `OWNER_NOTIFICATION_EMAIL` | Where new-booking / payment notifications go (defaults to `ADMIN_EMAIL`) |
 | `PUBLIC_URL` | `https://bennyandthepets.com` — used for links in emails |
 
+### Business facts (required before the site can go live)
+
+The site publishes a contact detail only when it is present **and** structurally
+valid, and hides the component otherwise — it never renders placeholder text.
+These can be set either as environment variables **or**, preferably, in
+**Admin → Company Info**, which shows a live checklist of what is still
+missing. A setting saved in the admin panel takes precedence over the variable.
+
+| Variable | Admin field | Notes |
+| --- | --- | --- |
+| `BUSINESS_NAME` | Public trading name | |
+| `BUSINESS_LEGAL_NAME` | Registered legal entity name | The name on the LLC registration; appears in the policies |
+| `BUSINESS_EMAIL` | Support email | Must be a valid address |
+| `BUSINESS_PHONE` | Verified phone number | A 555 number is rejected |
+| `BUSINESS_SERVICE_AREA` | Service-area statement | |
+| `BUSINESS_HOURS_WEEKDAY` | Weekday operating hours | |
+| `BUSINESS_EMERGENCY_CONTACT` | Emergency / after-hours instructions | |
+
+Optional, and hidden until set: address lines and structured-data locality,
+region, postal code and country; weekend hours; Facebook / Instagram / TikTok /
+Google Business URLs (must be `https`); licence number and authority; insurance
+statement; year the business started trading.
+
+### Operational variables (all optional)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DAILY_CAPACITY` | `10` | Dog places per day. Bookings beyond it are refused, not merely reported. |
+| `PRICE_CURRENCY` | `usd` | |
+| `REQUIRE_EMAIL_VERIFICATION` | off | Require customers to verify their address before booking |
+| `METRICS_TOKEN` | unset | Bearer token for `/metrics`. **Unset means loopback-only**, which is the safe default on Railway. |
+| `MALWARE_SCAN_COMMAND` | unset | e.g. `clamscan --no-summary`. Unset means uploads are recorded honestly as `not_scanned`. |
+| `CUSTOMER_SESSION_ABSOLUTE_MS` / `CUSTOMER_SESSION_IDLE_MS` | 7 d / 48 h | |
+| `ADMIN_SESSION_ABSOLUTE_MS` / `ADMIN_SESSION_IDLE_MS` | 12 h / 1 h | |
+| `PGPOOL_MAX`, `PG_STATEMENT_TIMEOUT_MS` | 10, 15000 | |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` | unset | Cloudflare R2 for dog documents; falls back to local disk |
+
 Generate a JWT secret locally:
 ```sh
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
@@ -99,7 +136,7 @@ Once the domain is live:
 | Customer booking portal | `https://bennyandthepets.com/my-bookings` |
 | Admin portal | `https://bennyandthepets.com/admin` |
 
-## 5a. Configure SendGrid
+## 7. Configure SendGrid
 
 Emails (new booking notifications, payment receipts, confirmations,
 cancellations) go through SendGrid. If `SENDGRID_API_KEY` or
@@ -145,7 +182,7 @@ to verify the SendGrid confirmation template and checkout link. Check SendGrid �
 - Create separate API keys for production and staging with only **Mail Send**
   permission, and rotate them periodically.
 
-### 5b. Configure SendGrid Event Webhooks
+### 7b. SendGrid Event Webhooks
 
 1. SendGrid dashboard → **Settings → Mail Settings → Event Webhook**.
 2. Endpoint URL: `https://bennyandthepets.com/api/sendgrid/events`.
@@ -161,7 +198,7 @@ to verify the SendGrid confirmation template and checkout link. Check SendGrid �
    matching a newsletter subscriber update subscriber suppression/unsubscribe
    fields.
 
-## 5c. Dog document uploads
+## 8. Dog document uploads
 
 Customers can upload documents to their dog profiles (for example vaccine
 records, care instructions, or forms). These files are stored outside the
@@ -170,7 +207,7 @@ customer/admin download endpoints. On Railway, keep `UPLOAD_DIR` on the mounted
 volume (for example `/data/uploads`); dog documents default to `/data/dog-documents`.
 Set `DOG_DOC_UPLOAD_DIR` only if you want a different private path.
 
-## 6. Configure the Stripe webhook
+## 9. Configure the Stripe webhook
 
 1. Stripe dashboard → **Developers → Webhooks → Add endpoint**.
 2. Endpoint URL: `https://bennyandthepets.com/api/payments/webhook`
@@ -185,7 +222,7 @@ should show a 200 response.
 
 ---
 
-## 8. First-run checklist
+## 10. First-run checklist
 
 After the first successful deploy:
 
@@ -204,7 +241,7 @@ To evolve the schema, add a new numbered `.sql` file — never edit old ones.
 
 ---
 
-## 9. Migrating existing data from the old SQLite database
+## 11. Migrating existing data from the old SQLite database
 
 If you ran an earlier version of this app on SQLite and have a `benny.db` file
 you want to bring over:
@@ -222,17 +259,58 @@ you want to bring over:
 6. Verify row counts per table, then uninstall better-sqlite3:
    `npm uninstall better-sqlite3`.
 
-## 10. Going live
+## 12. Going live
 
-1. Switch Stripe from test to live mode; replace `STRIPE_SECRET_KEY` and
-   `STRIPE_PUBLISHABLE_KEY`, then create a **new** webhook endpoint (live mode
-   has its own signing secret). Update `STRIPE_WEBHOOK_SECRET`.
-2. Verify `NODE_ENV=production` so the env validator enforces strong secrets.
-3. Confirm Neon backups are enabled (see §11).
+### The launch gate
 
-## 11. Backups (Neon)
+```sh
+npm run check:launch
+```
 
-## 9. Backups
+It exits non-zero while any launch-required business fact is missing or still
+placeholder text, and prints exactly which. **Run it against production config
+and let a non-zero exit stop the release** — that is the whole point of it. It
+also exits non-zero if it cannot reach the database, so a connection problem
+fails the deploy rather than waving it through.
+
+The same information is on screen in **Admin → Company Info**, which shows a
+live checklist and refuses to save an obviously fictional value.
+
+### Before taking real money
+
+1. `npm run check:launch` passes.
+2. **The policies are reviewed.** All ten ship marked *draft pending review by
+   qualified counsel*, and that banner is visible to customers. Taking payment
+   under draft terms is a business decision, not a technical one — see
+   `docs/LEGAL-REVIEW.md` for what a reviewer needs to look at.
+3. Stripe is in **live** mode: replace `STRIPE_SECRET_KEY` and
+   `STRIPE_PUBLISHABLE_KEY`, create a **new** webhook endpoint (live mode has
+   its own signing secret), update `STRIPE_WEBHOOK_SECRET`.
+4. **Take one real payment and refund it**, end to end, before announcing the
+   site. The test suite exercises the payment path against a deterministic
+   stub with real HMAC signature verification — it has never run against
+   Stripe itself.
+5. `NODE_ENV=production`, so the env validator enforces strong secrets and
+   refuses to boot without them.
+6. Neon backups confirmed (§13), and `DAILY_CAPACITY` set to the real number of
+   dogs that can be boarded at once.
+7. Decide about the two inactive services. Grooming and training are seeded
+   **inactive** because their rates were never verified; they stay invisible
+   until an admin sets a real price and activates them.
+
+### Smoke test after the first live deploy
+
+```sh
+curl -fsS https://bennyandthepets.com/healthz     # {"ok":true}
+curl -fsS https://bennyandthepets.com/readyz      # ready:true — proves the DB is reachable
+curl -fsS https://bennyandthepets.com/robots.txt
+```
+
+Then in a browser: the homepage shows real contact details (not a "being
+confirmed" placeholder), `/legal` lists ten policies, `/admin` signs in, and a
+booking can be created and approved.
+
+## 13. Backups
 
 - **Database**: Neon keeps continuous point-in-time restore on paid plans and
   7-day history on free. Verify the retention window in your Neon project
@@ -242,10 +320,26 @@ you want to bring over:
 
 ---
 
-## 12. Known limitations / future work
+## 14. Known limitations / future work
 
-- No customer email verification on registration (SendGrid transactional sends
-  do not imply the recipient owns the address).
-- E2E tests — planned next.
-- Uploaded photos still live on a Railway Volume; S3/R2 migration is a future
-  cleanup.
+Accurate as of the remediation merge — the three items previously listed here
+(no email verification, no E2E tests, uploads on a Volume) are done: email
+verification exists behind `REQUIRE_EMAIL_VERIFICATION`, the suite is 372
+Playwright tests plus 24 unit tests, and dog documents go to R2 when it is
+configured.
+
+What is genuinely still open:
+
+- **The payment path has never run against real Stripe.** No sandbox
+  credentials were available. See §12 step 4.
+- **No staging environment.** Changes go from CI straight to production.
+- **No screen-reader pass.** axe-core scans the accessibility tree across 11
+  surfaces, which is not the same as hearing the result.
+- **No malware scanning** unless `MALWARE_SCAN_COMMAND` is set. Uploads are
+  recorded as `not_scanned` rather than falsely as clean.
+- **Nothing scrapes `/metrics`**, and there is no external uptime probe.
+- **Backups are not scheduled.** `npm run drill:restore` proves the *procedure*
+  works; nothing runs it or produces the dumps on a timer.
+- **Homepage photos** still live on the Railway Volume; only dog documents
+  moved to R2.
+- All ten legal policies remain **draft pending counsel**.

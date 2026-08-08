@@ -1026,8 +1026,23 @@
   <script src="/js/portal-actions.js"></script>
   <script>
     // --- State ---
-    let token = localStorage.getItem('benny_admin_token');
+    //
+    // The session token is NOT held here. It lives in an HttpOnly cookie the
+    // browser attaches automatically, so a script injected into this page
+    // cannot read it. An admin credential reaches every customer's personal
+    // data, which is precisely why it must not sit in localStorage. Admin
+    // sessions also expire far sooner than the old 24-hour token: 12 hours
+    // absolute, 1 hour idle.
     const API = '';
+
+    function csrfToken() {
+      const match = document.cookie.match(/(?:^|;\s*)bp_csrf=([^;]*)/);
+      return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    function looksSignedIn() {
+      return csrfToken() !== '';
+    }
 
     // --- Utilities ---
     function showToast(message, isError = false) {
@@ -1047,11 +1062,13 @@
 
     async function apiCall(path, options = {}) {
       const headers = { ...(options.headers || {}) };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      // The session cookie rides along automatically; this header only
+      // satisfies the double-submit CSRF check on state-changing requests.
+      headers['X-CSRF-Token'] = csrfToken();
       if (!(options.body instanceof FormData)) {
         headers['Content-Type'] = 'application/json';
       }
-      const res = await fetch(API + path, { ...options, headers });
+      const res = await fetch(API + path, { ...options, credentials: 'same-origin', headers });
       if (res.status === 401) {
         logout();
         throw new Error('Session expired');
@@ -1094,7 +1111,8 @@
     async function downloadDogDocumentAdmin(docId) {
       try {
         const res = await fetch('/api/dogs/admin/documents/' + docId + '/download', {
-          headers: { Authorization: 'Bearer ' + token }
+          credentials: 'same-origin',
+          headers: { 'X-CSRF-Token': csrfToken() }
         });
         if (!res.ok) throw new Error('Failed to download document');
         const blob = await res.blob();
@@ -1133,9 +1151,16 @@
     });
 
     // --- Auth ---
-    function logout() {
-      token = null;
-      localStorage.removeItem('benny_admin_token');
+    async function logout() {
+      // Ending the session is the SERVER's job. Clearing a client-side copy was
+      // never a logout — the old token stayed valid until it expired.
+      try {
+        await fetch(API + '/api/auth/logout', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'X-CSRF-Token': csrfToken() }
+        });
+      } catch { /* sign out locally even if the network is down */ }
       document.getElementById('loginScreen').style.display = 'flex';
       document.getElementById('adminLayout').style.display = 'none';
     }
@@ -1166,8 +1191,6 @@
           return;
         }
 
-        token = data.token;
-        localStorage.setItem('benny_admin_token', token);
         showAdmin();
       } catch (err) {
         errorEl.textContent = 'Login failed. Please try again.';
@@ -2422,14 +2445,13 @@
     });
 
     // --- Init ---
-    if (token) {
-      // Validate token by making a test request
+    // The CSRF cookie is a hint that a session may exist; only the server can
+    // confirm it, so probe an authenticated endpoint and show the login screen
+    // if it says otherwise.
+    if (looksSignedIn()) {
       apiCall('/api/dashboard/stats')
         .then(() => showAdmin())
-        .catch(() => {
-          token = null;
-          localStorage.removeItem('benny_admin_token');
-        });
+        .catch(() => { /* apiCall already reverted to the login screen */ });
     }
   </script>
 </body>

@@ -1,6 +1,6 @@
-const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { query } = require('./database');
+const sessions = require('./sessions');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET || JWT_SECRET === 'benny-pets-default-secret' || JWT_SECRET === 'change-this-to-a-random-secret-key') {
@@ -14,37 +14,52 @@ const ROLE_PERMISSIONS = {
   viewer: ['read']
 };
 
-function generateToken(admin) {
-  return jwt.sign(
-    { id: admin.id, email: admin.email, role: admin.role || 'admin' },
-    JWT_SECRET,
-    { expiresIn: '24h' }
-  );
-}
-
-function authenticateToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-
+/**
+ * Authenticate an admin from a server-side session.
+ *
+ * Session rows carry subject_type, so a customer session can no longer be
+ * mistaken for an admin one — that separation used to depend on inspecting a
+ * `type` claim inside a JWT signed with the same secret as customer tokens.
+ * Admin sessions also expire far sooner (12h absolute, 1h idle) because an
+ * admin credential reaches every customer's personal data.
+ */
+async function authenticateToken(req, res, next) {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    // Customer and admin JWTs are signed with the same secret, so a valid
-    // signature alone is not enough — a customer token would otherwise satisfy
-    // authenticateToken and (via requirePermission's 'viewer' fallback) reach
-    // read-only admin routes like /api/admin/clients, exposing every client's
-    // PII. Admin tokens carry a role and no `type`; reject anything marked as a
-    // customer token.
-    if (decoded.type === 'customer') {
+    const credential = sessions.credentialFrom(req);
+    if (!credential.token) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    if (!sessions.csrfOk(req, credential)) {
+      return res.status(403).json({ error: 'csrf_token_invalid' });
+    }
+
+    const session = await sessions.resolveSession(credential.token);
+    if (!session) {
+      sessions.clearSessionCookies(res);
+      return res.status(401).json({ error: 'Your session has expired. Please sign in again.' });
+    }
+    // A customer session presented to an admin route is a privilege-escalation
+    // attempt, not an expiry: answer 403 so it is distinguishable in the logs.
+    if (session.subject_type !== 'admin') {
       return res.status(403).json({ error: 'Invalid or expired token' });
     }
-    req.admin = decoded;
+
+    const { rows } = await query('SELECT id, email, role FROM admins WHERE id = $1',
+      [session.subject_id]);
+    if (!rows[0]) {
+      await sessions.revokeSession(credential.token, 'subject_missing');
+      sessions.clearSessionCookies(res);
+      return res.status(401).json({ error: 'Your session has expired. Please sign in again.' });
+    }
+
+    // The role is read from the database on every request, so a demotion takes
+    // effect immediately rather than when a token happens to expire.
+    req.admin = { id: rows[0].id, email: rows[0].email, role: rows[0].role || 'admin' };
+    req.session = session;
+    req.sessionToken = credential.token;
     next();
   } catch (err) {
-    return res.status(403).json({ error: 'Invalid or expired token' });
+    next(err);
   }
 }
 
@@ -100,8 +115,7 @@ async function loginAdmin(email, password) {
   }
 
   await logAudit(admin.id, email, 'login', 'auth', null, 'success');
-  const token = generateToken(admin);
-  return { token, admin: { id: admin.id, email: admin.email, role: admin.role || 'admin' } };
+  return { adminId: admin.id, admin: { id: admin.id, email: admin.email, role: admin.role || 'admin' } };
 }
 
 module.exports = { authenticateToken, requirePermission, logAudit, loginAdmin, ROLE_PERMISSIONS };

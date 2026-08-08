@@ -7,7 +7,9 @@
 // back on download.
 
 const { test, expect } = require('@playwright/test');
-const { resetAll, registerCustomer, loginAdmin, safeBody, TINY_PDF, TINY_PNG } = require('./utils');
+const {
+  resetAll, registerCustomer, loginAdmin, safeBody, anonymousRequest, TINY_PDF, TINY_PNG
+} = require('./utils');
 
 async function firstDogId(request, token) {
   const res = await request.get('/api/dogs', { headers: { authorization: `Bearer ${token}` } });
@@ -203,16 +205,19 @@ test.describe('authorisation', () => {
     expect(bDog).not.toBe(aDog);
   });
 
-  test('unauthenticated and admin-token requests are handled correctly', async ({ request }) => {
+  test('unauthenticated and admin-token requests are handled correctly', async ({ request, playwright, baseURL }) => {
     const { token } = await registerCustomer(request, { dog_name: 'Fixture' });
     const dogId = await firstDogId(request, token);
     const created = await upload(request, token, dogId,
       { name: 'a.pdf', mimeType: 'application/pdf', buffer: TINY_PDF });
     const docId = (await created.json()).document.id;
 
-    // No token at all.
-    expect((await request.get(`/api/dogs/documents/${docId}/download`)).status()).toBe(401);
-    expect((await request.get(`/api/dogs/admin/documents/${docId}/download`)).status()).toBe(401);
+    // No credential at all — needs a cookie-free client, because the session
+    // cookie from registerCustomer above would otherwise authenticate it.
+    const anon = await anonymousRequest(playwright, baseURL);
+    expect((await anon.get(`/api/dogs/documents/${docId}/download`)).status()).toBe(401);
+    expect((await anon.get(`/api/dogs/admin/documents/${docId}/download`)).status()).toBe(401);
+    await anon.dispose();
 
     // A customer token must not reach the admin download route.
     const asCustomer = await request.get(`/api/dogs/admin/documents/${docId}/download`, {

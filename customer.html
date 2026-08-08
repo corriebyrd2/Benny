@@ -1388,8 +1388,16 @@
   <script src="/js/portal-actions.js"></script>
   <script>
     // State
-    let token = localStorage.getItem('customerToken');
-    let customer = JSON.parse(localStorage.getItem('customerData') || 'null');
+    //
+    // The session token is NOT held here. It lives in an HttpOnly cookie the
+    // browser attaches automatically, so a script injected into this page
+    // cannot read or exfiltrate it — which is exactly what the previous
+    // localStorage token allowed. `signedIn` only records whether we believe a
+    // session exists; the server is the authority and answers 401 when it does
+    // not. The CSRF token IS readable, by design: it has to be echoed back in a
+    // header, and it is not a credential on its own.
+    let signedIn = document.cookie.includes('bp_csrf=');
+    let customer = JSON.parse(sessionStorage.getItem('customerProfile') || 'null');
     let bookings = [];
     let services = [];
     let dogs = [];
@@ -1472,16 +1480,42 @@
       return '<span class="badge badge-unpaid">Unpaid</span>';
     }
 
+    function csrfToken() {
+      const match = document.cookie.match(/(?:^|;\s*)bp_csrf=([^;]*)/);
+      return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    // The session cookie rides along automatically; all these headers do is
+    // satisfy the double-submit CSRF check on state-changing requests.
     function authOnlyHeaders() {
-      if (!token) {
-        logout();
-        throw new Error('Not logged in');
-      }
-      return { 'Authorization': 'Bearer ' + token };
+      return { 'X-CSRF-Token': csrfToken() };
     }
 
     function authHeaders() {
       return { 'Content-Type': 'application/json', ...authOnlyHeaders() };
+    }
+
+    // Every authenticated fetch goes through here so a 401 has exactly one
+    // meaning everywhere: the session ended, show the sign-in screen.
+    async function authedFetch(url, options = {}) {
+      const res = await authedFetch(url, {
+        credentials: 'same-origin',
+        ...options,
+        headers: { ...authOnlyHeaders(), ...(options.headers || {}) }
+      });
+      if (res.status === 401) {
+        handleSessionExpired();
+        throw new Error('Your session has expired. Please sign in again.');
+      }
+      return res;
+    }
+
+    function handleSessionExpired() {
+      signedIn = false;
+      customer = null;
+      sessionStorage.removeItem('customerProfile');
+      showAuth();
+      showToast('Your session has expired. Please sign in again.', 'error');
     }
 
     async function safeJson(res) {
@@ -1549,7 +1583,7 @@
 
     // --- Auth Check ---
     function checkAuth() {
-      if (token && customer) {
+      if (signedIn && customer) {
         showDashboard();
       } else {
         showAuth();
@@ -1580,13 +1614,21 @@
       }
     }
 
-    function logout() {
-      token = null;
+    async function logout() {
+      // Tell the SERVER to end the session. Clearing a client-side copy was
+      // never a logout: the old token stayed valid until it expired.
+      try {
+        await fetch('/api/customer/logout', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'X-CSRF-Token': csrfToken() }
+        });
+      } catch { /* sign out locally even if the network is down */ }
+      signedIn = false;
       customer = null;
-      localStorage.removeItem('customerToken');
-      localStorage.removeItem('customerData');
+      sessionStorage.removeItem('customerProfile');
       showAuth();
-      showToast('Logged out successfully');
+      showToast('Signed out');
     }
 
     // --- Login ---
@@ -1611,10 +1653,11 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Login failed');
 
-        token = data.token;
         customer = data.customer;
-        localStorage.setItem('customerToken', token);
-        localStorage.setItem('customerData', JSON.stringify(customer));
+        signedIn = true;
+        // Profile data only — never the credential, and cleared when the tab
+        // closes.
+        sessionStorage.setItem('customerProfile', JSON.stringify(customer));
         showToast('Welcome back, ' + customer.name + '!', 'success');
         showDashboard();
       } catch (err) {
@@ -1728,12 +1771,11 @@
     (function maybeShowResetForm() {
       const resetToken = new URLSearchParams(window.location.search).get('reset');
       if (!resetToken) return;
-      // Ensure the auth section is visible even if a stale token is in localStorage.
-      if (token) {
-        token = null;
+      // Ensure the auth section is visible even if a stale profile is cached.
+      if (signedIn || customer) {
+        signedIn = false;
         customer = null;
-        localStorage.removeItem('customerToken');
-        localStorage.removeItem('customerData');
+        sessionStorage.removeItem('customerProfile');
       }
       document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
       showAuthForm('resetForm');
@@ -1779,10 +1821,11 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Registration failed');
 
-        token = data.token;
         customer = data.customer;
-        localStorage.setItem('customerToken', token);
-        localStorage.setItem('customerData', JSON.stringify(customer));
+        signedIn = true;
+        // Profile data only — never the credential, and cleared when the tab
+        // closes.
+        sessionStorage.setItem('customerProfile', JSON.stringify(customer));
         showToast('Account created! Welcome, ' + customer.name + '!', 'success');
         showDashboard();
       } catch (err) {
@@ -1867,7 +1910,7 @@
           message: document.getElementById('bookMessage').value.trim()
         };
 
-        const res = await fetch('/api/bookings/customer-book', {
+        const res = await authedFetch('/api/bookings/customer-book', {
           method: 'POST',
           headers: authHeaders(),
           body: JSON.stringify(bookingBody)
@@ -1909,7 +1952,7 @@
       container.innerHTML = '<div style="text-align:center;padding:40px;"><span class="loading-spinner"></span><p style="color:var(--text-light);margin-top:12px;font-weight:700;">Loading your bookings...</p></div>';
 
       try {
-        const res = await fetch('/api/bookings/my', { headers: authHeaders() });
+        const res = await authedFetch('/api/bookings/my', { headers: authHeaders() });
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
           throw new Error('Failed to load bookings');
@@ -2082,7 +2125,7 @@
     // --- Payment ---
     async function initiatePayment(bookingId) {
       try {
-        const res = await fetch('/api/payments/customer-checkout', {
+        const res = await authedFetch('/api/payments/customer-checkout', {
           method: 'POST',
           headers: authHeaders(),
           body: JSON.stringify({ booking_id: bookingId })
@@ -2108,7 +2151,7 @@
     // --- Dogs ---
     async function loadDogs() {
       try {
-        const res = await fetch('/api/dogs', { headers: authHeaders() });
+        const res = await authedFetch('/api/dogs', { headers: authHeaders() });
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
           throw new Error('Failed to load dogs');
@@ -2285,7 +2328,7 @@
 
     async function downloadDogDocument(docId) {
       try {
-        const res = await fetch('/api/dogs/documents/' + docId + '/download', { headers: authOnlyHeaders() });
+        const res = await authedFetch('/api/dogs/documents/' + docId + '/download', { headers: authOnlyHeaders() });
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
           throw new Error('Failed to download document');
@@ -2315,7 +2358,7 @@
       btn.disabled = true;
       btn.textContent = 'Uploading...';
       try {
-        const res = await fetch('/api/dogs/' + dogId + '/documents', {
+        const res = await authedFetch('/api/dogs/' + dogId + '/documents', {
           method: 'POST',
           headers: authOnlyHeaders(),
           body: formData
@@ -2391,7 +2434,7 @@
       try {
         const url = editId ? '/api/dogs/' + editId : '/api/dogs';
         const method = editId ? 'PUT' : 'POST';
-        const res = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) });
+        const res = await authedFetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) });
         const data = await safeJson(res);
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
@@ -2416,7 +2459,7 @@
       if (!confirm('Remove ' + (dog ? dog.name : 'this dog') + ' from your profile?')) return;
 
       try {
-        const res = await fetch('/api/dogs/' + id, { method: 'DELETE', headers: authHeaders() });
+        const res = await authedFetch('/api/dogs/' + id, { method: 'DELETE', headers: authHeaders() });
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
           const errData = await res.json().catch(() => ({}));
@@ -2442,10 +2485,10 @@
       const paidBookingId = urlParams.get('booking');
       window.history.replaceState({}, '', '/my-bookings');
       (async () => {
-        if (paidBookingId && token) {
+        if (paidBookingId && signedIn) {
           for (let attempt = 0; attempt < 3; attempt++) {
             try {
-              const r = await fetch(`/api/payments/sync/${paidBookingId}`, {
+              const r = await authedFetch(`/api/payments/sync/${paidBookingId}`, {
                 method: 'POST',
                 headers: authHeaders()
               });

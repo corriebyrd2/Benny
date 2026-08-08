@@ -1,7 +1,7 @@
 const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { query } = require('./database');
+const sessions = require('./sessions');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET || JWT_SECRET === 'benny-pets-default-secret' || JWT_SECRET === 'change-this-to-a-random-secret-key') {
@@ -26,31 +26,54 @@ function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-function generateCustomerToken(customer) {
-  return jwt.sign(
-    { id: customer.id, email: customer.email, type: 'customer' },
-    JWT_SECRET,
-    { expiresIn: '7d' }
-  );
-}
-
-function authenticateCustomer(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-
+/**
+ * Authenticate a customer from a server-side session.
+ *
+ * Sessions replaced the stateless JWT: the token is opaque, stored only as a
+ * hash, revocable, and idle-expiring. The credential arrives either in the
+ * HttpOnly cookie (browsers) or as a Bearer token (programmatic clients).
+ */
+async function authenticateCustomer(req, res, next) {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    if (decoded.type !== 'customer') {
+    const credential = sessions.credentialFrom(req);
+    if (!credential.token) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    if (!sessions.csrfOk(req, credential)) {
+      return res.status(403).json({ error: 'csrf_token_invalid' });
+    }
+
+    const session = await sessions.resolveSession(credential.token);
+    // Absent, revoked, expired and idle-timed-out are deliberately
+    // indistinguishable to the client: all are "sign in again".
+    if (!session) {
+      sessions.clearSessionCookies(res);
+      return res.status(401).json({ error: 'Your session has expired. Please sign in again.' });
+    }
+    // A LIVE session of the wrong type is a different thing entirely — someone
+    // presenting an admin credential to a customer route. That is a privilege
+    // boundary violation, not an expiry, so it answers 403 and leaves the
+    // session intact. The admin middleware mirrors this.
+    if (session.subject_type !== 'customer') {
       return res.status(403).json({ error: 'Invalid token type' });
     }
-    req.customer = decoded;
+
+    const { rows } = await query(
+      'SELECT id, email, name FROM customers WHERE id = $1',
+      [session.subject_id]
+    );
+    if (!rows[0]) {
+      await sessions.revokeSession(credential.token, 'subject_missing');
+      sessions.clearSessionCookies(res);
+      return res.status(401).json({ error: 'Your session has expired. Please sign in again.' });
+    }
+
+    req.customer = { id: rows[0].id, email: rows[0].email, name: rows[0].name };
+    req.session = session;
+    req.sessionToken = credential.token;
     next();
   } catch (err) {
-    return res.status(403).json({ error: 'Invalid or expired token' });
+    next(err);
   }
 }
 
@@ -80,10 +103,8 @@ async function registerCustomer(name, email, password, phone, dogName) {
     [customerId]
   );
 
-  const customer = { id: customerId, email: email.toLowerCase(), name };
-  const token = generateCustomerToken(customer);
   return {
-    token,
+    customerId,
     customer: {
       id: customerId,
       email: email.toLowerCase(),
@@ -109,9 +130,8 @@ async function loginCustomer(email, password) {
     [customer.id]
   );
 
-  const token = generateCustomerToken(customer);
   return {
-    token,
+    customerId: customer.id,
     customer: {
       id: customer.id,
       email: customer.email,
@@ -179,11 +199,16 @@ async function resetPasswordWithToken(token, newPassword) {
 
   const hash = bcrypt.hashSync(newPassword, 10);
   await query('UPDATE customers SET password_hash = $1 WHERE id = $2', [hash, record.customer_id]);
-  return { ok: true };
+  // The whole point of a reset is to lock someone out. A stateless token could
+  // not be revoked, so an attacker holding one kept access straight through the
+  // action taken to remove them.
+  const revoked = await sessions.revokeAllForSubject('customer', record.customer_id, 'password_reset');
+  return { ok: true, sessions_revoked: revoked };
 }
 
 module.exports = {
   authenticateCustomer,
+  hashToken,
   registerCustomer,
   loginCustomer,
   createPasswordResetToken,

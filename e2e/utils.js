@@ -6,6 +6,17 @@ const { expect, request: pwRequest } = require('@playwright/test');
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL || 'admin@test.local';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD || 'test-admin-password-e2e';
 
+// A client with NO cookies.
+//
+// Sessions are now delivered as cookies, and Playwright's `request` fixture
+// keeps cookies for the lifetime of a test. So once a spec has signed anyone in,
+// a request made without an Authorization header is NOT anonymous — the session
+// cookie rides along. Any assertion about unauthenticated behaviour has to use
+// a fresh context or it silently tests the authenticated path instead.
+async function anonymousRequest(playwright, baseURL) {
+  return playwright.request.newContext({ baseURL });
+}
+
 async function resetAll(request) {
   // Order matters: emails + rate limits first (cheap), then DB (truncates
   // everything except the seeded admin/services).
@@ -45,7 +56,13 @@ async function registerCustomer(request, overrides = {}) {
   const res = await request.post('/api/customer/register', { data });
   expect(res.status(), await safeBody(res)).toBe(201);
   const body = await res.json();
-  return { token: body.token, customer: body.customer, password: data.password, email: data.email };
+  return {
+    token: body.token,
+    csrfToken: body.csrf_token,
+    customer: body.customer,
+    password: data.password,
+    email: data.email
+  };
 }
 
 async function firstServiceId(request) {
@@ -115,6 +132,7 @@ module.exports = {
   STRONG_PASSWORD,
   TINY_PNG,
   TINY_PDF,
+  anonymousRequest,
   resetAll,
   safeBody,
   loginAdmin,

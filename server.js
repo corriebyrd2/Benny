@@ -17,6 +17,7 @@ const {
 } = require('./server/customerAuth');
 const { sendPasswordResetToCustomer } = require('./server/email');
 const { init: initDb, query } = require('./server/database');
+const sessions = require('./server/sessions');
 const assets = require('./server/assets');
 const { newNonce } = require('./server/render');
 const { launchCheck, formatLaunchReport } = require('./server/businessProfile');
@@ -283,16 +284,42 @@ const reviewSubmitLimiter = rateLimit({
 app.locals.limiters = { authLimiter, registerLimiter, subscribeLimiter, passwordResetRequestLimiter, publicBookingLimiter, reviewSubmitLimiter };
 
 // Admin auth
-app.post('/api/auth/login', authLimiter, async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
+app.post('/api/auth/login', authLimiter, async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+    const result = await loginAdmin(email, password);
+    if (!result) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // A fresh session per sign-in — never reuse or extend an existing one.
+    const session = await sessions.createSession({
+      subjectType: 'admin', subjectId: result.adminId, req
+    });
+    sessions.setSessionCookies(res, session);
+
+    // The opaque token is returned so programmatic clients can use Bearer auth.
+    // Browsers ignore it and rely on the HttpOnly cookie; no AUTHENTICATED
+    // endpoint ever discloses a token, so an injected script cannot obtain one.
+    res.json({ token: session.token, csrf_token: session.csrfToken, admin: result.admin });
+  } catch (err) {
+    next(err);
   }
-  const result = await loginAdmin(email, password);
-  if (!result) {
-    return res.status(401).json({ error: 'Invalid email or password' });
+});
+
+// Admin: end this session. Idempotent — signing out twice is not an error.
+app.post('/api/auth/logout', async (req, res, next) => {
+  try {
+    const credential = sessions.credentialFrom(req);
+    if (credential.token) await sessions.revokeSession(credential.token, 'logout');
+    sessions.clearSessionCookies(res);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
   }
-  res.json(result);
 });
 
 // Customer auth
@@ -331,6 +358,13 @@ app.post('/api/customer/register', registerLimiter, async (req, res, next) => {
       req
     });
 
+    const session = await sessions.createSession({
+      subjectType: 'customer', subjectId: result.customerId, req
+    });
+    sessions.setSessionCookies(res, session);
+    result.token = session.token;
+    result.csrf_token = session.csrfToken;
+
     if (marketing_consent === true) {
       await query(
         `INSERT INTO subscribers (email, source, consent_at, consent_source)
@@ -348,16 +382,68 @@ app.post('/api/customer/register', registerLimiter, async (req, res, next) => {
   }
 });
 
-app.post('/api/customer/login', authLimiter, async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
+app.post('/api/customer/login', authLimiter, async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+    const result = await loginCustomer(email, password);
+    if (!result) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    const session = await sessions.createSession({
+      subjectType: 'customer', subjectId: result.customerId, req
+    });
+    sessions.setSessionCookies(res, session);
+    res.json({ token: session.token, csrf_token: session.csrfToken, customer: result.customer });
+  } catch (err) {
+    next(err);
   }
-  const result = await loginCustomer(email, password);
-  if (!result) {
-    return res.status(401).json({ error: 'Invalid email or password' });
+});
+
+// Customer: end this session.
+app.post('/api/customer/logout', async (req, res, next) => {
+  try {
+    const credential = sessions.credentialFrom(req);
+    if (credential.token) await sessions.revokeSession(credential.token, 'logout');
+    sessions.clearSessionCookies(res);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
   }
-  res.json(result);
+});
+
+// Customer: see where they are signed in, and sign every other device out.
+app.get('/api/customer/sessions', authenticateCustomer, async (req, res, next) => {
+  try {
+    const active = await sessions.listActiveSessions('customer', req.customer.id);
+    res.json(active.map(s => ({
+      id: s.id,
+      current: s.id === req.session.id,
+      created_at: s.created_at,
+      last_seen_at: s.last_seen_at,
+      expires_at: s.expires_at,
+      user_agent: s.user_agent
+    })));
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post('/api/customer/sessions/revoke-others', authenticateCustomer, async (req, res, next) => {
+  try {
+    await sessions.revokeAllForSubject('customer', req.customer.id, 'revoke_others');
+    // Re-issue for the caller so the action does not sign them out too.
+    const session = await sessions.createSession({
+      subjectType: 'customer', subjectId: req.customer.id, req
+    });
+    sessions.setSessionCookies(res, session);
+    res.json({ ok: true, token: session.token, csrf_token: session.csrfToken });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Password reset — always responds 200 so we never reveal whether an email is
@@ -392,7 +478,9 @@ app.post('/api/customer/reset-password', authLimiter, async (req, res, next) => 
     if (result.error) {
       return res.status(400).json({ error: result.error });
     }
-    res.json({ ok: true });
+    // Surfaced so the customer can see that other devices were signed out —
+    // and so the test suite can prove it happened.
+    res.json({ ok: true, sessions_revoked: result.sessions_revoked || 0 });
   } catch (err) {
     next(err);
   }

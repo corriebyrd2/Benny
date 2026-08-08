@@ -21,6 +21,7 @@ const mailer = require('./server/email');
 const { sendPasswordResetToCustomer } = mailer;
 const { init: initDb, query } = require('./server/database');
 const sessions = require('./server/sessions');
+const metrics = require('./server/metrics');
 const assets = require('./server/assets');
 const { newNonce } = require('./server/render');
 const { launchCheck, formatLaunchReport } = require('./server/businessProfile');
@@ -138,6 +139,7 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use(metrics.requestMetrics);
 app.use(compression());
 
 // CORS whitelist. FRONTEND_ORIGIN is a comma-separated list of allowed origins.
@@ -207,6 +209,38 @@ app.use((req, res, next) => {
     return res.status(404).end();
   }
   next();
+});
+
+// Metrics, in Prometheus text format.
+//
+// Guarded by a bearer token rather than left open: the counters expose traffic
+// shape and error rates, which is reconnaissance for anyone probing. When
+// METRICS_TOKEN is unset the endpoint is available only from a loopback
+// address, so a local Prometheus works out of the box while a public scrape
+// does not.
+app.get('/metrics', (req, res) => {
+  const token = process.env.METRICS_TOKEN;
+  if (token) {
+    const provided = (req.headers.authorization || '').replace(/^Bearer /, '');
+    if (provided !== token) return res.status(401).type('text/plain').send('unauthorized\n');
+  } else {
+    const ip = req.ip || '';
+    const local = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+    if (!local) return res.status(404).end();
+  }
+  res.type('text/plain; version=0.0.4').send(metrics.render());
+});
+
+// Readiness: is this process able to serve traffic right now? Distinct from
+// liveness — a process that is up but cannot reach its database should be taken
+// out of rotation, not restarted.
+app.get('/readyz', async (req, res) => {
+  try {
+    await query('SELECT 1');
+    res.json({ ready: true });
+  } catch (err) {
+    res.status(503).json({ ready: false, reason: 'database_unreachable' });
+  }
 });
 
 // Health check — hits the database to confirm it's reachable.
@@ -302,6 +336,7 @@ app.post('/api/auth/login', authLimiter, async (req, res, next) => {
     }
     const result = await loginAdmin(email, password);
     if (!result) {
+      metrics.increment('benny_auth_failures_total', { kind: 'admin_login' });
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
@@ -462,6 +497,7 @@ app.post('/api/customer/login', authLimiter, async (req, res, next) => {
     }
     const result = await loginCustomer(email, password);
     if (!result) {
+      metrics.increment('benny_auth_failures_total', { kind: 'customer_login' });
       return res.status(401).json({ error: 'Invalid email or password' });
     }
     if (result.unverified) {
@@ -639,17 +675,24 @@ const { authenticateToken, requirePermission } = require('./server/auth');
 // render without a second round-trip.
 app.get('/api/admin/clients', authenticateToken, requirePermission('read'), async (req, res, next) => {
   try {
+    // Bounded. This endpoint loaded EVERY customer, dog, document and booking
+    // into memory and aggregated there — fine at hundreds of clients, a latency
+    // cliff at tens of thousands. The cap is generous enough that the panel is
+    // unchanged for any realistic present-day dataset, and `truncated` tells the
+    // caller when it has been hit rather than silently showing a partial list.
+    const MAX_ROWS = Math.min(5000, Math.max(50, Number(req.query.limit) || 2000));
+
     const [customersRes, dogsRes, documentsRes, bookingsRes] = await Promise.all([
-      query('SELECT id, name, email, phone, created_at FROM customers ORDER BY created_at DESC'),
-      query('SELECT id, customer_id, name, breed, weight, age, notes, created_at FROM dogs'),
+      query('SELECT id, name, email, phone, created_at FROM customers ORDER BY created_at DESC LIMIT $1', [MAX_ROWS]),
+      query('SELECT id, customer_id, name, breed, weight, age, notes, created_at FROM dogs LIMIT $1', [MAX_ROWS * 3]),
       query(`SELECT id, dog_id, original_name,
                     COALESCE(NULLIF(detected_mime, ''), mime_type) AS mime_type,
                     size_bytes, scan_status, uploaded_at
-             FROM dog_documents ORDER BY uploaded_at DESC`),
+             FROM dog_documents ORDER BY uploaded_at DESC LIMIT $1`, [MAX_ROWS * 3]),
       query(`SELECT id, owner_name, email, phone, dog_name, service_name, preferred_dates,
                     status, payment_status, amount_cents, customer_id, start_date, end_date,
                     dog_count, created_at
-             FROM bookings WHERE status != 'cancelled' ORDER BY created_at DESC`)
+             FROM bookings WHERE status != 'cancelled' ORDER BY created_at DESC LIMIT $1`, [MAX_ROWS * 5])
     ]);
 
     const customers = customersRes.rows;
@@ -818,6 +861,8 @@ app.get('/api/admin/clients', authenticateToken, requirePermission('read'), asyn
 
     res.json({
       clients,
+      truncated: customers.length >= MAX_ROWS,
+      limit: MAX_ROWS,
       kpis: {
         total_revenue_cents: totalRevenue,
         pending_revenue_cents: pendingRevenue,
@@ -881,6 +926,7 @@ app.use((req, res) => res.status(404).end());
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error('[error]', req.method, req.originalUrl, err);
+  metrics.increment('benny_unhandled_errors_total', {});
   const status = err.status || 500;
   const message = IS_PROD && status === 500 ? 'Internal server error' : (err.message || 'Internal server error');
   res.status(status).json({ error: message });

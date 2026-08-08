@@ -212,6 +212,7 @@ router.post('/:id/documents', authenticateCustomer, uploadDocument.single('docum
 
     const identified = identify(req.file.buffer);
     if (!identified.ok) {
+      require('../metrics').increment('benny_upload_rejections_total', { reason: 'file_type' });
       await recordDocumentEvent({
         dogId: dogRows[0].id, event: 'upload_rejected',
         actorType: 'customer', actorId: req.customer.id, detail: identified.reason
@@ -244,6 +245,7 @@ router.post('/:id/documents', authenticateCustomer, uploadDocument.single('docum
     const scan = await malware.scanFile(filePath);
     if (scan.status === 'quarantined' || scan.status === 'error') {
       await fs.promises.unlink(filePath).catch(() => {});
+      require('../metrics').increment('benny_upload_rejections_total', { reason: scan.status });
       await recordDocumentEvent({
         dogId: dogRows[0].id, event: 'upload_quarantined',
         actorType: 'customer', actorId: req.customer.id,

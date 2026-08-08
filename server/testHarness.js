@@ -143,6 +143,18 @@ function buildRouter() {
     res.json({ cleared: true });
   });
 
+  // Force the malware scanner's verdict so the quarantine and scanner-error
+  // branches can be exercised without shipping a scanner.
+  router.post('/malware/mode', (req, res) => {
+    const mode = req.body && req.body.mode;
+    const allowed = ['off', 'clean', 'quarantined', 'error'];
+    if (!allowed.includes(mode)) {
+      return res.status(400).json({ error: `mode must be one of: ${allowed.join(', ')}` });
+    }
+    require('./malwareScan').__setForcedOutcome(mode === 'off' ? null : mode);
+    res.json({ mode });
+  });
+
   router.post('/rate-limits/reset', (req, res) => {
     const limiters = req.app.locals.limiters || {};
     for (const l of Object.values(limiters)) {

@@ -83,12 +83,56 @@ test.describe('automated WCAG scans', () => {
     const results = await scan(page, { include: '#adminLayout' });
     expect(describeViolations(results)).toBe('');
   });
+
+  // The admin does most of its work in modals, and nothing scanned them. The
+  // service form's inputs had no `for` on their labels at all.
+  test('the admin modals are clean', async ({ page, request }) => {
+    const { firstServiceId } = require('./utils');
+    const serviceId = await firstServiceId(request);
+    await request.post('/api/bookings', {
+      data: {
+        owner_name: 'Modal Scan', email: 'modal@test.local', dog_name: 'Rex',
+        service_id: serviceId, start_date: '2026-11-04', end_date: '2026-11-06'
+      }
+    });
+
+    await page.goto('/admin');
+    await page.fill('#loginEmail', ADMIN_EMAIL);
+    await page.fill('#loginPassword', ADMIN_PASSWORD);
+    await page.click('#loginForm button[type="submit"]');
+    await expect(page.locator('#adminLayout')).toBeVisible();
+
+    await page.click('a[data-panel="services"]');
+    await page.locator('.service-mgmt-card', { hasText: 'Overnight Boarding' })
+      .getByRole('button', { name: /edit/i }).click();
+    await expect(page.locator('#modal')).toBeVisible();
+    expect(describeViolations(await scan(page, { include: '#modal' })), 'service form').toBe('');
+    await page.locator('#modalClose').click();
+
+    await page.click('a[data-panel="bookings"]');
+    await page.locator('#bookingsTable tr', { hasText: 'Modal Scan' })
+      .getByRole('button', { name: /^view$/i }).click();
+    await expect(page.locator('#modal')).toBeVisible();
+    expect(describeViolations(await scan(page, { include: '#modal' })), 'booking detail').toBe('');
+  });
+
+  test('the settings form the owner fills in is clean', async ({ page }) => {
+    await page.goto('/admin');
+    await page.fill('#loginEmail', ADMIN_EMAIL);
+    await page.fill('#loginPassword', ADMIN_PASSWORD);
+    await page.click('#loginForm button[type="submit"]');
+    await page.click('a[data-panel="settings"]');
+    // Generated from the field catalogue, so a scan here covers every field.
+    await expect(page.locator('#set_business_name')).toBeVisible();
+
+    expect(describeViolations(await scan(page, { include: '#panel-settings' }))).toBe('');
+  });
 });
 
 test.describe('keyboard operation', () => {
   test.beforeEach(async ({ request }) => { await resetAll(request); });
 
-  test('the first Tab reaches a working skip link', async ({ page }) => {
+  test('the first Tab reaches a working skip link @xbrowser', async ({ page }) => {
     await page.goto('/');
     await page.keyboard.press('Tab');
 
@@ -126,7 +170,7 @@ test.describe('keyboard operation', () => {
     expect(unnamed).toEqual([]);
   });
 
-  test('the boop control is a real button, not a clickable div', async ({ page }) => {
+  test('the boop control is a real button, not a clickable div @xbrowser', async ({ page }) => {
     await page.goto('/');
     const boop = page.locator('#boopDog');
     // It was a <div> with a click handler: unreachable by keyboard and
@@ -141,7 +185,7 @@ test.describe('keyboard operation', () => {
     await expect(page.locator('#boopCount')).toHaveText('2');
   });
 
-  test('the review rating is an operable radiogroup', async ({ page }) => {
+  test('the review rating is an operable radiogroup @xbrowser', async ({ page }) => {
     await page.goto('/');
     const group = page.locator('#reviewRating');
     await expect(group).toHaveAttribute('role', 'radiogroup');
@@ -183,7 +227,7 @@ test.describe('keyboard operation', () => {
     await expect(hidden).toHaveCount(1);
   });
 
-  test('the mobile menu is a disclosure that Escape closes', async ({ page }) => {
+  test('the mobile menu is a disclosure that Escape closes @xbrowser', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/');
     const toggle = page.locator('#navToggle');
@@ -195,7 +239,7 @@ test.describe('keyboard operation', () => {
     await expect(toggle).toBeFocused();
   });
 
-  test('focus is always visible on interactive controls', async ({ page }) => {
+  test('focus is always visible on interactive controls @xbrowser', async ({ page }) => {
     await page.goto('/');
     for (const selector of ['.skip-link', '#boopDog', '#reviewName', '#newsletterEmail']) {
       const el = page.locator(selector).first();
@@ -261,7 +305,7 @@ test.describe('target size and reflow', () => {
     expect(tooSmall).toEqual([]);
   });
 
-  test('the page reflows at 400% zoom with no horizontal scrolling', async ({ page }) => {
+  test('the page reflows at 400% zoom with no horizontal scrolling @xbrowser', async ({ page }) => {
     // 1280px at 400% zoom is the 320 CSS-pixel reflow condition in SC 1.4.10.
     await page.setViewportSize({ width: 320, height: 800 });
     await page.goto('/');

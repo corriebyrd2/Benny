@@ -2,7 +2,7 @@ const express = require('express');
 const { query } = require('../database');
 const { authenticateToken, requirePermission, logAudit } = require('../auth');
 const {
-  FIELDS, FIELD_KEYS, getBusinessProfile, launchCheck, validateValue
+  FIELDS, FIELD_GROUPS, FIELD_KEYS, getBusinessProfile, launchCheck, validateValue
 } = require('../businessProfile');
 
 const router = express.Router();
@@ -37,9 +37,18 @@ router.get('/admin', authenticateToken, requirePermission('read'), async (req, r
   try {
     const { rows } = await query('SELECT key, value FROM site_settings');
     const profile = await getBusinessProfile();
+    const stored = rowsToObject(rows);
     res.json({
-      values: rowsToObject(rows),
+      // What is stored, INCLUDING values that failed validation. The public
+      // endpoint hides those, which meant a stored placeholder showed up as an
+      // empty box in the settings screen and the administrator had no way to
+      // see what was actually wrong.
+      values: stored,
+      // What the site is currently able to publish, so the form can show the
+      // difference between "stored" and "live".
+      published: profile.values,
       fields: FIELDS,
+      groups: FIELD_GROUPS,
       missing: profile.missing
     });
   } catch (err) {

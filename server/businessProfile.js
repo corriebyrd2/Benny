@@ -50,33 +50,48 @@ function isPlaceholder(value) {
  * required: 'launch'  — the site must not be publicly launched without it
  *           'public'  — needed only by the component that renders it
  * env:      environment variable consulted when the setting row is empty
+ * group:    the section the admin settings form renders it under. The form is
+ *           BUILT from this catalogue rather than hand-written, so a field
+ *           added here is immediately editable by the owner. Hand-writing it
+ *           twice is how `legal_business_name`, `service_area` and
+ *           `emergency_contact` ended up launch-required but un-editable.
+ * hint:     shown under the input; say what a good value looks like without
+ *           inventing one.
  */
 const FIELDS = [
-  { key: 'business_name', label: 'Public trading name', required: 'launch', env: 'BUSINESS_NAME' },
-  { key: 'legal_business_name', label: 'Registered legal entity name', required: 'launch', env: 'BUSINESS_LEGAL_NAME' },
-  { key: 'contact_email', label: 'Domain-based support email', required: 'launch', env: 'BUSINESS_EMAIL', type: 'email' },
-  { key: 'contact_phone_display', label: 'Verified phone number', required: 'launch', env: 'BUSINESS_PHONE', type: 'phone' },
-  { key: 'contact_phone_secondary', label: 'Secondary phone number', required: 'public', type: 'phone' },
-  { key: 'service_area', label: 'Service-area statement', required: 'launch', env: 'BUSINESS_SERVICE_AREA' },
-  { key: 'contact_address_line1', label: 'Street address', required: 'public' },
-  { key: 'contact_address_line2', label: 'City, state, postal code', required: 'public' },
-  { key: 'address_locality', label: 'City (structured data)', required: 'public' },
-  { key: 'address_region', label: 'State/region (structured data)', required: 'public' },
-  { key: 'address_postal_code', label: 'Postal code (structured data)', required: 'public' },
-  { key: 'address_country', label: 'Country code (structured data)', required: 'public' },
-  { key: 'hours_weekday', label: 'Weekday operating hours', required: 'launch', env: 'BUSINESS_HOURS_WEEKDAY' },
-  { key: 'hours_weekend', label: 'Weekend operating hours', required: 'public' },
-  { key: 'emergency_contact', label: 'Emergency / after-hours instructions', required: 'launch', env: 'BUSINESS_EMERGENCY_CONTACT' },
-  { key: 'footer_tagline', label: 'Footer tagline', required: 'public' },
-  { key: 'facebook_url', label: 'Facebook profile URL', required: 'public', type: 'url' },
-  { key: 'instagram_url', label: 'Instagram profile URL', required: 'public', type: 'url' },
-  { key: 'tiktok_url', label: 'TikTok profile URL', required: 'public', type: 'url' },
-  { key: 'google_business_url', label: 'Google Business Profile URL', required: 'public', type: 'url' },
-  { key: 'license_number', label: 'Boarding/kennel licence number', required: 'public' },
-  { key: 'license_authority', label: 'Licensing authority', required: 'public' },
-  { key: 'insurance_statement', label: 'Insurance statement', required: 'public' },
-  { key: 'years_in_operation', label: 'Year the business started trading', required: 'public', type: 'year' }
+  { key: 'business_name', label: 'Public trading name', required: 'launch', env: 'BUSINESS_NAME', group: 'Identity' },
+  { key: 'legal_business_name', label: 'Registered legal entity name', required: 'launch', env: 'BUSINESS_LEGAL_NAME', group: 'Identity', hint: 'The name on the LLC registration. Used in the legal policies.' },
+  { key: 'footer_tagline', label: 'Footer tagline', required: 'public', group: 'Identity' },
+  { key: 'years_in_operation', label: 'Year the business started trading', required: 'public', type: 'year', group: 'Identity', hint: 'A four-digit year. The site derives "years of experience" from it.' },
+
+  { key: 'contact_email', label: 'Support email', required: 'launch', env: 'BUSINESS_EMAIL', type: 'email', group: 'Contact', hint: 'Use an address on your own domain once email is set up.' },
+  { key: 'contact_phone_display', label: 'Verified phone number', required: 'launch', env: 'BUSINESS_PHONE', type: 'phone', group: 'Contact', hint: 'A number that is answered. 555 numbers are refused.' },
+  { key: 'contact_phone_secondary', label: 'Secondary phone number', required: 'public', type: 'phone', group: 'Contact' },
+  { key: 'emergency_contact', label: 'Emergency / after-hours instructions', required: 'launch', env: 'BUSINESS_EMERGENCY_CONTACT', group: 'Contact', hint: 'What an owner should do if something happens overnight.' },
+
+  { key: 'service_area', label: 'Service-area statement', required: 'launch', env: 'BUSINESS_SERVICE_AREA', group: 'Location', hint: 'Where you collect from and board, in your own words.' },
+  { key: 'contact_address_line1', label: 'Street address', required: 'public', group: 'Location' },
+  { key: 'contact_address_line2', label: 'City, state, postal code', required: 'public', group: 'Location' },
+  { key: 'address_locality', label: 'City (structured data)', required: 'public', group: 'Location' },
+  { key: 'address_region', label: 'State/region (structured data)', required: 'public', group: 'Location' },
+  { key: 'address_postal_code', label: 'Postal code (structured data)', required: 'public', group: 'Location' },
+  { key: 'address_country', label: 'Country code (structured data)', required: 'public', group: 'Location', hint: 'Two letters, e.g. US.' },
+
+  { key: 'hours_weekday', label: 'Weekday operating hours', required: 'launch', env: 'BUSINESS_HOURS_WEEKDAY', group: 'Hours' },
+  { key: 'hours_weekend', label: 'Weekend operating hours', required: 'public', group: 'Hours' },
+
+  { key: 'facebook_url', label: 'Facebook profile URL', required: 'public', type: 'url', group: 'Social', hint: 'Leave empty if the profile does not exist — an empty field hides the link.' },
+  { key: 'instagram_url', label: 'Instagram profile URL', required: 'public', type: 'url', group: 'Social' },
+  { key: 'tiktok_url', label: 'TikTok profile URL', required: 'public', type: 'url', group: 'Social' },
+  { key: 'google_business_url', label: 'Google Business Profile URL', required: 'public', type: 'url', group: 'Social' },
+
+  { key: 'license_number', label: 'Boarding/kennel licence number', required: 'public', group: 'Credentials' },
+  { key: 'license_authority', label: 'Licensing authority', required: 'public', group: 'Credentials' },
+  { key: 'insurance_statement', label: 'Insurance statement', required: 'public', group: 'Credentials', hint: 'Only claim cover you actually hold.' }
 ];
+
+// Section order for the settings form.
+const FIELD_GROUPS = ['Identity', 'Contact', 'Location', 'Hours', 'Social', 'Credentials'];
 
 const FIELD_KEYS = FIELDS.map(f => f.key);
 const FIELDS_BY_KEY = new Map(FIELDS.map(f => [f.key, f]));
@@ -197,6 +212,7 @@ function formatLaunchReport(result) {
 
 module.exports = {
   FIELDS,
+  FIELD_GROUPS,
   FIELD_KEYS,
   LAUNCH_REQUIRED,
   SOCIAL_NAMES,

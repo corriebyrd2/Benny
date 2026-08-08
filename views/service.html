@@ -1,0 +1,76 @@
+  <header>
+    <nav class="navbar navbar-solid" aria-label="Primary">
+      <div class="nav-container">
+        <a href="/" class="logo">
+          <picture>
+            <source srcset="/images/logo/logo-48.avif" type="image/avif">
+            <source srcset="/images/logo/logo-48.webp" type="image/webp">
+            <img src="/images/logo/logo-96.png" width="48" height="48" alt="" class="logo-img" decoding="async">
+          </picture>
+          <span class="logo-text">{{brand}}</span>
+        </a>
+        <ul class="nav-links">
+          <li><a href="/#services">All services</a></li>
+          <li><a href="/#how-it-works">How booking works</a></li>
+          <li><a href="/#contact">Contact</a></li>
+          <li><a href="/my-bookings" class="nav-cta">My account</a></li>
+        </ul>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main" class="doc-page">
+    <div class="container container-narrow">
+      <nav aria-label="Breadcrumb" class="breadcrumb">
+        <ol>
+          <li><a href="/">Home</a></li>
+          <li><a href="/#services">Services</a></li>
+          <li aria-current="page">{{service.name}}</li>
+        </ol>
+      </nav>
+
+      <h1>{{service.name}}</h1>
+      <p class="doc-summary">{{service.description}}</p>
+
+      <p class="service-detail-price">
+        <span class="service-price">{{service.price_label}}</span>
+        <span class="visually-hidden">{{service.price_label_long}}</span>
+      </p>
+
+      {{{status_html}}}
+
+      <h2>What's included</h2>
+      <ul class="service-perks">{{{perks_html}}}</ul>
+
+      <h2>How it's priced</h2>
+      <p>{{pricing_explainer}}</p>
+      <p>
+        The amount is calculated on our servers from the rate above &mdash; the
+        price you are quoted is the price you are charged. See the
+        <a href="/legal/payment-terms">payment and deposit terms</a> and the
+        <a href="/legal/cancellation-policy">cancellation and refund policy</a>.
+      </p>
+
+      <h2>Before you book</h2>
+      <ul>
+        <li>Every dog needs a current vaccination record on file &mdash; see the <a href="/legal/pet-documents-policy">pet document policy</a>.</li>
+        <li>{{approval_timeline}}</li>
+        <li>Nothing is charged until we approve your dates.</li>
+        <li>You'll be asked to accept the <a href="/legal/boarding-agreement">boarding agreement</a> and the <a href="/legal/emergency-vet-authorization">emergency veterinary authorisation</a> for each booking.</li>
+      </ul>
+
+      {{{cta_html}}}
+
+      <hr>
+      <h2>Other services</h2>
+      <ul class="doc-index">{{{siblings_html}}}</ul>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-bottom">
+        <p>&copy; {{year}} {{legal_name}}. <a href="/legal">Policies</a> &middot; <a href="/">Home</a></p>
+      </div>
+    </div>
+  </footer>

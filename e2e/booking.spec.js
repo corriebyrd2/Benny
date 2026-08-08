@@ -254,7 +254,7 @@ test.describe('bookings', () => {
     expect(customerReceipts.some(e => /Payment received/i.test(e.subject))).toBe(false);
   });
 
-  test('billing follows billing_unit, not the price label text', async ({ request }) => {
+  test('billing follows billing_unit and is unaffected by cosmetic edits', async ({ request }) => {
     const token = await loginAdmin(request);
     const services = await (await request.get('/api/services')).json();
     const boarding = services.find(s => s.billing_unit === 'night');
@@ -267,18 +267,27 @@ test.describe('bookings', () => {
     });
     expect(b1.amount_cents).toBe(boarding.price_cents * 3);
 
-    // Relabel so the text no longer contains "night"; billing_unit stays 'night'.
+    // The hand-maintained price_label column is gone (migration 0014): labels
+    // are derived, so no text edit can change how a service is billed. Rename
+    // the service so nothing about it mentions "night" and re-book.
     const upd = await request.put(`/api/services/${boarding.id}`, {
+      headers: { authorization: `Bearer ${token}` },
+      data: { name: 'Flat rate overnight stay', description: 'Renamed to remove the word n-i-g-h-t' }
+    });
+    expect(upd.status()).toBe(200);
+
+    // Writing a price_label directly is refused outright.
+    const relabel = await request.put(`/api/services/${boarding.id}`, {
       headers: { authorization: `Bearer ${token}` },
       data: { price_label: 'Flat rate per overnight stay' }
     });
-    expect(upd.status()).toBe(200);
+    expect(relabel.status()).toBe(400);
 
     const b2 = await createPublicBooking(request, {
       email: 'bill2@test.local', service_id: boarding.id,
       start_date: '2026-06-01', end_date: '2026-06-04'
     });
-    // Still billed per night despite the label no longer saying "night".
+    // Still billed per night despite nothing in the copy saying so.
     expect(b2.amount_cents).toBe(boarding.price_cents * 3);
   });
 

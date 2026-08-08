@@ -1,9 +1,33 @@
 # E2E Testing
 
-End-to-end tests live in `e2e/` and run via Playwright against a dedicated
-Neon database branch so they never touch production data.
+Two suites:
+
+- **Unit** (`tests/unit/`, `node --test`) — pricing arithmetic and label
+  derivation, business-profile validation and placeholder detection. No
+  database, no browser, runs in about a second.
+- **End-to-end** (`e2e/`, Playwright) — the application driven over HTTP and
+  through a real browser.
+
+E2E runs against a throwaway Postgres, never production data.
 
 ## Setup (one-time)
+
+### Quickest path: a local Postgres
+
+```sh
+createdb benny_e2e
+cp .env.test.example .env.test
+# E2E_DATABASE_URL=postgresql://<user>@127.0.0.1:5432/benny_e2e?sslmode=disable
+```
+
+`sslmode=disable` matters: the driver otherwise negotiates TLS against a server
+that does not offer it and every query fails.
+
+CI uses a Postgres **service container** and needs no secret at all. The
+`E2E_DATABASE_URL` repository secret is optional and only used to point CI at a
+Neon branch for reproducing a provider-specific issue.
+
+### Alternative: a Neon branch
 
 ### 1. Create a Neon branch for tests
 
@@ -34,10 +58,46 @@ npx playwright install chromium
 ## Running tests
 
 ```sh
-npm test              # headless, all specs
-npm run test:ui       # Playwright UI mode — recommended for iterating
-npm run test:headed   # run in a visible browser
-npm run test:debug    # step through with the inspector
+npm run test:unit      # unit tests only — fast
+npm run test:all       # unit + e2e
+npm test               # headless, all e2e specs (Chromium)
+npm run test:xbrowser  # the @xbrowser subset in Firefox and WebKit
+npm run test:ui        # Playwright UI mode — recommended for iterating
+npm run test:headed    # run in a visible browser
+npm run test:debug     # step through with the inspector
+```
+
+Operational checks, none of which touch production:
+
+```sh
+npm run check:launch     # which business facts are still missing
+npm run check:secrets    # credential shapes committed to the repo
+npm run drill:migrations # up -> down -> up must land on an identical schema
+npm run drill:restore    # pg_dump -> pg_restore into a scratch database
+npm run retention        # what the retention policy WOULD delete (dry run)
+npm run retention:apply  # actually delete it
+```
+
+### Projects
+
+`playwright.config.js` defines four:
+
+| Project | Runs |
+| --- | --- |
+| `chromium` | everything — the default |
+| `firefox`, `webkit` | only tests tagged `@xbrowser`: the flows where an engine difference would cost a booking |
+| `visual` | only `visual.spec.js`, and only when `VISUAL_BASELINES=1` |
+
+### Visual baselines
+
+Screenshot bytes depend on the host's fonts and compositor, so these are
+**opt-in** and are not run in CI — a suite that cries wolf gets ignored,
+including when it is right. Run them before and after a CSS change on the
+**same machine**:
+
+```sh
+npm run test:visual          # compare against the committed baselines
+npm run test:visual:update   # re-record after an intentional design change
 ```
 
 Individual spec:
@@ -66,7 +126,23 @@ npx playwright show-report
 | `security.spec.js` | Magic-byte upload sniffing, public-endpoint rate limits (booking creation), password policy (length + letter + digit), email subject sanitization, malformed-recipient rejection, JSON 404, JWT type boundaries and tampering, settings-key whitelist, cross-customer data isolation (bookings, payment sync, dogs, documents, profile) |
 | `api-coverage.spec.js` | Newsletter subscribers (idempotency, rate limit, validation), site settings GET/PUT + whitelist, password-reset flow (request, single-use token, second-request invalidation, brute-force limit), SendGrid event webhook persistence, campaign stats and validation, photo edit/delete, payments config visibility |
 | `headers.spec.js` | Helmet hardening headers, rate-limit headers on auth responses, JSON content-type on errors, ETag-off invariant |
-| `ui.spec.js` | Browser-driven flows: homepage services + newsletter signup, customer register/login (success, weak password, wrong password), admin login success and failure |
+| `ui.spec.js` | Browser-driven flows: homepage services + newsletter consent, customer register/login (success, weak password, wrong password, missing consent), admin login success and failure |
+| `catalog-trust.spec.js` | Marketing cards and the booking catalog come from one source; booking modes; `price_label` is unwritable; a price change propagates to every surface; the booked amount matches the advertised rate; no fabricated stat, testimonial, address or dead social link is published; the settings API rejects placeholders; the launch check blocks |
+| `legal.spec.js` | All ten policy pages reachable, indexable, versioned; draft banners; contextual linking; versioned acceptance (refused without it, refused on partial, refused on truthy-but-not-true, server-chosen version); marketing consent separate from contractual; unsubscribe honoured by campaigns |
+| `seo.spec.js` | robots.txt, sitemap.xml (valid, complete, every URL resolves), unique titles and descriptions, self-referencing canonicals, Open Graph, structured data validity and non-fabrication, 404s rather than soft-404s, crawlable per-service pages, no dead internal links |
+| `accessibility.spec.js` | axe-core WCAG 2.2 AA scans across nine surfaces, plus skip link, accessible names, keyboard operation of custom widgets, live regions, target size, 320px reflow, text spacing, reduced motion |
+| `responsive.spec.js` | Eight viewports from 320x568 to 1920x1080, landscape, long unbreakable user content, both portals on mobile, iOS focus-zoom prevention |
+| `performance.spec.js` | Byte and request budgets, logo sizing, no third-party origins, compression, cache headers, lazy loading, measured LCP/CLS/TTFB, bounded list endpoints |
+| `documents.spec.js` | Dog-document content validation (executables, HTML, SVG, polyglots, oversized, empty), path traversal, safe delivery headers, cross-customer isolation, admin-vs-customer authorisation, duplicate submission, deletion cascade, audit trail |
+| `sessions.spec.js` | Server-side sessions: opaque token, HttpOnly cookie, absolute and idle expiry, revocation on sign-out, CSRF double-submit, credential precedence |
+| `inquiries.spec.js` | Contact enquiries end to end, admin triage, the unread badge |
+| `capacity.spec.js` | Per-date capacity under concurrent bookings (advisory lock), multi-dog stays, boundary dates |
+| `refunds.spec.js` | Cancellation refund tiers (48h / 24-48h / under 24h), quote endpoint, double-refund and unpaid guards |
+| `account.spec.js` | Data export, account deletion, re-authentication (a wrong password does not sign you out) |
+| `enumeration.spec.js` | Registration, login, password reset and verification all refuse to reveal whether an address exists |
+| `admin-portal.spec.js` | The panel driven through the browser: sign-in and session end, every sidebar panel opening clean, booking approve / detail / cancel-with-reason / filter, a service price change reaching the homepage, review moderation, client and document visibility, the settings form and the launch checklist, attribute-escaping |
+| `observability.spec.js` | `/healthz` vs `/readyz`, Prometheus output shape, auth / webhook / upload / 5xx counters, no personal data in metrics, bounded admin aggregation, malware quarantine and scanner-error paths |
+| `visual.spec.js` | Opt-in screenshot baselines for four public pages, both sign-in screens and the admin sidebar (see below) |
 
 ## How the harness works
 
@@ -90,12 +166,24 @@ unset or `NODE_ENV=production`) the harness is never loaded.
 
 ## CI
 
-GitHub Actions runs the suite on every PR and push to `main`
-(`.github/workflows/e2e.yml`). Set one repository secret:
+GitHub Actions runs on every PR and push to `main`
+(`.github/workflows/e2e.yml`), against a Postgres **service container**. No
+repository secret is required; `E2E_DATABASE_URL` is optional and only used to
+point CI at a Neon branch when reproducing a provider-specific issue. All other
+env vars are hard-coded to test-safe values in the workflow.
 
-- `E2E_DATABASE_URL` — the Neon e2e branch connection string
+The job runs, in order:
 
-All other env vars are hard-coded to test-safe values in the workflow.
+1. `npm run check:secrets` — fails the build on a committed credential shape.
+2. `npm audit --audit-level=high --omit=dev` — fails on a high or critical
+   advisory in a runtime dependency.
+3. `npm run test:unit`.
+4. `npm run check:launch` (non-blocking here — the CI database is empty by
+   design; a production deploy runs the same command *without* `|| true`).
+5. `npm run drill:migrations` and `npm run drill:restore`.
+6. `npm test` (Chromium) then `npm run test:xbrowser` (Firefox, WebKit).
+
+The visual project is excluded deliberately, for the reason above.
 
 ## Troubleshooting
 

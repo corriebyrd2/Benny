@@ -6,15 +6,21 @@
   <title>Customer Portal | Benny and the Pets</title>
   <link rel="icon" type="image/png" href="images/bennyandthepets.png">
   <link rel="apple-touch-icon" href="images/bennyandthepets.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
       --primary: #FF6B35;
       --primary-dark: #E5551F;
+      /* #FF6B35 is only 2.84:1 on white. Text-bearing surfaces (filled
+         buttons, orange-on-white labels) use --primary-strong at 5.18:1;
+         --primary stays for borders, icons and hover glows. */
+      --primary-strong: #C2410C;
+      --primary-strong-dark: #9A3412;
       --secondary: #4ECDC4;
       --secondary-dark: #3AB5AD;
+      /* #4ECDC4 carries white text at only 1.93:1. Filled secondary buttons
+         use --secondary-strong (4.8:1); the bright teal stays decorative. */
+      --secondary-strong: #217F79;
+      --secondary-strong-dark: #146B66;
       --accent: #FFE66D;
       --dark: #2C3E50;
       --dark-light: #34495E;
@@ -26,6 +32,13 @@
       --success: #27AE60;
       --warning: #F39C12;
       --danger: #E74C3C;
+      /* AA-safe variants for surfaces that carry text. Measured against white:
+         success 4.72:1, warning 5.24:1, danger 5.44:1, info 5.39:1. The bright
+         values above stay for decorative fills, dots and borders. */
+      --success-strong: #1E8449;
+      --warning-strong: #946200;
+      --danger-strong: #C0392B;
+      --info-strong: #1F6FA8;
       --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
       --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.12);
       --radius: 16px;
@@ -110,14 +123,14 @@
     .nav-links a:hover { color: var(--primary); }
 
     .nav-links .nav-cta {
-      background: var(--primary);
+      background: var(--primary-strong);
       color: var(--white) !important;
       padding: 10px 24px;
       font-weight: 800;
     }
 
     .nav-links .nav-cta:hover {
-      background: var(--primary-dark);
+      background: var(--primary-strong-dark);
       transform: translateY(-2px);
       box-shadow: 0 4px 15px rgba(255, 107, 53, 0.4);
     }
@@ -137,7 +150,7 @@
     .nav-logout {
       background: none;
       border: 2px solid var(--danger);
-      color: var(--danger);
+      color: var(--danger-strong);
       padding: 6px 16px;
       border-radius: 50px;
       font-family: 'Nunito', sans-serif;
@@ -214,8 +227,8 @@
     }
 
     .auth-tab.active {
-      color: var(--primary);
-      border-bottom-color: var(--primary);
+      color: var(--primary-strong);
+      border-bottom-color: var(--primary-strong);
     }
 
     .auth-tab:hover:not(.active) {
@@ -315,25 +328,43 @@
       white-space: nowrap;
     }
 
+    /* The "forgot password" and "back to login" links. These were an inline
+       #ff6b9d, which is 2.9:1 on white — below AA for body text. */
+    .auth-link {
+      color: var(--primary-strong);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      font-weight: 600;
+    }
+    .auth-link:hover { color: var(--primary-strong-dark); }
+
     .btn-primary {
-      background: var(--primary);
+      background: var(--primary-strong);
       color: var(--white);
     }
 
     .btn-primary:hover {
-      background: var(--primary-dark);
+      background: var(--primary-strong-dark);
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(255, 107, 53, 0.4);
     }
 
     .btn-secondary {
-      background: var(--secondary);
+      background: var(--secondary-strong);
       color: var(--white);
     }
 
     .btn-secondary:hover {
-      background: var(--secondary-dark);
+      background: var(--secondary-strong-dark);
       transform: translateY(-2px);
+    }
+
+    .btn-danger {
+      background: var(--danger-strong);
+      color: var(--white);
+    }
+    .btn-danger:hover {
+      background: #96271c;
     }
 
     .btn-outline {
@@ -406,14 +437,14 @@
     }
 
     .dash-tab.active {
-      background: var(--primary);
+      background: var(--primary-strong);
       color: var(--white);
-      border-color: var(--primary);
+      border-color: var(--primary-strong);
     }
 
     .dash-tab:hover:not(.active) {
-      border-color: var(--primary);
-      color: var(--primary);
+      border-color: var(--primary-strong);
+      color: var(--primary-strong);
     }
 
     .dash-panel { display: none; }
@@ -510,7 +541,7 @@
 
     .service-option .service-price {
       font-weight: 700;
-      color: var(--primary);
+      color: var(--primary-strong);
       font-size: 0.85rem;
     }
 
@@ -531,10 +562,10 @@
       box-shadow: var(--shadow-lg);
     }
 
-    .booking-card.status-pending { border-left-color: var(--warning); }
+    .booking-card.status-pending { border-left-color: var(--warning-strong); }
     .booking-card.status-confirmed { border-left-color: var(--secondary); }
-    .booking-card.status-completed { border-left-color: var(--success); }
-    .booking-card.status-cancelled { border-left-color: var(--danger); }
+    .booking-card.status-completed { border-left-color: var(--success-strong); }
+    .booking-card.status-cancelled { border-left-color: var(--danger-strong); }
 
     .booking-card-header {
       display: flex;
@@ -829,8 +860,8 @@
       margin-bottom: 16px;
     }
 
-    .payment-section .payment-status-text.paid { color: var(--success); }
-    .payment-section .payment-status-text.unpaid { color: var(--warning); }
+    .payment-section .payment-status-text.paid { color: var(--success-strong); }
+    .payment-section .payment-status-text.unpaid { color: var(--warning-strong); }
     .payment-section .payment-status-text.requested { color: #004085; }
 
     /* Success message */
@@ -991,8 +1022,8 @@
     }
 
     .btn-icon.delete:hover {
-      border-color: var(--danger);
-      color: var(--danger);
+      border-color: var(--danger-strong);
+      color: var(--danger-strong);
       background: #FADBD8;
     }
 
@@ -1056,7 +1087,7 @@
     }
 
     .footer p { font-size: 0.85rem; opacity: 0.7; }
-    .footer a { color: var(--primary); font-weight: 700; }
+    .footer a { color: var(--accent); font-weight: 700; text-decoration: underline; }
     .footer a:hover { text-decoration: underline; }
 
     /* Responsive */
@@ -1094,7 +1125,7 @@
         </div>
         <div class="nav-user" id="navLinksAuth" style="display:none;">
           <span class="nav-user-name" id="navUserName"></span>
-          <button class="nav-logout" onclick="logout()">Log Out</button>
+          <button class="nav-logout" data-action="logout">Log Out</button>
         </div>
       </div>
     </div>
@@ -1125,7 +1156,7 @@
           </div>
           <button type="submit" class="btn btn-primary btn-full" id="loginBtn">Log In</button>
           <p style="text-align:center;margin-top:12px;font-size:14px;">
-            <a href="#" id="forgotPasswordLink" style="color:#ff6b9d;text-decoration:none;">Forgot your password?</a>
+            <a href="#" id="forgotPasswordLink" class="auth-link">Forgot your password?</a>
           </p>
         </form>
 
@@ -1144,7 +1175,7 @@
           </div>
           <button type="submit" class="btn btn-primary btn-full" id="forgotBtn">Send Reset Link</button>
           <p style="text-align:center;margin-top:12px;font-size:14px;">
-            <a href="#" id="backToLoginLink" style="color:#ff6b9d;text-decoration:none;">Back to login</a>
+            <a href="#" id="backToLoginLink" class="auth-link">Back to login</a>
           </p>
         </form>
 
@@ -1182,12 +1213,32 @@
           </div>
           <div class="form-group">
             <label for="regPhone">Phone Number (optional)</label>
-            <input type="tel" id="regPhone" placeholder="(555) 123-4567">
+            <input type="tel" id="regPhone" autocomplete="tel">
           </div>
           <div class="form-group">
             <label for="regDog">Dog's Name (optional)</label>
             <input type="text" id="regDog" placeholder="Benny">
           </div>
+          <fieldset class="consent-fieldset">
+            <legend>Before you create an account</legend>
+            <div class="consent-row">
+              <input type="checkbox" id="regAcceptTerms" name="accept_terms">
+              <label for="regAcceptTerms">
+                I have read and agree to the
+                <a href="/legal/terms" target="_blank" rel="noopener">Terms of Service</a>
+                and the
+                <a href="/legal/privacy" target="_blank" rel="noopener">Privacy Policy</a>.
+                <span class="required-marker">Required</span>
+              </label>
+            </div>
+            <div class="consent-row">
+              <input type="checkbox" id="regMarketing" name="marketing_consent">
+              <label for="regMarketing">
+                Send me occasional marketing email. This is optional, separate from
+                booking emails, and I can unsubscribe from any message.
+              </label>
+            </div>
+          </fieldset>
           <button type="submit" class="btn btn-primary btn-full" id="regBtn">Create Account</button>
         </form>
       </div>
@@ -1208,6 +1259,7 @@
         <button class="dash-tab active" data-panel="book">Book a Service</button>
         <button class="dash-tab" data-panel="bookings">My Bookings</button>
         <button class="dash-tab" data-panel="dogs">My Dogs</button>
+        <button class="dash-tab" data-panel="privacy">My Data</button>
       </div>
 
       <!-- Book a Service Panel -->
@@ -1217,8 +1269,8 @@
           <h3>Booking Submitted!</h3>
           <p id="successMessage">Your booking has been received. We'll confirm it shortly.</p>
           <br>
-          <button class="btn btn-secondary btn-sm" onclick="resetBookingForm()">Book Another Service</button>
-          <button class="btn btn-outline btn-sm" onclick="switchPanel('bookings')">View My Bookings</button>
+          <button class="btn btn-secondary btn-sm" data-action="resetBookingForm">Book Another Service</button>
+          <button class="btn btn-outline btn-sm" data-action="switchPanel" data-arg0="bookings">View My Bookings</button>
         </div>
 
         <div class="booking-form-card" id="bookingFormCard">
@@ -1283,18 +1335,76 @@
       </div>
 
       <!-- My Dogs Panel -->
+      <div class="dash-panel" id="panelPrivacy">
+        <div class="booking-form-card">
+          <h2>Your data</h2>
+          <p style="color:var(--text-light);margin-bottom:20px;">
+            Everything we hold about you, and how to take it with you or remove
+            it. What we collect and why is set out in our
+            <a href="/legal/privacy" target="_blank" rel="noopener">Privacy Policy</a>.
+          </p>
+
+          <h3 style="margin-top:8px;">Download a copy</h3>
+          <p style="color:var(--text-light);">
+            A machine-readable JSON file containing your profile, dogs, document
+            details, bookings and the policy versions you accepted. Document
+            files themselves stay in <strong>My Dogs</strong> &mdash; download
+            them there.
+          </p>
+          <form id="exportForm" data-submit="submitExport">
+            <div class="form-group">
+              <label for="exportPassword">Confirm your password</label>
+              <input type="password" id="exportPassword" autocomplete="current-password" required>
+            </div>
+            <button type="submit" class="btn btn-primary" id="exportBtn">Download my data</button>
+            <p class="form-msg" id="exportMsg" role="status" aria-live="polite"></p>
+          </form>
+
+          <hr style="margin:32px 0;border:none;border-top:1px solid #eee;">
+
+          <h3>Sign out other devices</h3>
+          <p style="color:var(--text-light);">
+            Ends every other signed-in session but keeps you signed in here.
+          </p>
+          <button class="btn btn-outline" data-action="revokeOtherSessions">Sign out other devices</button>
+          <p class="form-msg" id="sessionsMsg" role="status" aria-live="polite"></p>
+
+          <hr style="margin:32px 0;border:none;border-top:1px solid #eee;">
+
+          <h3 style="color:var(--danger-strong);">Delete your account</h3>
+          <div id="deletionPreview" style="color:var(--text-light);margin-bottom:12px;"></div>
+          <p style="color:var(--text-light);">
+            This cannot be undone. Bookings you have already paid for are
+            financial records we have to keep &mdash; your name, contact details,
+            dog names and messages are erased from them.
+          </p>
+          <form id="deleteAccountForm" data-submit="submitAccountDeletion">
+            <div class="form-group">
+              <label for="deletePassword">Confirm your password</label>
+              <input type="password" id="deletePassword" autocomplete="current-password" required>
+            </div>
+            <div class="consent-row">
+              <input type="checkbox" id="deleteConfirm">
+              <label for="deleteConfirm">I understand this permanently deletes my account and cannot be undone.</label>
+            </div>
+            <button type="submit" class="btn btn-danger" id="deleteAccountBtn">Delete my account</button>
+            <p class="form-msg" id="deleteMsg" role="status" aria-live="polite"></p>
+          </form>
+        </div>
+      </div>
+
       <div class="dash-panel" id="panelDogs">
         <div class="booking-form-card">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
             <h2>My Dogs</h2>
-            <button class="btn btn-primary btn-sm" onclick="showAddDogForm()">+ Add Dog</button>
+            <button class="btn btn-primary btn-sm" data-action="showAddDogForm">+ Add Dog</button>
           </div>
           <div id="dogsList"></div>
         </div>
 
         <div class="booking-form-card" id="dogFormCard" style="display:none;">
           <h2 id="dogFormTitle">Add a Dog</h2>
-          <form id="dogForm" onsubmit="saveDog(event)">
+          <form id="dogForm" data-submit="saveDog">
             <input type="hidden" id="dogFormId">
             <div class="form-error" id="dogFormError"></div>
             <div class="form-row">
@@ -1323,7 +1433,7 @@
             </div>
             <div style="display:flex;gap:12px;">
               <button type="submit" class="btn btn-primary" id="dogFormBtn">Save Dog</button>
-              <button type="button" class="btn btn-outline" onclick="hideDogForm()">Cancel</button>
+              <button type="button" class="btn btn-outline" data-action="hideDogForm">Cancel</button>
             </div>
           </form>
         </div>
@@ -1352,10 +1462,19 @@
     </div>
   </footer>
 
+  <script src="/js/portal-actions.js"></script>
   <script>
     // State
-    let token = localStorage.getItem('customerToken');
-    let customer = JSON.parse(localStorage.getItem('customerData') || 'null');
+    //
+    // The session token is NOT held here. It lives in an HttpOnly cookie the
+    // browser attaches automatically, so a script injected into this page
+    // cannot read or exfiltrate it — which is exactly what the previous
+    // localStorage token allowed. `signedIn` only records whether we believe a
+    // session exists; the server is the authority and answers 401 when it does
+    // not. The CSRF token IS readable, by design: it has to be echoed back in a
+    // header, and it is not a credential on its own.
+    let signedIn = document.cookie.includes('bp_csrf=');
+    let customer = JSON.parse(sessionStorage.getItem('customerProfile') || 'null');
     let bookings = [];
     let services = [];
     let dogs = [];
@@ -1394,6 +1513,117 @@
       document.getElementById('panel' + panel.charAt(0).toUpperCase() + panel.slice(1)).classList.add('active');
       if (panel === 'bookings') loadBookings();
       if (panel === 'dogs') renderDogsList();
+      if (panel === 'privacy') loadDeletionPreview();
+    }
+
+    // --- Your data: export, session control, deletion ---
+
+    async function loadDeletionPreview() {
+      const el = document.getElementById('deletionPreview');
+      try {
+        const res = await authedFetch('/api/customer/account/deletion-preview');
+        const preview = await safeJson(res);
+        const d = preview.will_be_deleted;
+        el.textContent =
+          `This will delete your profile, ${d.dogs} dog profile(s) and ` +
+          `${d.documents} document(s), and sign you out everywhere. ` +
+          `${preview.will_be_anonymised.bookings} booking(s) will be kept without your details.`;
+      } catch {
+        el.textContent = '';
+      }
+    }
+
+    async function submitExport(event) {
+      event.preventDefault();
+      const msg = document.getElementById('exportMsg');
+      const btn = document.getElementById('exportBtn');
+      const password = document.getElementById('exportPassword').value;
+      msg.className = 'form-msg';
+      msg.textContent = '';
+      btn.disabled = true;
+
+      try {
+        const res = await authedFetch('/api/customer/account/export', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        if (!res.ok) throw new Error((await safeJson(res)).error || 'Export failed');
+
+        // The response is a file, so turn it into a download rather than
+        // rendering it.
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `benny-and-the-pets-data-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        document.getElementById('exportPassword').value = '';
+        msg.classList.add('success');
+        msg.textContent = 'Your data has been downloaded.';
+      } catch (err) {
+        msg.classList.add('error');
+        msg.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function revokeOtherSessions() {
+      const msg = document.getElementById('sessionsMsg');
+      msg.className = 'form-msg';
+      try {
+        const res = await authedFetch('/api/customer/sessions/revoke-others', { method: 'POST' });
+        if (!res.ok) throw new Error((await safeJson(res)).error || 'Could not sign other devices out');
+        msg.classList.add('success');
+        msg.textContent = 'Other devices have been signed out.';
+      } catch (err) {
+        msg.classList.add('error');
+        msg.textContent = err.message;
+      }
+    }
+
+    async function submitAccountDeletion(event) {
+      event.preventDefault();
+      const msg = document.getElementById('deleteMsg');
+      const btn = document.getElementById('deleteAccountBtn');
+      const password = document.getElementById('deletePassword').value;
+      const confirmed = document.getElementById('deleteConfirm');
+      msg.className = 'form-msg';
+      msg.textContent = '';
+
+      // Deliberately unticked, and checked before anything irreversible runs.
+      if (!confirmed.checked) {
+        confirmed.focus();
+        msg.classList.add('error');
+        msg.textContent = 'Please confirm you understand this cannot be undone.';
+        return;
+      }
+
+      btn.disabled = true;
+      try {
+        const res = await authedFetch('/api/customer/account', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        if (!res.ok) throw new Error((await safeJson(res)).error || 'Could not delete your account');
+
+        signedIn = false;
+        customer = null;
+        sessionStorage.removeItem('customerProfile');
+        showAuth();
+        showToast('Your account has been deleted.', 'success');
+      } catch (err) {
+        msg.classList.add('error');
+        msg.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     // --- Toast ---
@@ -1415,11 +1645,11 @@
       return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
 
+    // Escapes for BOTH text and attribute contexts — `div.textContent` leaves
+    // quotes alone, and this file interpolates into attributes.
+    const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
     function escapeHtml(str) {
-      if (!str) return '';
-      const div = document.createElement('div');
-      div.textContent = str;
-      return div.innerHTML;
+      return String(str ?? '').replace(/[&<>"']/g, c => HTML_ESCAPES[c]);
     }
 
     function getStatusBadge(status) {
@@ -1438,16 +1668,42 @@
       return '<span class="badge badge-unpaid">Unpaid</span>';
     }
 
+    function csrfToken() {
+      const match = document.cookie.match(/(?:^|;\s*)bp_csrf=([^;]*)/);
+      return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    // The session cookie rides along automatically; all these headers do is
+    // satisfy the double-submit CSRF check on state-changing requests.
     function authOnlyHeaders() {
-      if (!token) {
-        logout();
-        throw new Error('Not logged in');
-      }
-      return { 'Authorization': 'Bearer ' + token };
+      return { 'X-CSRF-Token': csrfToken() };
     }
 
     function authHeaders() {
       return { 'Content-Type': 'application/json', ...authOnlyHeaders() };
+    }
+
+    // Every authenticated fetch goes through here so a 401 has exactly one
+    // meaning everywhere: the session ended, show the sign-in screen.
+    async function authedFetch(url, options = {}) {
+      const res = await fetch(url, {
+        credentials: 'same-origin',
+        ...options,
+        headers: { ...authOnlyHeaders(), ...(options.headers || {}) }
+      });
+      if (res.status === 401) {
+        handleSessionExpired();
+        throw new Error('Your session has expired. Please sign in again.');
+      }
+      return res;
+    }
+
+    function handleSessionExpired() {
+      signedIn = false;
+      customer = null;
+      sessionStorage.removeItem('customerProfile');
+      showAuth();
+      showToast('Your session has expired. Please sign in again.', 'error');
     }
 
     async function safeJson(res) {
@@ -1515,7 +1771,7 @@
 
     // --- Auth Check ---
     function checkAuth() {
-      if (token && customer) {
+      if (signedIn && customer) {
         showDashboard();
       } else {
         showAuth();
@@ -1546,13 +1802,21 @@
       }
     }
 
-    function logout() {
-      token = null;
+    async function logout() {
+      // Tell the SERVER to end the session. Clearing a client-side copy was
+      // never a logout: the old token stayed valid until it expired.
+      try {
+        await fetch('/api/customer/logout', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'X-CSRF-Token': csrfToken() }
+        });
+      } catch { /* sign out locally even if the network is down */ }
+      signedIn = false;
       customer = null;
-      localStorage.removeItem('customerToken');
-      localStorage.removeItem('customerData');
+      sessionStorage.removeItem('customerProfile');
       showAuth();
-      showToast('Logged out successfully');
+      showToast('Signed out');
     }
 
     // --- Login ---
@@ -1577,10 +1841,11 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Login failed');
 
-        token = data.token;
         customer = data.customer;
-        localStorage.setItem('customerToken', token);
-        localStorage.setItem('customerData', JSON.stringify(customer));
+        signedIn = true;
+        // Profile data only — never the credential, and cleared when the tab
+        // closes.
+        sessionStorage.setItem('customerProfile', JSON.stringify(customer));
         showToast('Welcome back, ' + customer.name + '!', 'success');
         showDashboard();
       } catch (err) {
@@ -1690,16 +1955,40 @@
       }
     });
 
+    // If the customer arrived via an emailed verification link, confirm the
+    // address before anything else touches the page.
+    (async function maybeVerifyEmail() {
+      const verifyToken = new URLSearchParams(window.location.search).get('verify');
+      if (!verifyToken) return;
+      try {
+        const res = await fetch('/api/customer/verify-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: verifyToken })
+        });
+        const data = await res.json().catch(() => ({}));
+        showToast(res.ok
+          ? 'Email confirmed. You can sign in now.'
+          : (data.error || 'That verification link is no longer valid.'),
+        res.ok ? 'success' : 'error');
+        if (res.ok && data.email) document.getElementById('loginEmail').value = data.email;
+      } catch {
+        showToast('We could not confirm your email. Please try the link again.', 'error');
+      } finally {
+        // Don't leave a single-use token sitting in the address bar or history.
+        history.replaceState(null, '', window.location.pathname);
+      }
+    })();
+
     // If the customer arrived via an email reset link, jump straight to the reset form.
     (function maybeShowResetForm() {
       const resetToken = new URLSearchParams(window.location.search).get('reset');
       if (!resetToken) return;
-      // Ensure the auth section is visible even if a stale token is in localStorage.
-      if (token) {
-        token = null;
+      // Ensure the auth section is visible even if a stale profile is cached.
+      if (signedIn || customer) {
+        signedIn = false;
         customer = null;
-        localStorage.removeItem('customerToken');
-        localStorage.removeItem('customerData');
+        sessionStorage.removeItem('customerProfile');
       }
       document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
       showAuthForm('resetForm');
@@ -1711,6 +2000,18 @@
       const regError = document.getElementById('registerError');
       regError.classList.remove('visible');
       const regBtn = document.getElementById('regBtn');
+      const acceptTerms = document.getElementById('regAcceptTerms');
+
+      // Contractual acceptance is required and must be an explicit tick. The
+      // server enforces this too — this check only makes the reason visible
+      // next to the control instead of as a generic failure.
+      if (!acceptTerms.checked) {
+        regError.textContent = 'Please accept the Terms of Service and Privacy Policy to continue.';
+        regError.classList.add('visible');
+        acceptTerms.focus();
+        return;
+      }
+
       regBtn.disabled = true;
       regBtn.innerHTML = '<span class="loading-spinner"></span>';
 
@@ -1723,19 +2024,28 @@
             email: document.getElementById('regEmail').value.trim(),
             password: document.getElementById('regPassword').value,
             phone: document.getElementById('regPhone').value.trim(),
-            dog_name: document.getElementById('regDog').value.trim()
+            dog_name: document.getElementById('regDog').value.trim(),
+            // One tick covers both documents, which is what the label says.
+            accept_policies: { terms: true, privacy: true },
+            marketing_consent: document.getElementById('regMarketing').checked
           })
         });
 
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Registration failed');
 
-        token = data.token;
-        customer = data.customer;
-        localStorage.setItem('customerToken', token);
-        localStorage.setItem('customerData', JSON.stringify(customer));
-        showToast('Account created! Welcome, ' + customer.name + '!', 'success');
-        showDashboard();
+        // Registration deliberately does NOT sign you in. It answers the same
+        // way whether or not the address already had an account, so that the
+        // form cannot be used to discover who is a customer. Signing in is the
+        // next step, and it fails generically for someone guessing.
+        // Read the address BEFORE resetting the form, or the prefill is empty.
+        const registeredEmail = document.getElementById('regEmail').value || '';
+        document.getElementById('registerForm').reset();
+        document.querySelectorAll('.auth-tab').forEach(t =>
+          t.classList.toggle('active', t.dataset.tab === 'login'));
+        showAuthForm('loginForm');
+        document.getElementById('loginEmail').value = registeredEmail;
+        showToast(data.message || 'Check your email, then sign in.', 'success');
       } catch (err) {
         regError.textContent = err.message;
         regError.classList.add('visible');
@@ -1759,7 +2069,7 @@
     function renderServiceOptions() {
       const grid = document.getElementById('serviceGrid');
       grid.innerHTML = services.map(s => `
-        <div class="service-option" data-id="${s.id}" onclick="selectService(${s.id})">
+        <div class="service-option" data-id="${s.id}" data-action="selectService" data-arg0="${s.id}">
           <div class="service-icon">${s.icon}</div>
           <div class="service-name">${escapeHtml(s.name)}</div>
           <div class="service-price">${escapeHtml(s.price_label)}</div>
@@ -1818,7 +2128,7 @@
           message: document.getElementById('bookMessage').value.trim()
         };
 
-        const res = await fetch('/api/bookings/customer-book', {
+        const res = await authedFetch('/api/bookings/customer-book', {
           method: 'POST',
           headers: authHeaders(),
           body: JSON.stringify(bookingBody)
@@ -1860,7 +2170,7 @@
       container.innerHTML = '<div style="text-align:center;padding:40px;"><span class="loading-spinner"></span><p style="color:var(--text-light);margin-top:12px;font-weight:700;">Loading your bookings...</p></div>';
 
       try {
-        const res = await fetch('/api/bookings/my', { headers: authHeaders() });
+        const res = await authedFetch('/api/bookings/my', { headers: authHeaders() });
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
           throw new Error('Failed to load bookings');
@@ -1879,7 +2189,7 @@
             <div class="empty-icon">&#128062;</div>
             <h3>No Bookings Yet</h3>
             <p>You haven't made any bookings yet. Book a service for your pup!</p>
-            <button class="btn btn-primary" onclick="switchPanel('book')">Book a Service</button>
+            <button class="btn btn-primary" data-action="switchPanel" data-arg0="book">Book a Service</button>
           </div>
         `;
         return;
@@ -1891,7 +2201,7 @@
           <span class="badge" style="background:var(--accent);color:var(--dark);padding:6px 16px;font-size:0.85rem;">${bookings.length} booking${bookings.length !== 1 ? 's' : ''}</span>
         </div>
       ` + bookings.map(booking => `
-        <div class="booking-card status-${booking.status}${booking.payment_status === 'requested' ? ' payment-requested' : ''}" onclick="openDetail(${booking.id})">
+        <div class="booking-card status-${booking.status}${booking.payment_status === 'requested' ? ' payment-requested' : ''}" data-action="openDetail" data-arg0="${booking.id}">
           <div class="booking-card-header">
             <div class="booking-card-title">
               <span class="dog-emoji">&#128054;</span>
@@ -1923,7 +2233,7 @@
           ${booking.payment_status === 'requested' ? `
             <div class="payment-requested-banner">
               <span class="banner-text">&#128179; Payment of ${formatAmount(booking.amount_cents)} is due for this booking</span>
-              <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); initiatePayment(${booking.id})">Pay Now</button>
+              <button class="btn btn-primary btn-sm" data-action="initiatePayment" data-arg0="${booking.id}" data-stop="1">Pay Now</button>
             </div>
           ` : ''}
           ${booking.status === 'cancelled' && booking.cancel_reason ? `
@@ -1938,9 +2248,9 @@
             </div>
             <div class="actions">
               ${booking.payment_status === 'requested' ? `
-                <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); initiatePayment(${booking.id})">Pay Now</button>
+                <button class="btn btn-secondary btn-sm" data-action="initiatePayment" data-arg0="${booking.id}" data-stop="1">Pay Now</button>
               ` : ''}
-              <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openDetail(${booking.id})">View Details</button>
+              <button class="btn btn-outline btn-sm" data-action="openDetail" data-arg0="${booking.id}" data-stop="1">View Details</button>
             </div>
           </div>
         </div>
@@ -2013,7 +2323,7 @@
           </div>
           ${booking.payment_status === 'requested' && booking.status !== 'cancelled' ? `
             <p style="color:#004085;font-weight:700;font-size:0.9rem;margin-bottom:12px;">The team has requested payment for this booking.</p>
-            <button class="btn btn-primary" onclick="initiatePayment(${booking.id})">Pay Now — ${formatAmount(booking.amount_cents)}</button>
+            <button class="btn btn-primary" data-action="initiatePayment" data-arg0="${booking.id}">Pay Now — ${formatAmount(booking.amount_cents)}</button>
           ` : ''}
           ${booking.payment_status === 'unpaid' && booking.status !== 'cancelled' ? `
             <p style="color:var(--text-light);font-weight:600;font-size:0.9rem;">Payment will be requested when your booking is confirmed.</p>
@@ -2033,7 +2343,7 @@
     // --- Payment ---
     async function initiatePayment(bookingId) {
       try {
-        const res = await fetch('/api/payments/customer-checkout', {
+        const res = await authedFetch('/api/payments/customer-checkout', {
           method: 'POST',
           headers: authHeaders(),
           body: JSON.stringify({ booking_id: bookingId })
@@ -2059,7 +2369,7 @@
     // --- Dogs ---
     async function loadDogs() {
       try {
-        const res = await fetch('/api/dogs', { headers: authHeaders() });
+        const res = await authedFetch('/api/dogs', { headers: authHeaders() });
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
           throw new Error('Failed to load dogs');
@@ -2174,7 +2484,7 @@
             <div class="empty-icon">&#128054;</div>
             <h3>No Dogs Yet</h3>
             <p>Add your dog's profile to make booking easier!</p>
-            <button class="btn btn-primary" onclick="showAddDogForm()">Add Your First Dog</button>
+            <button class="btn btn-primary" data-action="showAddDogForm">Add Your First Dog</button>
           </div>
         `;
         return;
@@ -2193,8 +2503,8 @@
             ${renderDogDocuments(d)}
           </div>
           <div class="dog-card-actions">
-            <button class="btn-icon" onclick="showEditDogForm(${d.id})" title="Edit">&#9998;</button>
-            <button class="btn-icon delete" onclick="deleteDog(${d.id})" title="Delete">&#128465;</button>
+            <button class="btn-icon" data-action="showEditDogForm" data-arg0="${d.id}" title="Edit">&#9998;</button>
+            <button class="btn-icon delete" data-action="deleteDog" data-arg0="${d.id}" title="Delete">&#128465;</button>
           </div>
         </div>
       `).join('');
@@ -2212,7 +2522,7 @@
       const list = docs.length
         ? `<div class="dog-doc-list">${docs.map(doc => `
             <div class="dog-doc-item">
-              <button type="button" class="btn-link" onclick="downloadDogDocument(${doc.id})">&#128196; ${escapeHtml(doc.original_name)}</button>
+              <button type="button" class="btn-link" data-action="downloadDogDocument" data-arg0="${doc.id}">&#128196; ${escapeHtml(doc.original_name)}</button>
               <span>${formatFileSize(doc.size_bytes)}</span>
             </div>
           `).join('')}</div>`
@@ -2221,7 +2531,7 @@
         <div class="dog-documents">
           <h4>&#128196; Documents</h4>
           ${list}
-          <form class="dog-doc-upload" onsubmit="uploadDogDocument(event, ${dog.id})">
+          <form class="dog-doc-upload" data-submit="uploadDogDocument" data-arg0="${dog.id}">
             <input type="file" name="document" required>
             <button type="submit" class="btn btn-secondary">Upload</button>
           </form>
@@ -2236,7 +2546,7 @@
 
     async function downloadDogDocument(docId) {
       try {
-        const res = await fetch('/api/dogs/documents/' + docId + '/download', { headers: authOnlyHeaders() });
+        const res = await authedFetch('/api/dogs/documents/' + docId + '/download', { headers: authOnlyHeaders() });
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
           throw new Error('Failed to download document');
@@ -2266,7 +2576,7 @@
       btn.disabled = true;
       btn.textContent = 'Uploading...';
       try {
-        const res = await fetch('/api/dogs/' + dogId + '/documents', {
+        const res = await authedFetch('/api/dogs/' + dogId + '/documents', {
           method: 'POST',
           headers: authOnlyHeaders(),
           body: formData
@@ -2342,7 +2652,7 @@
       try {
         const url = editId ? '/api/dogs/' + editId : '/api/dogs';
         const method = editId ? 'PUT' : 'POST';
-        const res = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) });
+        const res = await authedFetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) });
         const data = await safeJson(res);
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
@@ -2367,7 +2677,7 @@
       if (!confirm('Remove ' + (dog ? dog.name : 'this dog') + ' from your profile?')) return;
 
       try {
-        const res = await fetch('/api/dogs/' + id, { method: 'DELETE', headers: authHeaders() });
+        const res = await authedFetch('/api/dogs/' + id, { method: 'DELETE', headers: authHeaders() });
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) { logout(); return; }
           const errData = await res.json().catch(() => ({}));
@@ -2393,10 +2703,10 @@
       const paidBookingId = urlParams.get('booking');
       window.history.replaceState({}, '', '/my-bookings');
       (async () => {
-        if (paidBookingId && token) {
+        if (paidBookingId && signedIn) {
           for (let attempt = 0; attempt < 3; attempt++) {
             try {
-              const r = await fetch(`/api/payments/sync/${paidBookingId}`, {
+              const r = await authedFetch(`/api/payments/sync/${paidBookingId}`, {
                 method: 'POST',
                 headers: authHeaders()
               });

@@ -1,13 +1,19 @@
 const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { query } = require('./database');
+const sessions = require('./sessions');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET || JWT_SECRET === 'benny-pets-default-secret' || JWT_SECRET === 'change-this-to-a-random-secret-key') {
   throw new Error('JWT_SECRET must be set to a strong random value before loading customerAuth module');
 }
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+const VERIFY_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// Sign-in is only gated on a verified email when the owner turns it on.
+// Transactional email is an unverified dependency here, and gating by default
+// would turn a mail misconfiguration into "nobody can sign in".
+const REQUIRE_VERIFIED_EMAIL = process.env.REQUIRE_EMAIL_VERIFICATION === '1';
 
 // Returns null if the password meets policy, or an error message describing
 // what's missing. Kept lenient enough that real users won't bounce, strict
@@ -26,44 +32,80 @@ function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-function generateCustomerToken(customer) {
-  return jwt.sign(
-    { id: customer.id, email: customer.email, type: 'customer' },
-    JWT_SECRET,
-    { expiresIn: '7d' }
-  );
-}
-
-function authenticateCustomer(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-
+/**
+ * Authenticate a customer from a server-side session.
+ *
+ * Sessions replaced the stateless JWT: the token is opaque, stored only as a
+ * hash, revocable, and idle-expiring. The credential arrives either in the
+ * HttpOnly cookie (browsers) or as a Bearer token (programmatic clients).
+ */
+async function authenticateCustomer(req, res, next) {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    if (decoded.type !== 'customer') {
+    const credential = sessions.credentialFrom(req);
+    if (!credential.token) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    if (!sessions.csrfOk(req, credential)) {
+      return res.status(403).json({ error: 'csrf_token_invalid' });
+    }
+
+    const session = await sessions.resolveSession(credential.token);
+    // Absent, revoked, expired and idle-timed-out are deliberately
+    // indistinguishable to the client: all are "sign in again".
+    if (!session) {
+      sessions.clearSessionCookies(res);
+      return res.status(401).json({ error: 'Your session has expired. Please sign in again.' });
+    }
+    // A LIVE session of the wrong type is a different thing entirely — someone
+    // presenting an admin credential to a customer route. That is a privilege
+    // boundary violation, not an expiry, so it answers 403 and leaves the
+    // session intact. The admin middleware mirrors this.
+    if (session.subject_type !== 'customer') {
       return res.status(403).json({ error: 'Invalid token type' });
     }
-    req.customer = decoded;
+
+    const { rows } = await query(
+      'SELECT id, email, name FROM customers WHERE id = $1',
+      [session.subject_id]
+    );
+    if (!rows[0]) {
+      await sessions.revokeSession(credential.token, 'subject_missing');
+      sessions.clearSessionCookies(res);
+      return res.status(401).json({ error: 'Your session has expired. Please sign in again.' });
+    }
+
+    req.customer = { id: rows[0].id, email: rows[0].email, name: rows[0].name };
+    req.session = session;
+    req.sessionToken = credential.token;
     next();
   } catch (err) {
-    return res.status(403).json({ error: 'Invalid or expired token' });
+    next(err);
   }
 }
 
+/**
+ * Register, without disclosing whether the address is already in use.
+ *
+ * The caller gets the SAME shape whether or not the account existed:
+ * { created: boolean }. It must respond identically in both cases — see the
+ * route in server.js. `created: false` is for choosing which notification email
+ * to send, never for shaping the HTTP response.
+ */
 async function registerCustomer(name, email, password, phone, dogName) {
+  // Hash unconditionally, and BEFORE the existence check is acted on. bcrypt at
+  // cost 10 takes ~100ms; hashing only in the "new account" branch would make
+  // registration measurably faster for addresses that already exist, which is
+  // the same disclosure by a side channel.
+  const hash = bcrypt.hashSync(password, 10);
+
   const { rows: existing } = await query(
-    'SELECT id FROM customers WHERE LOWER(email) = LOWER($1)',
+    'SELECT id, name FROM customers WHERE LOWER(email) = LOWER($1)',
     [email]
   );
   if (existing.length) {
-    return { error: 'An account with this email already exists' };
+    return { created: false, existingCustomer: { id: existing[0].id, name: existing[0].name, email } };
   }
 
-  const hash = bcrypt.hashSync(password, 10);
   const { rows: inserted } = await query(
     `INSERT INTO customers (name, email, phone, password_hash, dog_name)
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
@@ -80,10 +122,12 @@ async function registerCustomer(name, email, password, phone, dogName) {
     [customerId]
   );
 
-  const customer = { id: customerId, email: email.toLowerCase(), name };
-  const token = generateCustomerToken(customer);
+  const verification = await createEmailVerificationToken(customerId);
+
   return {
-    token,
+    created: true,
+    customerId,
+    verificationToken: verification.token,
     customer: {
       id: customerId,
       email: email.toLowerCase(),
@@ -95,6 +139,46 @@ async function registerCustomer(name, email, password, phone, dogName) {
   };
 }
 
+async function createEmailVerificationToken(customerId) {
+  // Only the newest link works.
+  await query(
+    'UPDATE email_verification_tokens SET used_at = NOW() WHERE customer_id = $1 AND used_at IS NULL',
+    [customerId]
+  );
+  const token = crypto.randomBytes(32).toString('hex');
+  await query(
+    `INSERT INTO email_verification_tokens (customer_id, token_hash, expires_at)
+     VALUES ($1, $2, $3)`,
+    [customerId, hashToken(token), new Date(Date.now() + VERIFY_TOKEN_TTL_MS)]
+  );
+  return { token };
+}
+
+/**
+ * Consume a verification token. Atomic, so a link cannot be used twice.
+ */
+async function verifyEmailWithToken(token) {
+  if (!token || typeof token !== 'string') {
+    return { error: 'This verification link is invalid or has expired' };
+  }
+  const { rows } = await query(
+    `UPDATE email_verification_tokens SET used_at = NOW()
+     WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
+     RETURNING customer_id`,
+    [hashToken(token)]
+  );
+  if (!rows[0]) {
+    return { error: 'This verification link is invalid or has expired' };
+  }
+
+  const { rows: customerRows } = await query(
+    `UPDATE customers SET email_verified_at = COALESCE(email_verified_at, NOW())
+     WHERE id = $1 RETURNING id, name, email`,
+    [rows[0].customer_id]
+  );
+  return { ok: true, customer: customerRows[0] };
+}
+
 async function loginCustomer(email, password) {
   const { rows } = await query(
     'SELECT * FROM customers WHERE LOWER(email) = LOWER($1)',
@@ -103,21 +187,24 @@ async function loginCustomer(email, password) {
   const customer = rows[0];
   if (!customer) return null;
   if (!bcrypt.compareSync(password, customer.password_hash)) return null;
+  if (REQUIRE_VERIFIED_EMAIL && !customer.email_verified_at) {
+    return { unverified: true, customerId: customer.id, email: customer.email, name: customer.name };
+  }
 
   const { rows: dogs } = await query(
     'SELECT * FROM dogs WHERE customer_id = $1 ORDER BY created_at ASC',
     [customer.id]
   );
 
-  const token = generateCustomerToken(customer);
   return {
-    token,
+    customerId: customer.id,
     customer: {
       id: customer.id,
       email: customer.email,
       name: customer.name,
       phone: customer.phone,
       dog_name: customer.dog_name,
+      email_verified: !!customer.email_verified_at,
       dogs
     }
   };
@@ -179,11 +266,19 @@ async function resetPasswordWithToken(token, newPassword) {
 
   const hash = bcrypt.hashSync(newPassword, 10);
   await query('UPDATE customers SET password_hash = $1 WHERE id = $2', [hash, record.customer_id]);
-  return { ok: true };
+  // The whole point of a reset is to lock someone out. A stateless token could
+  // not be revoked, so an attacker holding one kept access straight through the
+  // action taken to remove them.
+  const revoked = await sessions.revokeAllForSubject('customer', record.customer_id, 'password_reset');
+  return { ok: true, sessions_revoked: revoked };
 }
 
 module.exports = {
+  REQUIRE_VERIFIED_EMAIL,
   authenticateCustomer,
+  createEmailVerificationToken,
+  hashToken,
+  verifyEmailWithToken,
   registerCustomer,
   loginCustomer,
   createPasswordResetToken,

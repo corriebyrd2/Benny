@@ -1,0 +1,317 @@
+  <div class="paw-prints" id="pawPrints" aria-hidden="true"></div>
+
+  <header>
+    <nav class="navbar" id="navbar" aria-label="Primary">
+      <div class="nav-container">
+        <a href="/" class="logo">
+          <picture>
+            <source srcset="/images/logo/logo-48.avif 48w, /images/logo/logo-96.avif 96w, /images/logo/logo-144.avif 144w" sizes="48px" type="image/avif">
+            <source srcset="/images/logo/logo-48.webp 48w, /images/logo/logo-96.webp 96w, /images/logo/logo-144.webp 144w" sizes="48px" type="image/webp">
+            <img src="/images/logo/logo-96.png" width="48" height="48" alt="" class="logo-img" decoding="async">
+          </picture>
+          <span class="logo-text">{{brand}}</span>
+        </a>
+        <button class="nav-toggle" id="navToggle" aria-label="Menu" aria-expanded="false" aria-controls="navLinks">
+          <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
+        </button>
+        <ul class="nav-links" id="navLinks">
+          <li><a href="#services">Services</a></li>
+          <li><a href="#how-it-works">How it works</a></li>
+          <li><a href="#about">About</a></li>
+          <li><a href="#reviews">Reviews</a></li>
+          <li><a href="#contact">Contact</a></li>
+          <li><a href="/my-bookings">My account</a></li>
+          <li><a href="/my-bookings" class="nav-cta">Request a booking</a></li>
+        </ul>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="home">
+      <div class="hero-content">
+        <p class="hero-eyebrow">{{hero_eyebrow}}</p>
+        <h1 class="hero-title">Dog boarding and daycare, run by Ben</h1>
+        <p class="hero-subtitle">
+          Overnight stays and full-day daycare in a small, supervised setting.
+          You send a request, we confirm the dates, and you only pay once the
+          booking is approved.
+        </p>
+        <div class="hero-buttons">
+          <a href="/my-bookings" class="btn btn-primary">Request a booking</a>
+          <a href="#contact" class="btn btn-secondary">Ask a question first</a>
+        </div>
+        <ul class="hero-assurances">
+          <li>Up-to-date vaccination records required for every dog</li>
+          <li>Nothing is charged until we approve your dates</li>
+          <li>Free cancellation up to 48 hours before the stay</li>
+        </ul>
+      </div>
+      <div class="hero-visual" id="heroVisual">{{{hero_visual_html}}}</div>
+    </section>
+
+    <section class="services" id="services" aria-labelledby="services-heading">
+      <div class="container">
+        <div class="section-header">
+          <p class="section-tag">What we offer</p>
+          <h2 id="services-heading">Services and prices</h2>
+          <p class="section-desc">Every rate below is per dog. Boarding is charged per night, daycare per day.</p>
+        </div>
+        <div class="services-grid" id="servicesGrid">{{{services_html}}}</div>
+        {{{services_note_html}}}
+      </div>
+    </section>
+
+    <section class="how-it-works" id="how-it-works" aria-labelledby="how-heading">
+      <div class="container">
+        <div class="section-header">
+          <p class="section-tag">Before you book</p>
+          <h2 id="how-heading">How booking works</h2>
+        </div>
+        <ol class="steps">
+          <li>
+            <h3>1. Create an account</h3>
+            <p>Add your dog's details and upload their current vaccination record. Documents are stored privately and only staff who admit your dog can see them.</p>
+          </li>
+          <li>
+            <h3>2. Send a request</h3>
+            <p>Choose a service and your dates. A request is not a confirmed booking &mdash; we check availability first.</p>
+          </li>
+          <li>
+            <h3>3. We approve it</h3>
+            <p>{{approval_timeline}} You'll get an email either way.</p>
+          </li>
+          <li>
+            <h3>4. Pay securely</h3>
+            <p>Once approved you get a secure payment link. Card details are entered on our payment provider's own page and never reach our servers. <a href="/legal/payment-terms">Payment and deposit terms</a>.</p>
+          </li>
+          <li>
+            <h3>5. Drop-off day</h3>
+            <p>Bring food, any medication, and anything that helps your dog settle. Read the <a href="/legal/boarding-agreement">boarding agreement</a> and the <a href="/legal/pet-documents-policy">document policy</a> before your first stay.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="about" id="about" aria-labelledby="about-heading">
+      <div class="container">
+        <div class="section-header">
+          <p class="section-tag">Who we are</p>
+          <h2 id="about-heading">Meet Ben</h2>
+        </div>
+        <div class="about-grid">
+          <div class="about-image" id="aboutImage">{{{about_image_html}}}</div>
+          <div class="about-content">
+            <h3>A passion that became a calling</h3>
+            <p>
+              Hi &mdash; I'm <strong>Ben</strong>. I've been around dogs my whole life. What
+              started as looking after neighbours' dogs became <strong>{{brand}}</strong>,
+              where dogs stay in small numbers and get properly looked after.
+            </p>
+            <p>
+              Every dog that stays with us becomes part of the pack for as long as
+              they're here. If there's anything you want to know before you book,
+              ask &mdash; we'd rather have the conversation up front.
+            </p>
+            {{{credentials_html}}}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {{{gallery_html}}}
+
+    <section class="testimonials" id="reviews" aria-labelledby="reviews-heading">
+      <div class="container">
+        <div class="section-header">
+          <p class="section-tag">Reviews</p>
+          <h2 id="reviews-heading">What customers say</h2>
+          <p class="section-desc">Every review below was submitted by a customer and published after moderation. We do not write our own.</p>
+        </div>
+        {{{reviews_html}}}
+
+        <div class="review-submit">
+          <h3 id="review-form-heading">Leave a review</h3>
+          <p id="review-form-help">Reviews are published after moderation. Your name is shown; your email is not collected here.</p>
+          <form id="reviewForm" aria-labelledby="review-form-heading" aria-describedby="review-form-help" novalidate>
+            <div class="review-form-row">
+              <div class="field">
+                <label for="reviewName">Your name</label>
+                <input type="text" id="reviewName" name="reviewer_name" maxlength="80" autocomplete="name" required>
+              </div>
+              <div class="field">
+                <label for="reviewPetName">Your dog's name <span class="optional">(optional)</span></label>
+                <input type="text" id="reviewPetName" name="pet_name" maxlength="80">
+              </div>
+            </div>
+            <fieldset class="review-rating-fieldset">
+              <legend>Rating</legend>
+              <div class="review-rating" id="reviewRating" role="radiogroup" aria-label="Rating out of 5">
+                <button type="button" class="review-star active" data-rating="1" role="radio" aria-checked="false"><span class="visually-hidden">1 star</span><span aria-hidden="true">&#11088;</span></button>
+                <button type="button" class="review-star active" data-rating="2" role="radio" aria-checked="false"><span class="visually-hidden">2 stars</span><span aria-hidden="true">&#11088;</span></button>
+                <button type="button" class="review-star active" data-rating="3" role="radio" aria-checked="false"><span class="visually-hidden">3 stars</span><span aria-hidden="true">&#11088;</span></button>
+                <button type="button" class="review-star active" data-rating="4" role="radio" aria-checked="false"><span class="visually-hidden">4 stars</span><span aria-hidden="true">&#11088;</span></button>
+                <button type="button" class="review-star active" data-rating="5" role="radio" aria-checked="true"><span class="visually-hidden">5 stars</span><span aria-hidden="true">&#11088;</span></button>
+              </div>
+            </fieldset>
+            <div class="field">
+              <label for="reviewText">Your review</label>
+              <textarea id="reviewText" name="review_text" rows="4" maxlength="1000" required aria-describedby="reviewTextHelp"></textarea>
+              <p class="field-help" id="reviewTextHelp">Up to 1000 characters. By submitting you agree to our <a href="/legal/terms">Terms of Service</a> and <a href="/legal/privacy">Privacy Policy</a>.</p>
+            </div>
+            <button type="submit" class="btn btn-primary">Submit review</button>
+            <p class="review-form-msg" id="reviewFormMsg" role="status" aria-live="polite"></p>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section class="fun-section" id="fun" aria-labelledby="fun-heading">
+      <div class="container">
+        <div class="section-header light">
+          <p class="section-tag">Just for fun</p>
+          <h2 id="fun-heading">Boop the snoot</h2>
+          <p class="section-desc">Nothing to do with booking. Press the button if you'd like to.</p>
+        </div>
+        <div class="boop-game">
+          <button type="button" class="boop-dog" id="boopDog" aria-describedby="boopCountLabel">
+            <span class="boop-target" aria-hidden="true">&#128054;</span>
+            <span class="visually-hidden">Boop the dog</span>
+            <span class="boop-reaction" id="boopReaction" aria-hidden="true"></span>
+          </button>
+          <p class="boop-counter" id="boopCountLabel">
+            Boops given: <span class="boop-count" id="boopCount">0</span>
+          </p>
+          <p class="boop-milestones" id="boopMilestones" role="status" aria-live="polite"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="contact" id="contact" aria-labelledby="contact-heading">
+      <div class="container">
+        <div class="section-header light">
+          <p class="section-tag">Get in touch</p>
+          <h2 id="contact-heading">Contact us</h2>
+          <p class="section-desc">Questions about a stay, a dog with particular needs, or dates we haven't listed? Ask before you book.</p>
+        </div>
+        <div class="contact-grid">
+          <div class="contact-form-wrap">
+            <h3 id="inquiry-heading">Send us a message</h3>
+            <p id="inquiry-help">
+              No account needed. Tell us what you're after and we'll reply by
+              email &mdash; usually within one business day.
+            </p>
+            <form id="inquiryForm" aria-labelledby="inquiry-heading" aria-describedby="inquiry-help" novalidate>
+              <div class="field">
+                <label for="inquiryName">Your name</label>
+                <input type="text" id="inquiryName" name="name" autocomplete="name" maxlength="120" required>
+              </div>
+              <div class="field">
+                <label for="inquiryEmail">Email address</label>
+                <input type="email" id="inquiryEmail" name="email" autocomplete="email" maxlength="254" required>
+              </div>
+              <div class="field">
+                <label for="inquiryPhone">Phone <span class="optional">(optional)</span></label>
+                <input type="tel" id="inquiryPhone" name="phone" autocomplete="tel" maxlength="40">
+              </div>
+              <div class="field">
+                <label for="inquiryService">What's it about? <span class="optional">(optional)</span></label>
+                <select id="inquiryService" name="service_id">
+                  <option value="">General question</option>
+                  {{{inquiry_service_options}}}
+                </select>
+              </div>
+              <div class="field">
+                <label for="inquiryMessage">Your message</label>
+                <textarea id="inquiryMessage" name="message" rows="5" maxlength="4000" required
+                          aria-describedby="inquiryMessageHelp"></textarea>
+                <p class="field-help" id="inquiryMessageHelp">
+                  Dates, your dog's breed and age, and anything we should know all help.
+                  See our <a href="/legal/privacy">Privacy Policy</a> for how we handle your details.
+                </p>
+              </div>
+              <!-- Honeypot: hidden from people, irresistible to bots. -->
+              <div class="hp-field" aria-hidden="true">
+                <label for="inquiryWebsite">Leave this field empty</label>
+                <input type="text" id="inquiryWebsite" name="website" tabindex="-1" autocomplete="off">
+              </div>
+              <button type="submit" class="btn btn-primary">Send message</button>
+              <p class="form-msg" id="inquiryMsg" role="status" aria-live="polite"></p>
+            </form>
+          </div>
+          <div class="contact-side">
+            <div class="contact-booking-cta">
+              <h3>Ready to book?</h3>
+              <p>Create an account or sign in to send a booking request for your dog.</p>
+              <a href="/my-bookings" class="btn btn-secondary">Go to my account</a>
+            </div>
+            {{{contact_html}}}
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <h2 class="footer-brand-name">
+            <picture>
+              <source srcset="/images/logo/logo-48.avif" type="image/avif">
+              <source srcset="/images/logo/logo-48.webp" type="image/webp">
+              <img src="/images/logo/logo-48.png" width="40" height="40" alt="" class="footer-logo-img" loading="lazy" decoding="async">
+            </picture>
+            <span>{{brand}}</span>
+          </h2>
+          <p>{{footer_tagline}}</p>
+          {{{social_html}}}
+        </div>
+        <nav class="footer-links" aria-labelledby="footer-nav-heading">
+          <h2 id="footer-nav-heading">Site</h2>
+          <ul>
+            <li><a href="/">Home</a></li>
+            <li><a href="/#services">Services and prices</a></li>
+            <li><a href="/#how-it-works">How booking works</a></li>
+            <li><a href="/#about">About Ben</a></li>
+            <li><a href="/my-bookings">My account</a></li>
+          </ul>
+        </nav>
+        <nav class="footer-links" aria-labelledby="footer-services-heading">
+          <h2 id="footer-services-heading">Services</h2>
+          <ul>{{{footer_services_html}}}</ul>
+        </nav>
+        <nav class="footer-links" aria-labelledby="footer-legal-heading">
+          <h2 id="footer-legal-heading">Policies</h2>
+          <ul>{{{footer_legal_html}}}</ul>
+        </nav>
+        <div class="footer-newsletter">
+          <h2>Occasional updates</h2>
+          <p>A short email now and then. No more than that.</p>
+          <form class="newsletter-form" id="newsletterForm" novalidate>
+            <div class="field">
+              <label for="newsletterEmail">Email address</label>
+              <input type="email" id="newsletterEmail" name="email" autocomplete="email" required>
+            </div>
+            <div class="consent-row">
+              <input type="checkbox" id="newsletterConsent" name="marketing_consent">
+              <label for="newsletterConsent">
+                I agree to receive marketing email. This is separate from booking
+                emails and I can unsubscribe from any message.
+              </label>
+            </div>
+            <button type="submit" class="btn btn-primary">Subscribe</button>
+            <p class="newsletter-msg" id="newsletterMsg" role="status" aria-live="polite"></p>
+          </form>
+          <p class="newsletter-consent">
+            See our <a href="/legal/privacy">Privacy Policy</a> for how we handle your email address.
+          </p>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; {{year}} {{legal_name}}. {{{footer_bottom_extra}}}</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="{{asset_js}}" defer></script>

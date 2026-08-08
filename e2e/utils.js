@@ -6,6 +6,17 @@ const { expect, request: pwRequest } = require('@playwright/test');
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL || 'admin@test.local';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD || 'test-admin-password-e2e';
 
+// A client with NO cookies.
+//
+// Sessions are now delivered as cookies, and Playwright's `request` fixture
+// keeps cookies for the lifetime of a test. So once a spec has signed anyone in,
+// a request made without an Authorization header is NOT anonymous — the session
+// cookie rides along. Any assertion about unauthenticated behaviour has to use
+// a fresh context or it silently tests the authenticated path instead.
+async function anonymousRequest(playwright, baseURL) {
+  return playwright.request.newContext({ baseURL });
+}
+
 async function resetAll(request) {
   // Order matters: emails + rate limits first (cheap), then DB (truncates
   // everything except the seeded admin/services).
@@ -36,12 +47,30 @@ async function registerCustomer(request, overrides = {}) {
     password: 'password123',
     phone: '555-0100',
     dog_name: 'Buddy',
+    // Registration requires explicit acceptance of the terms and privacy
+    // policy. Fixtures accept, so specs that are not about consent aren't
+    // coupled to it; e2e/legal.spec.js covers the refusal paths.
+    accept_policies: { terms: true, privacy: true },
     ...overrides
   };
+  // Registration deliberately returns 202 with NO session, identically whether
+  // or not the address already exists — that is what closes the enumeration
+  // leak. Signing in is a separate step, so the fixture does both.
   const res = await request.post('/api/customer/register', { data });
-  expect(res.status(), await safeBody(res)).toBe(201);
-  const body = await res.json();
-  return { token: body.token, customer: body.customer, password: data.password, email: data.email };
+  expect(res.status(), await safeBody(res)).toBe(202);
+
+  const login = await request.post('/api/customer/login', {
+    data: { email: data.email, password: data.password }
+  });
+  expect(login.status(), await safeBody(login)).toBe(200);
+  const body = await login.json();
+  return {
+    token: body.token,
+    csrfToken: body.csrf_token,
+    customer: body.customer,
+    password: data.password,
+    email: data.email
+  };
 }
 
 async function firstServiceId(request) {
@@ -91,6 +120,15 @@ const TINY_PNG = Buffer.from(
   'hex'
 );
 
+// A minimal but structurally real PDF. Document uploads are validated by
+// magic bytes, so fixtures have to be genuine files of an allowed type.
+const TINY_PDF = Buffer.from(
+  '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n' +
+  '2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\n' +
+  'trailer<</Root 1 0 R>>\n%%EOF\n',
+  'latin1'
+);
+
 // Strong password that satisfies the policy in server/customerAuth.js
 // (>=10 chars, contains a letter and a digit). Used by every fixture that
 // creates a customer so individual specs don't have to invent one.
@@ -101,6 +139,8 @@ module.exports = {
   ADMIN_PASSWORD,
   STRONG_PASSWORD,
   TINY_PNG,
+  TINY_PDF,
+  anonymousRequest,
   resetAll,
   safeBody,
   loginAdmin,

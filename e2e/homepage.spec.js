@@ -6,13 +6,18 @@ test.describe('homepage + static pages', () => {
     await resetAll(request);
   });
 
-  test('serves index.html with seeded services rendered', async ({ page }) => {
+  test('renders exactly the services the catalog exposes', async ({ page, request }) => {
+    // The homepage is server-rendered from the same catalog the API serves, so
+    // the two can no longer disagree — the original defect was four hardcoded
+    // marketing cards against two API services.
+    const apiServices = await (await request.get('/api/services')).json();
+
     await page.goto('/');
     await expect(page).toHaveTitle(/Benny/i);
-    // Four services are seeded; wait for dynamic load from /api/services
-    await expect(page.locator('.services-grid .service-card')).toHaveCount(4, { timeout: 10_000 });
-    await expect(page.getByText('Overnight Boarding')).toBeVisible();
-    await expect(page.getByText('Doggy Daycare')).toBeVisible();
+    await expect(page.locator('.services-grid .service-card')).toHaveCount(apiServices.length);
+    for (const service of apiServices) {
+      await expect(page.getByRole('heading', { name: service.name })).toBeVisible();
+    }
   });
 
   test('admin page loads', async ({ page }) => {

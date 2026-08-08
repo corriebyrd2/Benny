@@ -1,0 +1,45 @@
+  <header>
+    <nav class="navbar navbar-solid" aria-label="Primary">
+      <div class="nav-container">
+        <a href="/" class="logo">
+          <picture>
+            <source srcset="/images/logo/logo-48.avif" type="image/avif">
+            <source srcset="/images/logo/logo-48.webp" type="image/webp">
+            <img src="/images/logo/logo-96.png" width="48" height="48" alt="" class="logo-img" decoding="async">
+          </picture>
+          <span class="logo-text">{{brand}}</span>
+        </a>
+        <ul class="nav-links">
+          <li><a href="/#services">Services</a></li>
+          <li><a href="/#contact">Contact</a></li>
+          <li><a href="/my-bookings" class="nav-cta">My account</a></li>
+        </ul>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main" class="doc-page">
+    <div class="container container-narrow">
+      <nav aria-label="Breadcrumb" class="breadcrumb">
+        <ol>
+          <li><a href="/">Home</a></li>
+          <li aria-current="page">Policies</li>
+        </ol>
+      </nav>
+      <h1>Policies and agreements</h1>
+      <p class="doc-summary">
+        Everything that governs a stay with us, in one place. Each document
+        carries a version and an effective date; where you have to actively
+        agree to one, we record which version you agreed to and when.
+      </p>
+      <ul class="doc-index doc-index-cards">{{{index_html}}}</ul>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-bottom">
+        <p>&copy; {{year}} {{legal_name}}. <a href="/">Back to the homepage</a></p>
+      </div>
+    </div>
+  </footer>

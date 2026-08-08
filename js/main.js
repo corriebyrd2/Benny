@@ -1,653 +1,504 @@
 /* ============================================
-   Benny and the Pets - Main JavaScript
-   Fun & Interactive Features
-   ============================================ */
+   Benny and the Pets — homepage behaviour
+   ============================================
 
-document.addEventListener('DOMContentLoaded', () => {
+   The homepage is rendered on the server (see server/routes/pages.js), so this
+   file adds behaviour to markup that already exists rather than constructing
+   content. Nothing here invents copy, and nothing here is required for the page
+   to be readable, navigable or bookable — if this script fails to load, every
+   link and form still works.
 
-  // --- Dynamic Content Functions (called after observer is created) ---
-  async function loadDynamicServices() {
-    try {
-      const res = await fetch('/api/services');
-      if (!res.ok) return; // Fall back to static content
-      const services = await res.json();
-      if (services.length === 0) return;
+   Accessibility rules this file must keep:
+     * Anything clickable is a real <button> or <a>. No click handlers on divs.
+     * Any state change a sighted user notices is announced to assistive tech
+       through a live region.
+     * Motion respects prefers-reduced-motion.
+*/
 
-      const grid = document.querySelector('.services-grid');
-      if (!grid) return;
+(function () {
+  'use strict';
 
-      // Also update the booking form select options
-      const serviceSelect = document.getElementById('service');
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
-      grid.innerHTML = services.map(s => {
-        const perks = Array.isArray(s.perks) ? s.perks : [];
-        return `
-          <div class="service-card ${s.is_featured ? 'featured' : ''}" data-tilt>
-            ${s.is_featured ? '<div class="featured-badge">Most Popular</div>' : ''}
-            <div class="service-icon">${s.icon}</div>
-            <h3>${s.name}</h3>
-            <p>${s.description}</p>
-            <ul class="service-perks">
-              ${perks.map(p => `<li>${p}</li>`).join('')}
-            </ul>
-            <span class="service-price">${s.price_label}</span>
-          </div>
-        `;
-      }).join('');
-
-      if (serviceSelect) {
-        serviceSelect.innerHTML = '<option value="">Choose a service...</option>' +
-          services.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-      }
-
-      // Re-init tilt effect on new cards
-      grid.querySelectorAll('[data-tilt]').forEach(card => {
-        card.addEventListener('mousemove', (e) => {
-          const rect = card.getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          const y = e.clientY - rect.top;
-          const centerX = rect.width / 2;
-          const centerY = rect.height / 2;
-          const rotateX = (y - centerY) / 20;
-          const rotateY = (centerX - x) / 20;
-          card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-8px)`;
-        });
-        card.addEventListener('mouseleave', () => { card.style.transform = ''; });
-      });
-
-      // Re-add reveal classes
-      grid.querySelectorAll('.service-card').forEach(el => {
-        el.classList.add('reveal');
-        observer.observe(el);
-      });
-    } catch (e) {
-      // API not available, keep static content
-    }
-  }
-
-  async function loadDynamicGallery() {
-    try {
-      const res = await fetch('/api/photos');
-      if (!res.ok) return;
-      const photos = await res.json();
-      if (photos.length === 0) return;
-
-      // Backward-compat: treat photos missing a section as 'gallery'.
-      const bySection = (name) => photos.filter(p => (p.section || 'gallery') === name);
-
-      renderGallery(bySection('gallery'));
-      renderSingleSectionPhoto('heroVisual', bySection('hero')[0]);
-      renderSingleSectionPhoto('aboutImage', bySection('about')[0]);
-    } catch (e) {
-      // API not available, keep static content
-    }
-  }
-
-  function renderGallery(photos) {
-    const grid = document.querySelector('.gallery-grid');
-    if (!grid || photos.length === 0) return;
-
-    grid.innerHTML = photos.map(p => {
-      const layoutClass = p.layout === 'large' ? ' large' : (p.layout === 'tall' ? ' tall' : '');
-      return `
-        <div class="gallery-item${layoutClass}">
-          <img src="${p.url}" alt="${p.caption || ''}"
-            style="width:100%;height:100%;object-fit:cover;"
-            onerror="this.parentElement.innerHTML='<div class=\\'gallery-placeholder\\' style=\\'--hue:30;\\'><span>&#128054;</span><p>${p.caption || ''}</p></div>';">
-        </div>
-      `;
-    }).join('');
-
-    grid.querySelectorAll('.gallery-item').forEach(el => {
-      el.classList.add('reveal');
-      observer.observe(el);
-    });
-  }
-
-  function renderSingleSectionPhoto(containerId, photo) {
-    if (!photo) return;
-    const container = document.getElementById(containerId);
-    if (!container) return;
-
-    // Hero keeps its container free-sized; about-image uses the same 4/5 aspect
-    // ratio the placeholder already enforces so the surrounding grid stays stable.
-    const styles = containerId === 'aboutImage'
-      ? 'width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:16px;display:block;box-shadow:0 10px 30px rgba(0,0,0,0.12);'
-      : 'max-width:100%;max-height:500px;object-fit:contain;display:block;border-radius:16px;';
-
-    container.innerHTML = `
-      <img src="${photo.url}" alt="${photo.caption || ''}" style="${styles}">
-    `;
-  }
-
-  // --- Floating Paw Prints ---
-  const pawContainer = document.getElementById('pawPrints');
-  const pawEmojis = ['\u{1F43E}'];
-
-  function createPawPrint() {
-    const paw = document.createElement('span');
-    paw.classList.add('paw-print');
-    paw.textContent = pawEmojis[0];
-    paw.style.left = Math.random() * 100 + '%';
-    paw.style.fontSize = (16 + Math.random() * 20) + 'px';
-    paw.style.animationDuration = (6 + Math.random() * 6) + 's';
-    paw.style.animationDelay = Math.random() * 2 + 's';
-    pawContainer.appendChild(paw);
-    setTimeout(() => paw.remove(), 14000);
-  }
-
-  setInterval(createPawPrint, 3000);
-
-  // --- Navbar Scroll Effect ---
-  const navbar = document.getElementById('navbar');
-  let lastScroll = 0;
-
-  window.addEventListener('scroll', () => {
-    const currentScroll = window.scrollY;
-    navbar.classList.toggle('scrolled', currentScroll > 50);
-    lastScroll = currentScroll;
-  });
-
-  // --- Mobile Nav Toggle ---
-  const navToggle = document.getElementById('navToggle');
-  const navLinks = document.getElementById('navLinks');
-
-  navToggle.addEventListener('click', () => {
-    navLinks.classList.toggle('active');
-    const spans = navToggle.querySelectorAll('span');
-    if (navLinks.classList.contains('active')) {
-      spans[0].style.transform = 'rotate(45deg) translate(5px, 5px)';
-      spans[1].style.opacity = '0';
-      spans[2].style.transform = 'rotate(-45deg) translate(5px, -5px)';
+  function onReady(fn) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', fn, { once: true });
     } else {
-      spans.forEach(s => { s.style.transform = ''; s.style.opacity = ''; });
+      fn();
     }
-  });
+  }
 
-  // Close nav on link click
-  navLinks.querySelectorAll('a').forEach(link => {
-    link.addEventListener('click', () => {
-      navLinks.classList.remove('active');
-      const spans = navToggle.querySelectorAll('span');
-      spans.forEach(s => { s.style.transform = ''; s.style.opacity = ''; });
+  // ---------------------------------------------------------------------
+  // Decorative paw prints. Purely ornamental, so they are skipped entirely
+  // when the visitor has asked for reduced motion — and the interval is
+  // cleared when the tab is hidden so a background tab isn't burning frames.
+  // ---------------------------------------------------------------------
+  function initPawPrints() {
+    const container = document.getElementById('pawPrints');
+    if (!container || prefersReducedMotion.matches) return;
+
+    let timer = null;
+    function spawn() {
+      const paw = document.createElement('span');
+      paw.className = 'paw-print';
+      paw.textContent = '\u{1F43E}';
+      paw.style.left = Math.random() * 100 + '%';
+      paw.style.fontSize = (16 + Math.random() * 20) + 'px';
+      paw.style.animationDuration = (6 + Math.random() * 6) + 's';
+      container.appendChild(paw);
+      setTimeout(() => paw.remove(), 14000);
+    }
+    function start() { if (!timer) timer = setInterval(spawn, 3000); }
+    function stop() { clearInterval(timer); timer = null; }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) stop(); else start();
     });
-  });
+    prefersReducedMotion.addEventListener('change', e => (e.matches ? stop() : start()));
+    start();
+  }
 
-  // --- Animated Counter ---
-  const counters = document.querySelectorAll('.stat-number');
-  let counterStarted = false;
+  // ---------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------
+  function initNav() {
+    const navbar = document.getElementById('navbar');
+    const toggle = document.getElementById('navToggle');
+    const links = document.getElementById('navLinks');
+    if (!navbar || !toggle || !links) return;
 
-  function animateCounters() {
-    counters.forEach(counter => {
-      const target = +counter.getAttribute('data-target');
-      const duration = 2000;
-      const startTime = performance.now();
+    let ticking = false;
+    window.addEventListener('scroll', () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        navbar.classList.toggle('scrolled', window.scrollY > 50);
+        ticking = false;
+      });
+    }, { passive: true });
 
-      function updateCounter(currentTime) {
-        const elapsed = currentTime - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        // Ease out cubic
-        const eased = 1 - Math.pow(1 - progress, 3);
-        counter.textContent = Math.floor(target * eased);
+    function setOpen(open) {
+      links.classList.toggle('active', open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      toggle.classList.toggle('is-open', open);
+    }
 
-        if (progress < 1) {
-          requestAnimationFrame(updateCounter);
-        } else {
-          counter.textContent = target;
+    toggle.addEventListener('click', () => {
+      setOpen(toggle.getAttribute('aria-expanded') !== 'true');
+    });
+
+    links.addEventListener('click', e => {
+      if (e.target.closest('a')) setOpen(false);
+    });
+
+    // Escape closes the menu and returns focus to the control that opened it,
+    // which is what a keyboard user expects from a disclosure.
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && toggle.getAttribute('aria-expanded') === 'true') {
+        setOpen(false);
+        toggle.focus();
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Scroll reveal. Elements start visible in CSS and are only hidden once
+  // this script confirms it can reveal them again — a failed script must
+  // never leave content invisible.
+  // ---------------------------------------------------------------------
+  function initReveal() {
+    if (prefersReducedMotion.matches || !('IntersectionObserver' in window)) return;
+    const els = document.querySelectorAll('.service-card, .info-card, .gallery-item, .section-header, .steps li');
+    if (!els.length) return;
+
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+
+    els.forEach(el => { el.classList.add('reveal'); observer.observe(el); });
+  }
+
+  // ---------------------------------------------------------------------
+  // Card tilt. Pointer-only flourish; disabled for reduced motion and for
+  // coarse pointers where it just fights with scrolling.
+  // ---------------------------------------------------------------------
+  function initTilt() {
+    if (prefersReducedMotion.matches) return;
+    if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+
+    document.querySelectorAll('[data-tilt]').forEach(card => {
+      card.addEventListener('mousemove', e => {
+        const rect = card.getBoundingClientRect();
+        const rotateX = (e.clientY - rect.top - rect.height / 2) / 20;
+        const rotateY = (rect.width / 2 - (e.clientX - rect.left)) / 20;
+        card.style.transform =
+          `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-8px)`;
+      });
+      card.addEventListener('mouseleave', () => { card.style.transform = ''; });
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Reviews carousel.
+  //
+  // Rebuilt for keyboard and screen-reader use: the dots are a real tablist,
+  // arrow keys move between them, slide changes are announced through a live
+  // region, and autoplay stops on any interaction (and never starts at all
+  // under prefers-reduced-motion, which is a WCAG 2.2 pause requirement).
+  // ---------------------------------------------------------------------
+  function initCarousel() {
+    const track = document.getElementById('testimonialTrack');
+    const prevBtn = document.getElementById('carouselPrev');
+    const nextBtn = document.getElementById('carouselNext');
+    const dots = document.getElementById('carouselDots');
+    const status = document.getElementById('carouselStatus');
+    if (!track || !prevBtn || !nextBtn || !dots) return;
+
+    const slides = Array.from(track.querySelectorAll('.testimonial-card'));
+    if (slides.length === 0) return;
+
+    let current = 0;
+    let autoplay = null;
+
+    if (slides.length < 2) {
+      prevBtn.hidden = true;
+      nextBtn.hidden = true;
+      dots.hidden = true;
+      return;
+    }
+
+    slides.forEach((slide, i) => {
+      slide.id = slide.id || `testimonial-slide-${i}`;
+    });
+
+    const buttons = slides.map((slide, i) => {
+      const dot = document.createElement('button');
+      dot.type = 'button';
+      dot.className = 'carousel-dot';
+      dot.setAttribute('role', 'tab');
+      dot.setAttribute('aria-controls', slide.id);
+      dot.innerHTML = `<span class="visually-hidden">Review ${i + 1} of ${slides.length}</span>`;
+      dot.addEventListener('click', () => { goTo(i); stopAutoplay(); });
+      dots.appendChild(dot);
+      return dot;
+    });
+
+    dots.addEventListener('keydown', e => {
+      const delta = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (!delta) return;
+      e.preventDefault();
+      const next = (current + delta + slides.length) % slides.length;
+      goTo(next);
+      buttons[next].focus();
+      stopAutoplay();
+    });
+
+    function goTo(index) {
+      current = index;
+      track.style.transform = `translateX(-${index * 100}%)`;
+      buttons.forEach((b, i) => {
+        b.classList.toggle('active', i === index);
+        b.setAttribute('aria-selected', i === index ? 'true' : 'false');
+        b.tabIndex = i === index ? 0 : -1;
+      });
+      // Slides scrolled out of view must also be out of the tab order, or
+      // keyboard focus lands on content nobody can see.
+      slides.forEach((s, i) => {
+        s.setAttribute('aria-hidden', i === index ? 'false' : 'true');
+        s.querySelectorAll('a, button').forEach(el => { el.tabIndex = i === index ? 0 : -1; });
+      });
+      if (status) status.textContent = `Review ${index + 1} of ${slides.length}`;
+    }
+
+    function step(delta) {
+      goTo((current + delta + slides.length) % slides.length);
+    }
+
+    nextBtn.addEventListener('click', () => { step(1); stopAutoplay(); });
+    prevBtn.addEventListener('click', () => { step(-1); stopAutoplay(); });
+
+    function stopAutoplay() { clearInterval(autoplay); autoplay = null; }
+    function startAutoplay() {
+      if (prefersReducedMotion.matches) return;
+      stopAutoplay();
+      autoplay = setInterval(() => step(1), 7000);
+    }
+
+    // Any hover or keyboard focus inside the carousel pauses it, so nobody is
+    // reading a review when it slides away.
+    const region = document.getElementById('testimonialsCarousel');
+    if (region) {
+      region.addEventListener('mouseenter', stopAutoplay);
+      region.addEventListener('focusin', stopAutoplay);
+      region.addEventListener('mouseleave', startAutoplay);
+    }
+
+    let touchStartX = 0;
+    track.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; }, { passive: true });
+    track.addEventListener('touchend', e => {
+      const diff = touchStartX - e.changedTouches[0].screenX;
+      if (Math.abs(diff) > 50) { step(diff > 0 ? 1 : -1); stopAutoplay(); }
+    }, { passive: true });
+
+    goTo(0);
+    startAutoplay();
+  }
+
+  // ---------------------------------------------------------------------
+  // Boop game. Now a real <button>, so it is reachable by keyboard and
+  // announced as a control rather than being an unlabelled div.
+  // ---------------------------------------------------------------------
+  function initBoop() {
+    const button = document.getElementById('boopDog');
+    const count = document.getElementById('boopCount');
+    const reaction = document.getElementById('boopReaction');
+    const milestones = document.getElementById('boopMilestones');
+    if (!button || !count) return;
+
+    const reactions = ['❤️', '\u{1F496}', '\u{1F495}', '\u{1F49B}', '\u{1F499}',
+      '\u{1F31F}', '✨', '\u{1F60D}', '\u{1F970}', '\u{1F929}'];
+    const messages = {
+      5: 'Good start!',
+      10: 'You are a natural.',
+      25: 'Boop master in training.',
+      50: 'The dog is delighted.',
+      100: 'Ultimate boop champion.',
+      200: 'Your booping finger must be tired.',
+      500: 'Legendary booper status achieved.'
+    };
+
+    let boops = 0;
+    button.addEventListener('click', () => {
+      boops += 1;
+      count.textContent = String(boops);
+
+      if (!prefersReducedMotion.matches) {
+        button.classList.remove('booped');
+        void button.offsetWidth;
+        button.classList.add('booped');
+        if (reaction) {
+          reaction.textContent = reactions[Math.floor(Math.random() * reactions.length)];
+          reaction.classList.remove('show');
+          void reaction.offsetWidth;
+          reaction.classList.add('show');
         }
       }
 
-      requestAnimationFrame(updateCounter);
+      if (milestones && messages[boops]) milestones.textContent = messages[boops];
     });
   }
 
-  // --- Scroll Reveal ---
-  const revealElements = document.querySelectorAll(
-    '.service-card, .about-feature, .info-card, .gallery-item, .section-header'
-  );
+  // ---------------------------------------------------------------------
+  // Forms
+  // ---------------------------------------------------------------------
 
-  revealElements.forEach(el => el.classList.add('reveal'));
+  // Shared submit wrapper: disables the control for the duration of the
+  // request (duplicate-submit protection), reports the outcome into a live
+  // region, and always re-enables — including on a network failure, which the
+  // previous implementation left the button stuck through.
+  async function submitForm({ form, button, message, run, busyLabel }) {
+    if (button.disabled) return;
+    const originalLabel = button.textContent;
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    if (busyLabel) button.textContent = busyLabel;
+    message.className = 'form-msg';
+    message.textContent = '';
 
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('visible');
-        observer.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
-
-  revealElements.forEach(el => observer.observe(el));
-
-  async function loadSiteSettings() {
     try {
-      const res = await fetch('/api/settings');
-      if (!res.ok) return;
-      const s = await res.json();
-      applySettings(s);
-    } catch (e) {
-      // API not available, keep static content
+      const text = await run();
+      message.classList.add('success');
+      message.textContent = text;
+      form.reset();
+      return true;
+    } catch (err) {
+      message.classList.add('error');
+      message.textContent = err && err.message
+        ? err.message
+        : 'Something went wrong. Please check your connection and try again.';
+      return false;
+    } finally {
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+      button.textContent = originalLabel;
     }
   }
 
-  function applySettings(s) {
-    const brand = s.business_name;
-    const addressHtml = [s.contact_address_line1, s.contact_address_line2]
-      .filter(Boolean).map(escapeText).join('<br>');
-    const phoneHtml = [s.contact_phone_display, s.contact_phone_secondary]
-      .filter(Boolean).map(escapeText).join('<br>');
-    const hoursHtml = [s.hours_weekday, s.hours_weekend]
-      .filter(Boolean).map(escapeText).join('<br>');
-
-    // data-setting → replaces textContent (or innerHTML for composed strings)
-    const textMap = {
-      brand: brand,
-      footer_tagline: s.footer_tagline
-    };
-    const htmlMap = {
-      address: addressHtml,
-      phone: phoneHtml,
-      hours: hoursHtml,
-      email: s.contact_email ? escapeText(s.contact_email) : null
-    };
-
-    document.querySelectorAll('[data-setting]').forEach(el => {
-      const key = el.getAttribute('data-setting');
-      if (key in textMap && textMap[key]) {
-        el.textContent = textMap[key];
-      } else if (key in htmlMap && htmlMap[key]) {
-        el.innerHTML = htmlMap[key];
-      }
-    });
-
-    // data-setting-href → updates anchor href; hides link when empty.
-    document.querySelectorAll('[data-setting-href]').forEach(el => {
-      const key = el.getAttribute('data-setting-href');
-      const url = s[key];
-      if (url) {
-        el.setAttribute('href', url);
-        el.style.display = '';
-      } else {
-        el.style.display = 'none';
-      }
-    });
-
-    // Update document title to reflect brand.
-    if (brand) document.title = `${brand} | Premium Dog Boarding`;
-  }
-
-  function escapeText(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
-  // --- Load Dynamic Content from API ---
-  loadDynamicServices();
-  loadDynamicGallery();
-  loadSiteSettings();
-
-  // Counter observer
-  const statSection = document.querySelector('.hero-stats');
-  if (statSection) {
-    const counterObserver = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting && !counterStarted) {
-        counterStarted = true;
-        animateCounters();
-      }
-    }, { threshold: 0.5 });
-    counterObserver.observe(statSection);
-  }
-
-  // --- Boop the Snoot Game ---
-  const boopDog = document.getElementById('boopDog');
-  const boopCount = document.getElementById('boopCount');
-  const boopReaction = document.getElementById('boopReaction');
-  const boopMilestones = document.getElementById('boopMilestones');
-  let boops = 0;
-
-  const reactions = [
-    '\u2764\uFE0F', '\u{1F496}', '\u{1F495}', '\u{1F49B}', '\u{1F499}',
-    '\u{1F31F}', '\u2728', '\u{1F60D}', '\u{1F970}', '\u{1F929}'
-  ];
-
-  const milestoneMessages = {
-    5: 'Good start! The pup likes you!',
-    10: 'Wow, you\'re a natural booper!',
-    25: 'BOOP MASTER in training!',
-    50: 'The pup is in HEAVEN!',
-    100: 'You are the ULTIMATE BOOP CHAMPION! \u{1F3C6}',
-    200: 'Your booping finger must be tired! \u{1F4AA}',
-    500: 'LEGENDARY BOOPER STATUS ACHIEVED! \u{1F451}'
-  };
-
-  boopDog.addEventListener('click', () => {
-    boops++;
-    boopCount.textContent = boops;
-
-    // Bounce animation
-    boopDog.classList.remove('booped');
-    void boopDog.offsetWidth; // trigger reflow
-    boopDog.classList.add('booped');
-
-    // Floating reaction
-    boopReaction.textContent = reactions[Math.floor(Math.random() * reactions.length)];
-    boopReaction.classList.remove('show');
-    void boopReaction.offsetWidth;
-    boopReaction.classList.add('show');
-
-    // Milestones
-    if (milestoneMessages[boops]) {
-      boopMilestones.textContent = milestoneMessages[boops];
-      boopMilestones.style.animation = 'none';
-      void boopMilestones.offsetWidth;
-      boopMilestones.style.animation = 'fadeInOut 3s ease';
-    }
-
-    // Scale count animation
-    boopCount.style.transform = 'scale(1.3)';
-    setTimeout(() => { boopCount.style.transform = 'scale(1)'; }, 150);
-  });
-
-  // --- Testimonials Carousel ---
-  const track = document.getElementById('testimonialTrack');
-  const prevBtn = document.getElementById('carouselPrev');
-  const nextBtn = document.getElementById('carouselNext');
-  const dotsContainer = document.getElementById('carouselDots');
-  let currentSlide = 0;
-  let totalSlides = track.querySelectorAll('.testimonial-card').length;
-  let autoPlayInterval;
-
-  // (Re)build the dots — called once for the hardcoded cards and again after
-  // approved reviews from the API are appended to the track.
-  function buildCarouselDots() {
-    totalSlides = track.querySelectorAll('.testimonial-card').length;
-    dotsContainer.innerHTML = '';
-    for (let i = 0; i < totalSlides; i++) {
-      const dot = document.createElement('button');
-      dot.classList.add('carousel-dot');
-      dot.setAttribute('aria-label', `Go to testimonial ${i + 1}`);
-      if (i === currentSlide) dot.classList.add('active');
-      dot.addEventListener('click', () => goToSlide(i));
-      dotsContainer.appendChild(dot);
-    }
-  }
-
-  buildCarouselDots();
-
-  function goToSlide(index) {
-    currentSlide = index;
-    track.style.transform = `translateX(-${currentSlide * 100}%)`;
-    document.querySelectorAll('.carousel-dot').forEach((dot, i) => {
-      dot.classList.toggle('active', i === currentSlide);
-    });
-  }
-
-  function nextSlide() {
-    goToSlide((currentSlide + 1) % totalSlides);
-  }
-
-  function prevSlide() {
-    goToSlide((currentSlide - 1 + totalSlides) % totalSlides);
-  }
-
-  nextBtn.addEventListener('click', () => { nextSlide(); resetAutoPlay(); });
-  prevBtn.addEventListener('click', () => { prevSlide(); resetAutoPlay(); });
-
-  // Auto-play
-  function startAutoPlay() {
-    autoPlayInterval = setInterval(nextSlide, 5000);
-  }
-
-  function resetAutoPlay() {
-    clearInterval(autoPlayInterval);
-    startAutoPlay();
-  }
-
-  startAutoPlay();
-
-  // Swipe support for mobile
-  let touchStartX = 0;
-  let touchEndX = 0;
-
-  track.addEventListener('touchstart', (e) => {
-    touchStartX = e.changedTouches[0].screenX;
-  }, { passive: true });
-
-  track.addEventListener('touchend', (e) => {
-    touchEndX = e.changedTouches[0].screenX;
-    const diff = touchStartX - touchEndX;
-    if (Math.abs(diff) > 50) {
-      if (diff > 0) nextSlide();
-      else prevSlide();
-      resetAutoPlay();
-    }
-  }, { passive: true });
-
-  // --- Approved Reviews (appended after the hardcoded testimonials) ---
-  async function loadDynamicReviews() {
+  async function postJson(url, body) {
+    let res;
     try {
-      const res = await fetch('/api/reviews');
-      if (!res.ok) return;
-      const reviews = await res.json();
-      if (!Array.isArray(reviews) || reviews.length === 0) return;
-
-      reviews.forEach(r => {
-        const rating = Math.min(5, Math.max(1, parseInt(r.rating, 10) || 5));
-        const subtitle = r.pet_name ? `${r.pet_name}'s human` : 'Happy pack member';
-        const card = document.createElement('div');
-        card.className = 'testimonial-card';
-        card.innerHTML = `
-          <div class="testimonial-stars">${'⭐'.repeat(rating)}</div>
-          <p>"${escapeText(r.review_text)}"</p>
-          <div class="testimonial-author">
-            <div class="author-avatar">\u{1F43E}</div>
-            <div>
-              <strong>${escapeText(r.reviewer_name)}</strong>
-              <span>${escapeText(subtitle)}</span>
-            </div>
-          </div>
-        `;
-        track.appendChild(card);
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(body)
       });
-
-      buildCarouselDots();
-    } catch (e) {
-      // API not available, keep static content
+    } catch {
+      throw new Error('We could not reach the server. Please check your connection and try again.');
     }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || `Request failed (${res.status}). Please try again.`);
+    }
+    return data;
   }
 
-  loadDynamicReviews();
+  function initReviewForm() {
+    const form = document.getElementById('reviewForm');
+    if (!form) return;
+    const message = document.getElementById('reviewFormMsg');
+    const button = form.querySelector('button[type="submit"]');
+    const stars = Array.from(form.querySelectorAll('.review-star'));
+    let rating = 5;
 
-  // --- Review Submission Form ---
-  const reviewForm = document.getElementById('reviewForm');
-  if (reviewForm) {
-    const stars = reviewForm.querySelectorAll('.review-star');
-    let selectedRating = 5;
+    function paint() {
+      stars.forEach(star => {
+        const value = parseInt(star.dataset.rating, 10);
+        star.classList.toggle('active', value <= rating);
+        star.setAttribute('aria-checked', value === rating ? 'true' : 'false');
+        star.tabIndex = value === rating ? 0 : -1;
+      });
+    }
 
     stars.forEach(star => {
       star.addEventListener('click', () => {
-        selectedRating = parseInt(star.getAttribute('data-rating'), 10);
-        stars.forEach(s => {
-          s.classList.toggle('active', parseInt(s.getAttribute('data-rating'), 10) <= selectedRating);
-        });
+        rating = parseInt(star.dataset.rating, 10);
+        paint();
+      });
+      // A radiogroup must be operable with arrow keys, not just clicks.
+      star.addEventListener('keydown', e => {
+        const delta = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1
+          : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+        if (!delta) return;
+        e.preventDefault();
+        rating = Math.min(5, Math.max(1, rating + delta));
+        paint();
+        stars[rating - 1].focus();
       });
     });
+    paint();
 
-    reviewForm.addEventListener('submit', async (e) => {
+    form.addEventListener('submit', async e => {
       e.preventDefault();
-      const msg = document.getElementById('reviewFormMsg');
-      const btn = reviewForm.querySelector('button[type="submit"]');
-      msg.className = 'review-form-msg';
-      btn.disabled = true;
+      const name = form.querySelector('#reviewName');
+      const text = form.querySelector('#reviewText');
+      if (!name.value.trim()) { name.focus(); message.className = 'form-msg error'; message.textContent = 'Please add your name.'; return; }
+      if (!text.value.trim()) { text.focus(); message.className = 'form-msg error'; message.textContent = 'Please write your review.'; return; }
 
-      try {
-        const res = await fetch('/api/reviews', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            reviewer_name: document.getElementById('reviewName').value.trim(),
-            pet_name: document.getElementById('reviewPetName').value.trim(),
-            rating: selectedRating,
-            review_text: document.getElementById('reviewText').value.trim()
-          })
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body.error || 'Something went wrong. Please try again.');
-
-        reviewForm.reset();
-        selectedRating = 5;
-        stars.forEach(s => s.classList.add('active'));
-        msg.textContent = 'Thanks for sharing! Your review will appear once it’s approved. \u{1F389}';
-        msg.classList.add('success');
-      } catch (err) {
-        msg.textContent = err.message;
-        msg.classList.add('error');
-      } finally {
-        btn.disabled = false;
-      }
-    });
-  }
-
-  // --- Newsletter Form ---
-  const newsletterForm = document.getElementById('newsletterForm');
-
-  newsletterForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const input = newsletterForm.querySelector('input[type="email"]');
-    const btn = newsletterForm.querySelector('button');
-    const originalText = btn.textContent;
-    const email = (input?.value || '').trim();
-    if (!email) return;
-
-    btn.disabled = true;
-    btn.textContent = 'Subscribing...';
-
-    try {
-      const res = await fetch('/api/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, source: 'homepage' })
-      });
-
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(body.error || 'Subscription failed');
-      }
-
-      btn.textContent = 'Subscribed! \u{1F389}';
-      btn.style.background = 'var(--secondary)';
-      newsletterForm.reset();
-    } catch (err) {
-      btn.textContent = 'Try again';
-      btn.style.background = '';
-      console.error('[newsletter]', err);
-    } finally {
-      setTimeout(() => {
-        btn.disabled = false;
-        btn.textContent = originalText;
-        btn.style.background = '';
-      }, 3000);
-    }
-  });
-
-  // --- Service Card Tilt Effect ---
-  document.querySelectorAll('[data-tilt]').forEach(card => {
-    card.addEventListener('mousemove', (e) => {
-      const rect = card.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      const centerX = rect.width / 2;
-      const centerY = rect.height / 2;
-      const rotateX = (y - centerY) / 20;
-      const rotateY = (centerX - x) / 20;
-      card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-8px)`;
-    });
-
-    card.addEventListener('mouseleave', () => {
-      card.style.transform = '';
-    });
-  });
-
-  // --- Smooth active nav highlighting ---
-  const sections = document.querySelectorAll('section[id]');
-
-  window.addEventListener('scroll', () => {
-    const scrollY = window.scrollY + 100;
-
-    sections.forEach(section => {
-      const top = section.offsetTop;
-      const height = section.offsetHeight;
-      const id = section.getAttribute('id');
-
-      if (scrollY >= top && scrollY < top + height) {
-        document.querySelectorAll('.nav-links a').forEach(link => {
-          link.classList.remove('active');
-          if (link.getAttribute('href') === `#${id}`) {
-            link.classList.add('active');
-          }
-        });
-      }
-    });
-  });
-
-  // --- Easter Egg: Konami Code ---
-  const konamiCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown',
-                      'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight',
-                      'b', 'a'];
-  let konamiIndex = 0;
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === konamiCode[konamiIndex]) {
-      konamiIndex++;
-      if (konamiIndex === konamiCode.length) {
-        konamiIndex = 0;
-        activateEasterEgg();
-      }
-    } else {
-      konamiIndex = 0;
-    }
-  });
-
-  function activateEasterEgg() {
-    document.body.style.transition = 'filter 0.5s';
-    document.body.style.filter = 'hue-rotate(180deg)';
-
-    // Rain dogs!
-    for (let i = 0; i < 30; i++) {
-      setTimeout(() => {
-        const dog = document.createElement('div');
-        dog.textContent = ['\u{1F436}', '\u{1F415}', '\u{1F43E}', '\u{1F9AE}'][Math.floor(Math.random() * 4)];
-        dog.style.cssText = `
-          position: fixed;
-          top: -50px;
-          left: ${Math.random() * 100}%;
-          font-size: ${30 + Math.random() * 40}px;
-          z-index: 10000;
-          pointer-events: none;
-          animation: dogRain ${2 + Math.random() * 3}s linear forwards;
-        `;
-        document.body.appendChild(dog);
-        setTimeout(() => dog.remove(), 5000);
-      }, i * 100);
-    }
-
-    // Add the animation
-    if (!document.getElementById('easterEggStyles')) {
-      const style = document.createElement('style');
-      style.id = 'easterEggStyles';
-      style.textContent = `
-        @keyframes dogRain {
-          0% { transform: translateY(0) rotate(0deg); opacity: 1; }
-          100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+      await submitForm({
+        form, button, message, busyLabel: 'Submitting…',
+        run: async () => {
+          await postJson('/api/reviews', {
+            reviewer_name: name.value.trim(),
+            pet_name: form.querySelector('#reviewPetName').value.trim(),
+            rating,
+            review_text: text.value.trim()
+          });
+          return 'Thank you. Your review will appear here once it has been approved.';
         }
-      `;
-      document.head.appendChild(style);
-    }
-
-    setTimeout(() => {
-      document.body.style.filter = '';
-    }, 5000);
+      });
+      rating = 5;
+      paint();
+    });
   }
 
-});
+  function initNewsletterForm() {
+    const form = document.getElementById('newsletterForm');
+    if (!form) return;
+    const message = document.getElementById('newsletterMsg');
+    const button = form.querySelector('button[type="submit"]');
+    const email = form.querySelector('#newsletterEmail');
+    const consent = form.querySelector('#newsletterConsent');
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      if (!email.value.trim()) {
+        email.focus();
+        message.className = 'form-msg error';
+        message.textContent = 'Please enter your email address.';
+        return;
+      }
+      // Marketing consent is a separate, unticked box. Refusing to submit
+      // without it is the point: silent opt-in is not consent.
+      if (!consent.checked) {
+        consent.focus();
+        message.className = 'form-msg error';
+        message.textContent = 'Please tick the box to confirm you want marketing email.';
+        return;
+      }
+
+      await submitForm({
+        form, button, message, busyLabel: 'Subscribing…',
+        run: async () => {
+          await postJson('/api/subscribe', {
+            email: email.value.trim(),
+            source: 'homepage',
+            marketing_consent: true
+          });
+          return 'Subscribed. You can unsubscribe from any email we send.';
+        }
+      });
+    });
+  }
+
+  function initInquiryForm() {
+    const form = document.getElementById('inquiryForm');
+    if (!form) return;
+    const message = document.getElementById('inquiryMsg');
+    const button = form.querySelector('button[type="submit"]');
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const name = form.querySelector('#inquiryName');
+      const email = form.querySelector('#inquiryEmail');
+      const body = form.querySelector('#inquiryMessage');
+
+      // Validate in the order the fields appear and move focus to the first
+      // problem, so a keyboard user is taken to what needs fixing.
+      for (const [field, problem] of [
+        [name, !name.value.trim() && 'Please tell us your name.'],
+        [email, !email.value.trim() && 'Please give us an email address so we can reply.'],
+        [body, body.value.trim().length < 10 && 'Please tell us a little more about what you need.']
+      ]) {
+        if (!problem) continue;
+        field.focus();
+        message.className = 'form-msg error';
+        message.textContent = problem;
+        return;
+      }
+
+      await submitForm({
+        form, button, message, busyLabel: 'Sending…',
+        run: async () => {
+          const serviceId = form.querySelector('#inquiryService').value;
+          const data = await postJson('/api/inquiries', {
+            name: name.value.trim(),
+            email: email.value.trim(),
+            phone: form.querySelector('#inquiryPhone').value.trim(),
+            message: body.value.trim(),
+            service_id: serviceId ? Number(serviceId) : undefined,
+            website: form.querySelector('#inquiryWebsite').value
+          });
+          return data.message || 'Thanks — we have your message and will reply by email.';
+        }
+      });
+    });
+  }
+
+  onReady(() => {
+    initPawPrints();
+    initNav();
+    initReveal();
+    initTilt();
+    initCarousel();
+    initBoop();
+    initReviewForm();
+    initNewsletterForm();
+    initInquiryForm();
+  });
+})();

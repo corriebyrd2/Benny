@@ -50,22 +50,34 @@ test.describe('auth', () => {
   });
 
   test.describe('customer registration & login', () => {
-    test('registers a new customer and returns a token', async ({ request }) => {
+    test('registration accepts a new customer without signing them in', async ({ request }) => {
       const res = await request.post('/api/customer/register', {
         data: {
           name: 'Jane Doe',
           email: 'jane@test.local',
           password: 'password123',
           phone: '555-0100',
-          dog_name: 'Fido'
+          dog_name: 'Fido',
+          accept_policies: { terms: true, privacy: true }
         }
       });
-      expect(res.status()).toBe(201);
+      // 202 and NO session: registration must look identical whether or not the
+      // address already exists, so it cannot hand out a session for one case
+      // and not the other. See "does not reveal whether an email is registered".
+      expect(res.status()).toBe(202);
       const body = await res.json();
-      expect(body).toHaveProperty('token');
-      expect(body.customer.email).toBe('jane@test.local');
-      expect(body.customer.dogs).toHaveLength(1);
-      expect(body.customer.dogs[0].name).toBe('Fido');
+      expect(body).not.toHaveProperty('token');
+      expect(body.next_step).toBe('sign_in');
+
+      // The account really was created, and signing in works.
+      const login = await request.post('/api/customer/login', {
+        data: { email: 'jane@test.local', password: 'password123' }
+      });
+      expect(login.status()).toBe(200);
+      const session = await login.json();
+      expect(session.customer.email).toBe('jane@test.local');
+      expect(session.customer.dogs).toHaveLength(1);
+      expect(session.customer.dogs[0].name).toBe('Fido');
     });
 
     test('rejects short passwords', async ({ request }) => {
@@ -75,14 +87,40 @@ test.describe('auth', () => {
       expect(res.status()).toBe(400);
     });
 
-    test('rejects duplicate email (case-insensitive)', async ({ request }) => {
+    test('does not reveal whether an email is already registered', async ({ request }) => {
       await request.post('/api/customer/register', {
-        data: { name: 'First', email: 'dup@test.local', password: 'password123' }
+        data: {
+          name: 'First', email: 'dup@test.local', password: 'password123',
+          accept_policies: { terms: true, privacy: true }
+        }
       });
-      const res = await request.post('/api/customer/register', {
-        data: { name: 'Second', email: 'DUP@test.local', password: 'password123' }
+      // A second attempt on the SAME address must be indistinguishable from a
+      // first attempt on a new one. It previously answered
+      // 409 "An account with this email already exists", which let anyone test
+      // an address list against the site.
+      const duplicate = await request.post('/api/customer/register', {
+        data: {
+          name: 'Second', email: 'DUP@test.local', password: 'password123',
+          accept_policies: { terms: true, privacy: true }
+        }
       });
-      expect(res.status()).toBe(409);
+      const fresh = await request.post('/api/customer/register', {
+        data: {
+          name: 'Third', email: 'brand-new@test.local', password: 'password123',
+          accept_policies: { terms: true, privacy: true }
+        }
+      });
+
+      expect(duplicate.status()).toBe(202);
+      expect(duplicate.status()).toBe(fresh.status());
+      expect(await duplicate.json()).toEqual(await fresh.json());
+
+      // And the duplicate attempt did not overwrite the original account.
+      const login = await request.post('/api/customer/login', {
+        data: { email: 'dup@test.local', password: 'password123' }
+      });
+      expect(login.status()).toBe(200);
+      expect((await login.json()).customer.name).toBe('First');
     });
 
     test('customer can log in and fetch profile', async ({ request }) => {
@@ -91,7 +129,8 @@ test.describe('auth', () => {
           name: 'Login Tester',
           email: 'login@test.local',
           password: 'password123',
-          dog_name: 'Rover'
+          dog_name: 'Rover',
+          accept_policies: { terms: true, privacy: true }
         }
       });
       const loginRes = await request.post('/api/customer/login', {

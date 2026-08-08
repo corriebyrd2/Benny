@@ -16,6 +16,9 @@ const { pool, seed } = require('./database');
 
 const emailLog = [];
 
+// Mirrors Stripe's idempotency behaviour for the refund stub — see below.
+const refundsByIdempotencyKey = new Map();
+
 function assertNotProduction() {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('Test harness must never be loaded in production');
@@ -42,7 +45,7 @@ function install() {
         at: new Date().toISOString()
       });
     }
-  });
+  }, { markConfigured: true });
 
   // Stripe stub. Returns deterministic URLs; the real Stripe SDK is never called.
   // Webhook verification still uses the real SDK via the test route below.
@@ -75,6 +78,27 @@ function install() {
           if (s) s.status = 'expired';
           return s || { id, status: 'expired' };
         }
+      }
+    },
+    refunds: {
+      // The idempotency key is honoured, not ignored: the production code
+      // relies on Stripe returning the SAME refund for a retried request, and
+      // a stub that minted a fresh id every time would let a double-refund bug
+      // pass the suite.
+      async create({ payment_intent, amount, metadata }, options = {}) {
+        const key = options.idempotencyKey;
+        if (key && refundsByIdempotencyKey.has(key)) {
+          return refundsByIdempotencyKey.get(key);
+        }
+        const refund = {
+          id: `re_test_${Date.now()}_${Math.round(Math.random() * 1e6)}`,
+          payment_intent,
+          amount,
+          metadata,
+          status: 'succeeded'
+        };
+        if (key) refundsByIdempotencyKey.set(key, refund);
+        return refund;
       }
     },
     paymentIntents: {
@@ -132,6 +156,18 @@ function buildRouter() {
     res.json({ cleared: true });
   });
 
+  // Force the malware scanner's verdict so the quarantine and scanner-error
+  // branches can be exercised without shipping a scanner.
+  router.post('/malware/mode', (req, res) => {
+    const mode = req.body && req.body.mode;
+    const allowed = ['off', 'clean', 'quarantined', 'error'];
+    if (!allowed.includes(mode)) {
+      return res.status(400).json({ error: `mode must be one of: ${allowed.join(', ')}` });
+    }
+    require('./malwareScan').__setForcedOutcome(mode === 'off' ? null : mode);
+    res.json({ mode });
+  });
+
   router.post('/rate-limits/reset', (req, res) => {
     const limiters = req.app.locals.limiters || {};
     for (const l of Object.values(limiters)) {
@@ -148,19 +184,35 @@ function buildRouter() {
 
   router.post('/db/reset', async (req, res, next) => {
     try {
+      // Booking ids restart at 1, so a stale idempotency key from a previous
+      // spec would otherwise collide with a fresh booking's refund.
+      refundsByIdempotencyKey.clear();
       // Truncate every app table in dependency order. Using CASCADE is safer
       // for FKs, but RESTART IDENTITY resets SERIALs so tests have predictable ids.
+      // Every app table. site_settings was previously missing, so a spec that
+      // edited a setting leaked into later specs (the homepage title assertion
+      // failed against a business_name another spec had written).
       await pool.query(`
         TRUNCATE TABLE
           email_events,
+          document_events,
+          inquiries,
+          refunds,
+          sessions,
+          stripe_events,
+          booking_events,
           dog_documents,
           dogs,
           bookings,
           customers,
+          password_reset_tokens,
+          email_verification_tokens,
           photos,
           reviews,
           services,
+          site_settings,
           subscribers,
+          policy_acceptances,
           audit_logs,
           admins
         RESTART IDENTITY CASCADE

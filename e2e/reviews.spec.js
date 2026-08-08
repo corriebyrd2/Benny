@@ -149,8 +149,9 @@ test.describe('Reviews UI', () => {
     await page.click('#reviewForm button[type="submit"]');
     await expect(page.locator('#reviewFormMsg')).toHaveClass(/success/);
 
-    // Approve it via the API, then reload: the carousel should grow by one
-    // card that reuses the hardcoded testimonial template.
+    // Approve it via the API, then reload. The four invented testimonials that
+    // used to be hardcoded in the markup are gone, so the carousel contains
+    // exactly the reviews real customers submitted and an admin approved.
     const token = await loginAdmin(request);
     const pending = await (await request.get('/api/reviews/all?status=pending', {
       headers: { authorization: `Bearer ${token}` }
@@ -163,12 +164,11 @@ test.describe('Reviews UI', () => {
 
     await page.goto('/');
     const cards = page.locator('.testimonial-card');
-    await expect(cards).toHaveCount(5); // 4 hardcoded + 1 approved
-    await expect(page.locator('.carousel-dot')).toHaveCount(5);
-    const newCard = cards.last();
+    await expect(cards).toHaveCount(1);
+    const newCard = cards.first();
     await expect(newCard).toContainText('UI Tester');
     await expect(newCard).toContainText("Waffles's human");
-    await expect(newCard.locator('.testimonial-stars')).toHaveText('⭐⭐⭐⭐');
+    await expect(newCard.locator('.testimonial-stars')).toContainText('4 out of 5 stars');
   });
 
   test('admin panel lists pending reviews and approves from the queue', async ({ page, request }) => {

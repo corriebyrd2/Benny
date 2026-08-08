@@ -1,13 +1,15 @@
 const express = require('express');
-const { query } = require('../database');
+const { query, getClient } = require('../database');
 const { authenticateToken, requirePermission, logAudit } = require('../auth');
 const { authenticateCustomer } = require('../customerAuth');
 const mailer = require('../email');
 const { getStripe } = require('../stripeClient');
+const { quoteBooking, stripeLineItems } = require('../pricing');
+const { recordBookingEvent, listBookingEvents } = require('../bookingAudit');
+const { SETTLED, notSettledSql } = require('../paymentStatus');
 
 const router = express.Router();
 
-const MS_PER_DAY = 86400000;
 const MAX_DOGS_PER_BOOKING = 10;
 
 // Allowed values for the two independent status columns. Used to reject typos
@@ -54,64 +56,148 @@ async function expireOpenStripeSessions(stripe, booking) {
   }
 }
 
-// Number of nights between two YYYY-MM-DD dates (0 if end <= start or invalid).
-function nightsBetween(startDate, endDate) {
-  const ms = new Date(endDate).getTime() - new Date(startDate).getTime();
-  if (!Number.isFinite(ms) || ms <= 0) return 0;
-  return Math.round(ms / MS_PER_DAY);
-}
-
-// The billing unit is stored on the service (billing_unit: night | day |
-// session). Older rows created before that column fall back to the legacy
-// price_label heuristic so their pricing is unchanged.
-function billingUnitFor(service) {
-  const unit = String(service.billing_unit || '').toLowerCase();
-  if (unit === 'night' || unit === 'day' || unit === 'session') return unit;
-  const label = String(service.price_label || '').toLowerCase();
-  if (label.includes('night')) return 'night';
-  if (label.includes('day')) return 'day';
-  return 'session';
-}
-
-// Boarding/daycare are billed per-night/per-day, so the total must scale with
-// the length of stay; grooming/training are per-session (flat). Every service
-// rate is also per-dog — a booking for two pups doubles the price.
+// Pricing is owned by server/pricing.js — the single authoritative source used
+// by marketing cards, booking quotes, Stripe line items, emails and receipts.
+// Nothing here re-derives an amount from a label or a client-supplied value.
 function computeAmountCents(service, startDate, endDate, dogCount) {
-  const base = Number(service.price_cents) || 0;
-  const count = normalizeDogCount(dogCount);
-  const unit = billingUnitFor(service);
-  if (unit === 'session' || !startDate || !endDate) return base * count;
-  const nights = nightsBetween(startDate, endDate);
-  // Per-night charges the number of nights; per-day charges inclusive days.
-  const qty = unit === 'night' ? Math.max(1, nights) : Math.max(1, nights + 1);
-  return base * qty * count;
+  return quoteBooking({ service, startDate, endDate, dogCount }).total_cents;
 }
 
-// Public: Check availability for a given date
-// Returns count of non-cancelled bookings that overlap the requested date.
-// Capacity is fixed at 10 slots per day.
-router.get('/availability', async (req, res) => {
-  const { date } = req.query;
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return res.status(400).json({ error: 'date query param required (YYYY-MM-DD)' });
+// A service may be publicly visible without being bookable (see
+// migrations/0014). Only 'bookable' services may be selected in a booking; the
+// others route to an inquiry or show an explicit unavailable status.
+function bookableError(service) {
+  if (!service) return 'Invalid service selected';
+  if (service.active === false) return 'Invalid service selected';
+  if (service.booking_mode === 'inquiry') {
+    return `${service.name} is not available for instant booking yet. Please contact us to enquire.`;
   }
+  if (service.booking_mode === 'unavailable') {
+    return `${service.name} is temporarily unavailable.`;
+  }
+  return null;
+}
 
-  const { rows } = await query(
-    `SELECT COUNT(*)::int AS count FROM bookings
+// Daily capacity, in dogs. Configurable so the owner can set it to the real
+// number rather than the 10 that was hard-coded in the availability endpoint.
+const DAILY_CAPACITY = Math.max(1, Number(process.env.DAILY_CAPACITY || 10));
+
+// How many dogs are already booked in on a given date. Counts DOGS, not
+// bookings: one booking for four dogs consumes four places. The old
+// availability endpoint counted bookings, so it under-reported occupancy for
+// every multi-dog stay.
+async function bookedDogsOn(client, date) {
+  const { rows } = await client.query(
+    `SELECT COALESCE(SUM(GREATEST(dog_count, 1)), 0)::int AS dogs
+     FROM bookings
      WHERE status != 'cancelled'
        AND start_date IS NOT NULL
        AND start_date <= $1
        AND COALESCE(end_date, start_date) >= $1`,
     [date]
   );
+  return rows[0].dogs;
+}
 
-  const count = rows[0].count;
-  const capacity = 10;
-  res.json({ date, count, capacity, available: count < capacity });
+// Every date a stay occupies, inclusive of both ends.
+function datesInStay(startDate, endDate) {
+  if (!startDate) return [];
+  const out = [];
+  const start = Date.parse(`${startDate}T00:00:00Z`);
+  const end = Date.parse(`${(endDate || startDate)}T00:00:00Z`);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return [];
+  // A guard against a pathological range consuming the request.
+  const MAX_NIGHTS = 366;
+  for (let t = start, i = 0; t <= end && i <= MAX_NIGHTS; t += 86400000, i++) {
+    out.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+/**
+ * Reserve capacity and insert, atomically.
+ *
+ * Booking creation never consulted capacity at all — the availability endpoint
+ * reported it, and nothing enforced it, so a full day could be booked
+ * arbitrarily many times. Checking and then inserting in two statements would
+ * still lose a race between two simultaneous requests, so the check and the
+ * insert run inside one transaction guarded by advisory locks.
+ *
+ * EVERY occupied date is locked, not just the first. Locking only the start
+ * date left overlapping stays that begin on different days unserialised: an
+ * Aug 1-3 booking and an Aug 2-4 booking took different locks, both read the
+ * capacity for Aug 2 before either inserted, and both took the last place.
+ *
+ * The locks are taken in ascending date order, which is the order
+ * `datesInStay` produces. A consistent order across all callers is what makes
+ * this deadlock-free: two overlapping stays always contend on their earliest
+ * shared date first. MAX_NIGHTS bounds how many locks a single request can
+ * take.
+ *
+ * Returns { booking } or { conflict: { date, booked, capacity, requested } }.
+ */
+async function insertBookingWithCapacity({ dates, dogs, insertSql, insertParams }) {
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    if (dates.length > 0) {
+      const ordered = [...dates].sort();
+      for (const date of ordered) {
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [date]);
+      }
+
+      for (const date of ordered) {
+        const booked = await bookedDogsOn(client, date);
+        if (booked + dogs > DAILY_CAPACITY) {
+          await client.query('ROLLBACK');
+          return {
+            conflict: { date, booked, capacity: DAILY_CAPACITY, requested: dogs }
+          };
+        }
+      }
+    }
+
+    const { rows } = await client.query(insertSql, insertParams);
+    await client.query('COMMIT');
+    return { booking: rows[0] };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+function capacityError(conflict) {
+  const remaining = Math.max(0, conflict.capacity - conflict.booked);
+  return remaining === 0
+    ? `We're fully booked on ${conflict.date}. Please choose different dates or contact us.`
+    : `We only have room for ${remaining} more dog${remaining === 1 ? '' : 's'} on ${conflict.date}. ` +
+      `Please choose different dates or contact us.`;
+}
+
+// Public: Check availability for a given date
+// Reports how many DOG PLACES are taken on the requested date.
+router.get('/availability', async (req, res) => {
+  const { date } = req.query;
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: 'date query param required (YYYY-MM-DD)' });
+  }
+
+  const count = await bookedDogsOn({ query }, date);
+  res.json({
+    date,
+    count,
+    capacity: DAILY_CAPACITY,
+    remaining: Math.max(0, DAILY_CAPACITY - count),
+    available: count < DAILY_CAPACITY
+  });
 });
 
 // Public: Create a booking
-router.post('/', async (req, res) => {
+router.post('/', async (req, res, next) => {
+  try {
   const { owner_name, email, phone, dog_name, service_id, preferred_dates, message, start_date, end_date, dog_count } = req.body;
 
   if (!owner_name || !email || !dog_name || !service_id) {
@@ -125,17 +211,20 @@ router.post('/', async (req, res) => {
 
   const { rows: serviceRows } = await query('SELECT * FROM services WHERE id = $1', [service_id]);
   const service = serviceRows[0];
-  if (!service) {
-    return res.status(400).json({ error: 'Invalid service selected' });
+  const notBookable = bookableError(service);
+  if (notBookable) {
+    return res.status(400).json({ error: notBookable });
   }
 
   const dogs = normalizeDogCount(dog_count);
   const amount_cents = computeAmountCents(service, start_date, end_date, dogs);
 
-  const { rows } = await query(
-    `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, start_date, end_date, dog_count)
+  const { booking, conflict } = await insertBookingWithCapacity({
+    dates: datesInStay(start_date, end_date),
+    dogs,
+    insertSql: `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, start_date, end_date, dog_count)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
-    [
+    insertParams: [
       owner_name, email, phone || '', dog_name,
       service_id, service.name,
       preferred_dates || '', message || '',
@@ -143,8 +232,10 @@ router.post('/', async (req, res) => {
       start_date || null, end_date || null,
       dogs
     ]
-  );
-  const booking = rows[0];
+  });
+  if (conflict) {
+    return res.status(409).json({ error: capacityError(conflict), conflict });
+  }
 
   await Promise.all([
     mailer.sendNewBookingToOwner({ booking }),
@@ -156,6 +247,9 @@ router.post('/', async (req, res) => {
     message: 'Booking request submitted',
     amount_cents
   });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Authenticated customer: Get my bookings
@@ -170,7 +264,8 @@ router.get('/my', authenticateCustomer, async (req, res) => {
 });
 
 // Authenticated customer: Create a booking
-router.post('/customer-book', authenticateCustomer, async (req, res) => {
+router.post('/customer-book', authenticateCustomer, async (req, res, next) => {
+  try {
   const { dog_name, dog_id, dog_names, service_id, preferred_dates, message, start_date, end_date, dog_count } = req.body;
 
   const dateError = validateDateRange(start_date, end_date);
@@ -232,8 +327,9 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
     [service_id]
   );
   const service = serviceRows[0];
-  if (!service) {
-    return res.status(400).json({ error: 'Invalid service selected' });
+  const notBookable = bookableError(service);
+  if (notBookable) {
+    return res.status(400).json({ error: notBookable });
   }
 
   const { rows: customerRows } = await query('SELECT * FROM customers WHERE id = $1', [req.customer.id]);
@@ -250,10 +346,12 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
   const resolvedDogName = resolvedNames.join(', ');
   const amount_cents = computeAmountCents(service, start_date, end_date, dogs);
 
-  const { rows } = await query(
-    `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, customer_id, start_date, end_date, dog_count)
+  const { booking, conflict } = await insertBookingWithCapacity({
+    dates: datesInStay(start_date, end_date),
+    dogs,
+    insertSql: `INSERT INTO bookings (owner_name, email, phone, dog_name, service_id, service_name, preferred_dates, message, amount_cents, customer_id, start_date, end_date, dog_count)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
-    [
+    insertParams: [
       customer.name, customer.email, customer.phone || '',
       resolvedDogName, service_id, service.name,
       preferred_dates || '', message || '',
@@ -261,8 +359,10 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
       start_date || null, end_date || null,
       dogs
     ]
-  );
-  const booking = rows[0];
+  });
+  if (conflict) {
+    return res.status(409).json({ error: capacityError(conflict), conflict });
+  }
 
   await Promise.all([
     mailer.sendNewBookingToOwner({ booking }),
@@ -275,6 +375,9 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
     service_name: service.name,
     amount_cents
   });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // NOTE: There is deliberately no unauthenticated "look up bookings by email"
@@ -305,6 +408,16 @@ router.get('/', authenticateToken, requirePermission('read'), async (req, res) =
 
   const { rows } = await query(sql, params);
   res.json(rows);
+});
+
+// Admin: the immutable transition trail for one booking. This is what makes a
+// payment dispute answerable.
+router.get('/:id/events', authenticateToken, requirePermission('read'), async (req, res, next) => {
+  try {
+    res.json(await listBookingEvents(req.params.id));
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Admin: Get single booking
@@ -413,8 +526,8 @@ router.put('/:id', authenticateToken, requirePermission('write'), async (req, re
              stripe_payment_id = COALESCE(NULLIF($1, ''), stripe_payment_id),
              status = CASE WHEN status = 'pending' THEN 'confirmed' ELSE status END,
              updated_at = NOW()
-           WHERE id = $2 AND payment_status != 'paid'`,
-          [paymentIntentId, existingBooking.id]
+           WHERE id = $2 AND ${notSettledSql(3)}`,
+          [paymentIntentId, existingBooking.id, SETTLED]
         );
         return res.status(409).json({
           error: 'Customer just paid via the existing link. Refresh to see the paid status.'
@@ -510,19 +623,25 @@ router.post('/:id/approve', authenticateToken, requirePermission('write'), async
   if (stripe) {
     try {
       const base = `${req.protocol}://${req.get('host')}`;
+      // Line items are built from the same quote the customer was shown, so the
+      // Stripe dashboard, Stripe's own receipt and our confirmation email all
+      // display an identical breakdown instead of three separate derivations.
+      const { rows: svcRows } = await query('SELECT * FROM services WHERE id = $1', [booking.service_id]);
+      const quote = quoteBooking({
+        service: svcRows[0] || { price_cents: booking.amount_cents, billing_unit: 'session' },
+        startDate: booking.start_date,
+        endDate: booking.end_date,
+        dogCount: booking.dog_count
+      });
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
-        line_items: [{
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: booking.service_name,
-              description: `Booking #${booking.id} for ${booking.dog_name} - Benny and the Pets`
-            },
-            unit_amount: booking.amount_cents
-          },
-          quantity: 1
-        }],
+        line_items: stripeLineItems({
+          service: svcRows[0] || { name: booking.service_name },
+          quote,
+          bookingId: booking.id,
+          dogName: booking.dog_name,
+          authoritativeTotalCents: booking.amount_cents
+        }),
         mode: 'payment',
         metadata: { booking_id: booking.id.toString() },
         success_url: `${base}/my-bookings?email=${encodeURIComponent(booking.email)}&booking=${booking.id}`,
@@ -534,8 +653,8 @@ router.post('/:id/approve', authenticateToken, requirePermission('write'), async
            stripe_session_id = $2,
            stripe_session_ids = array_append(stripe_session_ids, $2),
            updated_at = NOW()
-         WHERE id = $1 AND payment_status != 'paid'`,
-        [booking.id, session.id]
+         WHERE id = $1 AND ${notSettledSql(3)}`,
+        [booking.id, session.id, SETTLED]
       );
     } catch (err) {
       console.error('[approve] failed to create Stripe checkout session:', err.message);
@@ -573,8 +692,32 @@ router.post('/:id/cancel', authenticateToken, requirePermission('write'), async 
   );
 
   await mailer.sendBookingCancelledToCustomer({ booking: rows[0], reason: reason || '' });
+  await recordBookingEvent({
+    bookingId: Number(req.params.id),
+    event: 'cancelled',
+    from: { status: existing.status, payment_status: existing.payment_status },
+    to: { status: 'cancelled', payment_status: rows[0].payment_status },
+    actorType: 'admin',
+    actorId: req.admin.id,
+    detail: reason || ''
+  });
   await logAudit(req.admin.id, req.admin.email, 'cancel', 'bookings', req.params.id, reason || '');
-  res.json({ message: 'Booking cancelled' });
+
+  // Cancelling a PAID booking used to keep the money with no prompt and no
+  // record. Surface what the published policy owes so the refund is a decision
+  // rather than an oversight.
+  const paidCents = Number(existing.amount_cents) || 0;
+  const refundedCents = Number(existing.refunded_cents) || 0;
+  const owesRefund = ['paid', 'partially_refunded'].includes(existing.payment_status)
+    && refundedCents < paidCents;
+
+  res.json({
+    message: 'Booking cancelled',
+    refund_due: owesRefund,
+    refund_hint: owesRefund
+      ? 'This booking was paid. Check the refund quote and issue a refund if one is owed.'
+      : null
+  });
 });
 
 // Admin: Mark booking as completed and paid

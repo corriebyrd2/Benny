@@ -3,18 +3,41 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
-const connectionString = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL;
-if (!connectionString) {
+const rawConnectionString = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL;
+if (!rawConnectionString) {
   throw new Error('NEON_DATABASE_URL (or DATABASE_URL) is required');
+}
+// pg parses `sslmode` out of the URL and that parse wins over the explicit
+// `ssl` pool option, so a URL carrying sslmode=disable would still negotiate
+// TLS. Strip the parameter and let resolveSsl() below be the single authority.
+const SSLMODE_RE = /([?&])sslmode=([^&]*)(&|$)/i;
+const urlSslMode = (rawConnectionString.match(SSLMODE_RE)?.[2] || '').toLowerCase();
+const connectionString = rawConnectionString
+  .replace(SSLMODE_RE, (_m, lead, _v, trail) => (lead === '?' && trail === '&' ? '?' : (trail === '&' ? lead : '')))
+  .replace(/\?$/, '');
+
+// TLS mode. Managed Postgres (Neon) terminates TLS at a proxy whose chain the
+// default CA bundle may not verify, so the hosted default stays
+// rejectUnauthorized:false. A local/CI Postgres speaking plain TCP must be able
+// to turn TLS off entirely — otherwise the driver negotiates SSL against a
+// server that doesn't offer it and every query fails. `sslmode=disable` in the
+// connection string, or DATABASE_SSL=disable, selects that.
+function resolveSsl() {
+  const mode = (process.env.DATABASE_SSL || urlSslMode || '').toLowerCase();
+  if (mode === 'disable') return false;
+  if (mode === 'verify-full') return { rejectUnauthorized: true };
+  return { rejectUnauthorized: false };
 }
 
 const pool = new Pool({
   connectionString,
-  // Neon terminates TLS at the proxy; the default CA bundle may not match.
-  ssl: { rejectUnauthorized: false },
-  max: 10,
+  ssl: resolveSsl(),
+  max: Number(process.env.PGPOOL_MAX || 10),
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000
+  connectionTimeoutMillis: 10000,
+  // Bound how long a single statement may hold a pooled connection. Without
+  // this a pathological query pins a connection until the client disconnects.
+  statement_timeout: Number(process.env.PG_STATEMENT_TIMEOUT_MS || 15000)
 });
 
 pool.on('error', (err) => {
@@ -94,21 +117,22 @@ async function seed() {
     console.log('[seed] created initial admin');
   }
 
-  // Default company info — inserted only on first run; the admin can edit these
-  // through the Settings panel afterwards.
+  // Site settings.
+  //
+  // Only values that are TRUE FOR THIS BUSINESS are seeded. Contact details,
+  // address, hours, phone and email are deliberately absent: there is no
+  // correct default for them, and the previous placeholder seeds
+  // ("123 Pawsome Lane", "(555) BENNY-PET", "woof@bennyandthepets.com") were
+  // published to visitors and search engines as if they were real. Missing
+  // values hide their component and block launch — see server/businessProfile.js.
+  //
+  // The Facebook URL is the one externally verifiable profile that already
+  // shipped and resolves; Instagram/TikTok stay empty until the owner supplies
+  // real profile URLs, and their footer links are not rendered while empty.
   const defaultSettings = {
     business_name: 'Benny and the Pets',
     footer_tagline: 'Where tails never stop wagging and every pup is family.',
-    contact_address_line1: '123 Pawsome Lane',
-    contact_address_line2: 'Dogtown, CA 90210',
-    contact_phone_display: '(555) BENNY-PET',
-    contact_phone_secondary: '(555) 236-6973',
-    contact_email: 'woof@bennyandthepets.com',
-    hours_weekday: 'Mon-Sat: 7am - 7pm',
-    hours_weekend: 'Sun: 8am - 5pm',
-    facebook_url: 'https://www.facebook.com/profile.php?id=61563336148397',
-    instagram_url: '',
-    tiktok_url: ''
+    facebook_url: 'https://www.facebook.com/profile.php?id=61563336148397'
   };
   for (const [key, value] of Object.entries(defaultSettings)) {
     await pool.query(
@@ -119,32 +143,44 @@ async function seed() {
 
   const { rows: serviceRows } = await pool.query('SELECT COUNT(*)::int AS count FROM services');
   if (serviceRows[0].count === 0) {
+    // The catalog is the single source of truth for BOTH marketing cards and
+    // the booking form (see server/routes/services.js). Only the two services
+    // the business actually delivers today are seeded active; grooming and
+    // training are seeded inactive because their rates, and the "certified
+    // trainers" credential claim, are unverified owner facts. Publishing them
+    // as immediately bookable is what produced the original four-cards /
+    // two-API-services mismatch.
+    //
+    // No price_label column: labels are derived from price_cents + billing_unit.
     const seeds = [
+      // name, description, icon, perks, price_cents, is_featured, order, billing_unit, booking_mode, active
       ['Overnight Boarding',
-        'Cozy suites with bedtime stories (yes, really) and midnight check-ins. Your pup sleeps like royalty.',
+        'Cozy suites with evening check-ins, so your dog sleeps somewhere calm and supervised.',
         '\u{1F3E0}',
         JSON.stringify(['Private suites', 'Evening walk included', 'Breakfast & dinner']),
-        4500, 'From $45/night', false, 1, 'night'],
+        4500, false, 1, 'night', 'bookable', true],
       ['Doggy Daycare',
-        'A full day of socialization, play, and structured activities. Your dog will come home happily exhausted!',
+        'A full day of supervised socialisation, play and rest. Your dog comes home happily tired.',
         '\u2600\uFE0F',
         JSON.stringify(['Supervised group play', 'Nap time included', 'Photo updates']),
-        3000, 'From $30/day', true, 2, 'day'],
+        3000, true, 2, 'day', 'bookable', true],
       ['Spa & Grooming',
-        'Bath time shouldn\'t be a battle. Our gentle groomers make every pup feel pampered and pretty.',
+        'Bath, blow-dry and nail trimming. Availability and rates are being confirmed.',
         '\u{1F6C0}',
         JSON.stringify(['Bath & blow-dry', 'Nail trimming', 'Coat brushing']),
-        3500, 'From $35/session', false, 3, 'session'],
+        3500, false, 3, 'session', 'inquiry', false],
       ['Training Sessions',
-        'Positive reinforcement training that makes learning fun. From basics to impressive tricks!',
+        'One-to-one positive-reinforcement sessions. Availability and rates are being confirmed.',
         '\u{1F3C3}',
-        JSON.stringify(['1-on-1 sessions', 'Certified trainers', 'Progress reports']),
-        5000, 'From $50/session', false, 4, 'session']
+        JSON.stringify(['1-on-1 sessions', 'Progress reports']),
+        5000, false, 4, 'session', 'inquiry', false]
     ];
     for (const s of seeds) {
       await pool.query(
-        `INSERT INTO services (name, description, icon, perks, price_cents, price_label, is_featured, display_order, billing_unit)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        `INSERT INTO services
+           (name, description, icon, perks, price_cents, is_featured, display_order,
+            billing_unit, booking_mode, active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         s
       );
     }

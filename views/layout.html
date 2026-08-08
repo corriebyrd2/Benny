@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{{title}}</title>
+  <meta name="description" content="{{description}}">
+  <meta name="robots" content="{{robots}}">
+  <link rel="canonical" href="{{canonical}}">
+
+  <meta property="og:type" content="{{og_type}}">
+  <meta property="og:title" content="{{title}}">
+  <meta property="og:description" content="{{description}}">
+  <meta property="og:url" content="{{canonical}}">
+  <meta property="og:site_name" content="{{brand}}">
+  <meta property="og:image" content="{{og_image}}">
+  <meta property="og:image:alt" content="{{og_image_alt}}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{title}}">
+  <meta name="twitter:description" content="{{description}}">
+  <meta name="twitter:image" content="{{og_image}}">
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/logo/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/logo/favicon-16.png">
+  <link rel="apple-touch-icon" href="/images/logo/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta name="theme-color" content="#ff8c42">
+
+  <!-- No third-party font requests.
+       The site previously pulled Fredoka One and Nunito from fonts.googleapis.com
+       on a render-blocking <link>. That cost a DNS lookup, a TLS handshake and
+       two round trips before first paint on the critical path, made the page's
+       `load` event depend on a third-party host, and contradicted the cookie
+       notice's statement that the site makes no third-party requests.
+
+       The stack below renders immediately from fonts already on the device.
+       To restore the brand faces, self-host them: drop the WOFF2 files under
+       /fonts, add @font-face rules with font-display:swap, and preload only the
+       one face used above the fold. See docs/PERFORMANCE.md. -->
+  <link rel="stylesheet" href="{{asset_css}}">
+
+  {{{json_ld}}}
+  {{{head_extra}}}
+</head>
+<body class="{{body_class}}">
+  <a class="skip-link" href="#main">Skip to main content</a>
+  {{{body}}}
+</body>
+</html>

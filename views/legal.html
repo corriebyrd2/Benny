@@ -1,0 +1,54 @@
+  <header>
+    <nav class="navbar navbar-solid" aria-label="Primary">
+      <div class="nav-container">
+        <a href="/" class="logo">
+          <picture>
+            <source srcset="/images/logo/logo-48.avif" type="image/avif">
+            <source srcset="/images/logo/logo-48.webp" type="image/webp">
+            <img src="/images/logo/logo-96.png" width="48" height="48" alt="" class="logo-img" decoding="async">
+          </picture>
+          <span class="logo-text">{{brand}}</span>
+        </a>
+        <ul class="nav-links">
+          <li><a href="/#services">Services</a></li>
+          <li><a href="/#contact">Contact</a></li>
+          <li><a href="/my-bookings" class="nav-cta">My account</a></li>
+        </ul>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main" class="doc-page">
+    <div class="container container-narrow">
+      <nav aria-label="Breadcrumb" class="breadcrumb">
+        <ol>
+          <li><a href="/">Home</a></li>
+          <li><a href="/legal">Policies</a></li>
+          <li aria-current="page">{{policy.title}}</li>
+        </ol>
+      </nav>
+
+      <h1>{{policy.title}}</h1>
+      <p class="doc-meta">
+        Version {{policy.version}} &middot; Effective {{policy.effective}}
+      </p>
+      <p class="doc-summary">{{policy.summary}}</p>
+
+      {{{draft_banner_html}}}
+
+      {{{sections_html}}}
+
+      <hr>
+      <h2>Other policies</h2>
+      <ul class="doc-index">{{{siblings_html}}}</ul>
+      <p><a href="/#contact">Contact us</a> if anything on this page is unclear.</p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-bottom">
+        <p>&copy; {{year}} {{legal_name}}. <a href="/legal">All policies</a></p>
+      </div>
+    </div>
+  </footer>

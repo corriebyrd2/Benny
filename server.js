@@ -11,12 +11,28 @@ const {
   registerCustomer,
   loginCustomer,
   authenticateCustomer,
+  createEmailVerificationToken,
   createPasswordResetToken,
   resetPasswordWithToken,
-  validatePassword
+  validatePassword,
+  verifyEmailWithToken
 } = require('./server/customerAuth');
-const { sendPasswordResetToCustomer } = require('./server/email');
+const mailer = require('./server/email');
+const { sendPasswordResetToCustomer } = mailer;
 const { init: initDb, query } = require('./server/database');
+const sessions = require('./server/sessions');
+const {
+  EARNING: EARNING_PAYMENT_STATUSES,
+  isSettled: isPaymentSettled,
+  netRevenueCents
+} = require('./server/paymentStatus');
+const metrics = require('./server/metrics');
+const assets = require('./server/assets');
+const { newNonce } = require('./server/render');
+const { launchCheck, formatLaunchReport } = require('./server/businessProfile');
+const htmlShell = require('./server/htmlShell');
+const { validateAcceptance, recordAcceptance, listAcceptancesForCustomer } = require('./server/policyAcceptance');
+const { listPolicies, requiredForPoint } = require('./server/legal');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -76,17 +92,90 @@ app.set('trust proxy', 1);
 // express.static keeps its own ETag handling for cacheable assets.
 app.set('etag', false);
 
-// Security headers. CSP is disabled because admin.html/customer.html use extensive
-// inline scripts/styles that a strict CSP would break. HSTS is only enabled in
-// production — sending it from a local dev server would lock browsers into
-// http→https upgrades that fail when developers come back to plain http.
+// Per-request CSP nonce. The admin and customer portals carry large inline
+// <script>/<style> blocks; stamping a nonce into them (see server/htmlShell.js)
+// is what lets the policy below run WITHOUT 'unsafe-inline'.
+app.use((req, res, next) => {
+  res.locals.cspNonce = newNonce();
+  next();
+});
+
+// Security headers.
+//
+// CSP was previously disabled outright ("inline scripts would break"), which
+// left the app with no defence-in-depth against injected script at all. Script
+// carries no 'unsafe-inline' and no 'unsafe-eval': every inline <script> is
+// nonced per request.
+//
+// STYLE IS SPLIT DELIBERATELY, and this is a stated trade-off rather than an
+// oversight:
+//
+//   style-src-elem  'self' + per-request nonce — no 'unsafe-inline'. This is
+//                   the half that matters: injected <style> blocks and remote
+//                   stylesheets are refused.
+//   style-src-attr  'unsafe-inline'. A nonce CANNOT apply to a style="..."
+//                   attribute — the CSP spec has no mechanism for it, only
+//                   'unsafe-hashes' over every literal value, which is
+//                   unmaintainable across ~90 distinct declarations.
+//
+// A single `style-src` with a nonce silently dropped EVERY style attribute in
+// the admin and customer portals — 40 violations on one page load — which broke
+// grid layouts and left elements meant to start hidden (a cancellation-reason
+// box, success banners) permanently visible. The portals shipped that way
+// unnoticed, because a blocked style attribute fails quietly.
+//
+// What is given up: with an HTML-injection hole an attacker could set style
+// attributes. What that cannot reach: script (nonce-locked), and the CSS
+// exfiltration channels — img-src, font-src and connect-src are all 'self',
+// so an injected `background: url(https://attacker/…)` never leaves the origin.
+//
+// frame-ancestors 'none' is the frame protection (X-Frame-Options is legacy and
+// helmet still emits it alongside). connect-src is same-origin only: the app
+// makes no cross-origin XHR. Stripe Checkout is a full-page redirect, not an
+// embed, so it needs no frame-src or script-src entry.
 app.use(helmet({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: {
+      'default-src': ["'self'"],
+      'base-uri': ["'self'"],
+      'object-src': ["'none'"],
+      'frame-ancestors': ["'none'"],
+      'form-action': ["'self'"],
+      'script-src': ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
+      'script-src-attr': ["'none'"],
+      // Fallback for browsers predating style-src-elem/attr (Firefox < 75,
+      // Safari < 15.4). Without it those browsers fall through to
+      // default-src 'self', which does not carry the nonce, and the portals
+      // render with no stylesheet at all. Browsers that understand the two
+      // directives below ignore this one for both contexts.
+      'style-src': ["'self'", "'unsafe-inline'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
+      'style-src-elem': ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
+      'style-src-attr': ["'unsafe-inline'"],
+      'font-src': ["'self'", 'data:'],
+      'img-src': ["'self'", 'data:', 'blob:'],
+      'connect-src': ["'self'"],
+      'manifest-src': ["'self'"],
+      'upgrade-insecure-requests': IS_PROD ? [] : null
+    }
+  },
   crossOriginEmbedderPolicy: false,
-  crossOriginResourcePolicy: { policy: 'cross-origin' },
-  hsts: IS_PROD ? { maxAge: 15552000, includeSubDomains: true } : false
+  crossOriginResourcePolicy: { policy: 'same-origin' },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  hsts: IS_PROD ? { maxAge: 63072000, includeSubDomains: true, preload: true } : false
 }));
 
+// Permissions-Policy: switch off browser features this app never uses, so an
+// injected script cannot silently reach for a camera, microphone or location.
+app.use((req, res, next) => {
+  res.setHeader('Permissions-Policy',
+    'accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), ' +
+    'fullscreen=(self), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), ' +
+    'midi=(), payment=(), publickey-credentials-get=(), screen-wake-lock=(), usb=(), xr-spatial-tracking=()');
+  next();
+});
+
+app.use(metrics.requestMetrics);
 app.use(compression());
 
 // CORS whitelist. FRONTEND_ORIGIN is a comma-separated list of allowed origins.
@@ -98,17 +187,37 @@ app.use(compression());
 // while credentials: true is set.
 const allowedOrigins = (process.env.FRONTEND_ORIGIN || '')
   .split(',').map(s => s.trim()).filter(Boolean);
-app.use(cors((req, cb) => {
+
+function originAllowed(req) {
   const origin = req.header('Origin');
-  const sameOrigin = origin && origin === `${req.protocol}://${req.get('host')}`;
-  const allowed =
-    !origin ||
-    sameOrigin ||
-    allowedOrigins.includes(origin) ||
-    (allowedOrigins.length === 0 && !IS_PROD);
-  if (!allowed) return cb(new Error('Not allowed by CORS'));
+  if (!origin) return true;
+  if (origin === `${req.protocol}://${req.get('host')}`) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  // Outside production, an empty allowlist means "developer machine" — accept
+  // anything so a local frontend on another port can work. In production an
+  // empty allowlist means same-origin only.
+  return allowedOrigins.length === 0 && !IS_PROD;
+}
+
+app.use(cors((req, cb) => {
+  // Never signal an allowlist decision by throwing: the thrown error reached
+  // the generic error handler and the browser got an opaque 500, which is
+  // indistinguishable from the server being broken. Reflect no CORS headers
+  // instead and let the explicit 403 below answer the request.
+  if (!originAllowed(req)) return cb(null, { origin: false });
   cb(null, { origin: true, credentials: true });
 }));
+
+// Explicit, machine-readable CORS denial. A disallowed cross-origin request
+// gets a 403 with a clear reason rather than a 500 or a silent hang.
+app.use((req, res, next) => {
+  if (originAllowed(req)) return next();
+  if (req.method === 'OPTIONS') return res.status(403).end();
+  return res.status(403).json({
+    error: 'cors_origin_not_allowed',
+    message: 'This origin is not permitted to call the API.'
+  });
+});
 
 // Webhooks need the raw body for signature verification, so they must be
 // mounted BEFORE express.json() consumes the stream.
@@ -138,6 +247,38 @@ app.use((req, res, next) => {
   next();
 });
 
+// Metrics, in Prometheus text format.
+//
+// Guarded by a bearer token rather than left open: the counters expose traffic
+// shape and error rates, which is reconnaissance for anyone probing. When
+// METRICS_TOKEN is unset the endpoint is available only from a loopback
+// address, so a local Prometheus works out of the box while a public scrape
+// does not.
+app.get('/metrics', (req, res) => {
+  const token = process.env.METRICS_TOKEN;
+  if (token) {
+    const provided = (req.headers.authorization || '').replace(/^Bearer /, '');
+    if (provided !== token) return res.status(401).type('text/plain').send('unauthorized\n');
+  } else {
+    const ip = req.ip || '';
+    const local = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+    if (!local) return res.status(404).end();
+  }
+  res.type('text/plain; version=0.0.4').send(metrics.render());
+});
+
+// Readiness: is this process able to serve traffic right now? Distinct from
+// liveness — a process that is up but cannot reach its database should be taken
+// out of rotation, not restarted.
+app.get('/readyz', async (req, res) => {
+  try {
+    await query('SELECT 1');
+    res.json({ ready: true });
+  } catch (err) {
+    res.status(503).json({ ready: false, reason: 'database_unreachable' });
+  }
+});
+
 // Health check — hits the database to confirm it's reachable.
 app.get('/healthz', async (req, res, next) => {
   try {
@@ -148,17 +289,27 @@ app.get('/healthz', async (req, res, next) => {
   }
 });
 
-// Static assets — explicit directories only, to avoid exposing server.js, package.json, .env, etc.
-app.use('/css', express.static(path.join(__dirname, 'css'), { maxAge: IS_PROD ? '7d' : 0 }));
-app.use('/js', express.static(path.join(__dirname, 'js'), { maxAge: IS_PROD ? '7d' : 0 }));
-app.use('/images', express.static(path.join(__dirname, 'images'), { maxAge: IS_PROD ? '30d' : 0 }));
+// Content-hashed assets first: /css/style.<hash>.css and /js/main.<hash>.js are
+// immutable for a year. The unhashed paths remain available for anything not
+// yet migrated, with a short max-age.
+app.use(assets.middleware);
+app.use('/css', express.static(path.join(__dirname, 'css'), { maxAge: IS_PROD ? '1h' : 0 }));
+app.use('/js', express.static(path.join(__dirname, 'js'), { maxAge: IS_PROD ? '1h' : 0 }));
+app.use('/images', express.static(path.join(__dirname, 'images'), {
+  maxAge: IS_PROD ? '30d' : 0,
+  immutable: IS_PROD
+}));
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: IS_PROD ? '30d' : 0 }));
 
-// HTML pages
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
-app.get('/my-bookings', (req, res) => res.sendFile(path.join(__dirname, 'customer.html')));
+// Server-rendered public pages (homepage, /services/:slug, /legal/*,
+// robots.txt, sitemap.xml, site.webmanifest).
+app.use('/', require('./server/routes/pages'));
+
+// Account portals. Served through htmlShell so their inline scripts receive
+// this request's CSP nonce.
+app.get('/admin', htmlShell.serve(path.join(__dirname, 'admin.html')));
+app.get('/my-bookings', htmlShell.serve(path.join(__dirname, 'customer.html')));
 
 // Rate limiters
 const authLimiter = rateLimit({
@@ -196,6 +347,13 @@ const publicBookingLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many booking requests. Try again in an hour.' }
 });
+const inquiryLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many enquiries. Please try again in an hour, or email us directly.' }
+});
 const reviewSubmitLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 5,
@@ -203,48 +361,239 @@ const reviewSubmitLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many review submissions. Try again in an hour.' }
 });
-app.locals.limiters = { authLimiter, registerLimiter, subscribeLimiter, passwordResetRequestLimiter, publicBookingLimiter, reviewSubmitLimiter };
+app.locals.limiters = { authLimiter, registerLimiter, subscribeLimiter, passwordResetRequestLimiter, publicBookingLimiter, reviewSubmitLimiter, inquiryLimiter };
 
 // Admin auth
-app.post('/api/auth/login', authLimiter, async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
+app.post('/api/auth/login', authLimiter, async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+    const result = await loginAdmin(email, password);
+    if (!result) {
+      metrics.increment('benny_auth_failures_total', { kind: 'admin_login' });
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // A fresh session per sign-in — never reuse or extend an existing one.
+    const session = await sessions.createSession({
+      subjectType: 'admin', subjectId: result.adminId, req
+    });
+    sessions.setSessionCookies(res, session);
+
+    // The opaque token is returned so programmatic clients can use Bearer auth.
+    // Browsers ignore it and rely on the HttpOnly cookie; no AUTHENTICATED
+    // endpoint ever discloses a token, so an injected script cannot obtain one.
+    res.json({ token: session.token, csrf_token: session.csrfToken, admin: result.admin });
+  } catch (err) {
+    next(err);
   }
-  const result = await loginAdmin(email, password);
-  if (!result) {
-    return res.status(401).json({ error: 'Invalid email or password' });
+});
+
+// Admin: end this session. Idempotent — signing out twice is not an error.
+app.post('/api/auth/logout', async (req, res, next) => {
+  try {
+    const credential = sessions.credentialFrom(req);
+    if (credential.token) await sessions.revokeSession(credential.token, 'logout');
+    sessions.clearSessionCookies(res);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
   }
-  res.json(result);
 });
 
 // Customer auth
-app.post('/api/customer/register', registerLimiter, async (req, res) => {
-  const { name, email, password, phone, dog_name } = req.body;
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: 'Name, email, and password are required' });
+// Registration.
+//
+// The response is IDENTICAL whether or not the address is already registered:
+// same status, same body, no session either way. It previously answered
+// 409 "An account with this email already exists", which let anyone test an
+// address list against the site and learn who is a customer.
+//
+// The person who owns the address is told by email that someone tried to sign
+// up with it. The person who submitted the form learns nothing.
+app.post('/api/customer/register', registerLimiter, async (req, res, next) => {
+  try {
+    const { name, email, password, phone, dog_name, accept_policies, marketing_consent } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Name, email, and password are required' });
+    }
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return res.status(400).json({ error: passwordError });
+    }
+
+    // Contractual acceptance is required and must be explicit — an absent field
+    // is a refusal, never a default. Marketing consent is a SEPARATE, optional
+    // flag and is never inferred from accepting the terms.
+    const acceptanceErrors = validateAcceptance('registration', accept_policies);
+    if (acceptanceErrors.length) {
+      return res.status(400).json({
+        error: acceptanceErrors.join('; '),
+        required_policies: requiredForPoint('registration')
+      });
+    }
+
+    const base = (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    const result = await registerCustomer(name, email, password, phone, dog_name);
+
+    if (result.created) {
+      await recordAcceptance({
+        customerId: result.customer.id,
+        email: result.customer.email,
+        point: 'registration',
+        accepted: accept_policies,
+        req
+      });
+
+      if (marketing_consent === true) {
+        await query(
+          `INSERT INTO subscribers (email, source, consent_at, consent_source)
+           VALUES ($1, $2, NOW(), $2)
+           ON CONFLICT (LOWER(email)) DO UPDATE
+             SET unsubscribed_at = NULL, consent_at = NOW(),
+                 consent_source = EXCLUDED.consent_source`,
+          [result.customer.email, 'registration']
+        ).catch(err => console.error('[register] marketing opt-in failed', err.message));
+      }
+
+      await mailer.sendEmailVerificationToCustomer({
+        to: result.customer.email,
+        name: result.customer.name,
+        verifyLink: `${base}/my-bookings?verify=${encodeURIComponent(result.verificationToken)}`
+      }).catch(err => console.error('[register] verification email failed', err.message));
+    } else {
+      // The address already has an account. Tell its OWNER, and nobody else.
+      await mailer.sendRegistrationAttemptToExistingCustomer({
+        to: result.existingCustomer.email,
+        name: result.existingCustomer.name,
+        signInLink: `${base}/my-bookings`,
+        resetLink: `${base}/my-bookings?forgot=1`
+      }).catch(err => console.error('[register] duplicate-registration notice failed', err.message));
+    }
+
+    // 202 with no session, in both branches. The client tells the person to
+    // sign in — which succeeds for a new account and fails generically for
+    // someone guessing at an existing one.
+    res.status(202).json({
+      message: 'Check your email. If the address is new, your account is ready — sign in to continue.',
+      next_step: 'sign_in'
+    });
+  } catch (err) {
+    next(err);
   }
-  const passwordError = validatePassword(password);
-  if (passwordError) {
-    return res.status(400).json({ error: passwordError });
-  }
-  const result = await registerCustomer(name, email, password, phone, dog_name);
-  if (result.error) {
-    return res.status(409).json({ error: result.error });
-  }
-  res.status(201).json(result);
 });
 
-app.post('/api/customer/login', authLimiter, async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
+// Confirm an email address from the emailed link.
+app.post('/api/customer/verify-email', authLimiter, async (req, res, next) => {
+  try {
+    const result = await verifyEmailWithToken(req.body?.token);
+    if (result.error) {
+      return res.status(400).json({ error: result.error });
+    }
+    res.json({ ok: true, email: result.customer.email });
+  } catch (err) {
+    next(err);
   }
-  const result = await loginCustomer(email, password);
-  if (!result) {
-    return res.status(401).json({ error: 'Invalid email or password' });
+});
+
+// Re-send the confirmation link to the signed-in customer.
+app.post('/api/customer/resend-verification', authenticateCustomer, passwordResetRequestLimiter,
+  async (req, res, next) => {
+    try {
+      const { rows } = await query(
+        'SELECT id, name, email, email_verified_at FROM customers WHERE id = $1',
+        [req.customer.id]
+      );
+      const customer = rows[0];
+      if (!customer) return res.status(404).json({ error: 'Customer not found' });
+      if (customer.email_verified_at) {
+        return res.json({ ok: true, already_verified: true });
+      }
+
+      const base = (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+      const { token } = await createEmailVerificationToken(customer.id);
+      await mailer.sendEmailVerificationToCustomer({
+        to: customer.email,
+        name: customer.name,
+        verifyLink: `${base}/my-bookings?verify=${encodeURIComponent(token)}`
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+app.post('/api/customer/login', authLimiter, async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+    const result = await loginCustomer(email, password);
+    if (!result) {
+      metrics.increment('benny_auth_failures_total', { kind: 'customer_login' });
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    if (result.unverified) {
+      return res.status(403).json({
+        error: 'Please confirm your email address first. Check your inbox for the link we sent.',
+        email_verification_required: true
+      });
+    }
+
+    const session = await sessions.createSession({
+      subjectType: 'customer', subjectId: result.customerId, req
+    });
+    sessions.setSessionCookies(res, session);
+    res.json({ token: session.token, csrf_token: session.csrfToken, customer: result.customer });
+  } catch (err) {
+    next(err);
   }
-  res.json(result);
+});
+
+// Customer: end this session.
+app.post('/api/customer/logout', async (req, res, next) => {
+  try {
+    const credential = sessions.credentialFrom(req);
+    if (credential.token) await sessions.revokeSession(credential.token, 'logout');
+    sessions.clearSessionCookies(res);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Customer: see where they are signed in, and sign every other device out.
+app.get('/api/customer/sessions', authenticateCustomer, async (req, res, next) => {
+  try {
+    const active = await sessions.listActiveSessions('customer', req.customer.id);
+    res.json(active.map(s => ({
+      id: s.id,
+      current: s.id === req.session.id,
+      created_at: s.created_at,
+      last_seen_at: s.last_seen_at,
+      expires_at: s.expires_at,
+      user_agent: s.user_agent
+    })));
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post('/api/customer/sessions/revoke-others', authenticateCustomer, async (req, res, next) => {
+  try {
+    await sessions.revokeAllForSubject('customer', req.customer.id, 'revoke_others');
+    // Re-issue for the caller so the action does not sign them out too.
+    const session = await sessions.createSession({
+      subjectType: 'customer', subjectId: req.customer.id, req
+    });
+    sessions.setSessionCookies(res, session);
+    res.json({ ok: true, token: session.token, csrf_token: session.csrfToken });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Password reset — always responds 200 so we never reveal whether an email is
@@ -279,7 +628,9 @@ app.post('/api/customer/reset-password', authLimiter, async (req, res, next) => 
     if (result.error) {
       return res.status(400).json({ error: result.error });
     }
-    res.json({ ok: true });
+    // Surfaced so the customer can see that other devices were signed out —
+    // and so the test suite can prove it happened.
+    res.json({ ok: true, sessions_revoked: result.sessions_revoked || 0 });
   } catch (err) {
     next(err);
   }
@@ -315,8 +666,37 @@ app.use('/api/subscribe', subscribeLimiter, require('./server/routes/subscribers
 // moderation routes on the same router stay unlimited.
 app.post('/api/reviews', reviewSubmitLimiter, (req, res, next) => next('route'));
 app.use('/api/reviews', require('./server/routes/reviews'));
+app.post('/api/inquiries', inquiryLimiter, (req, res, next) => next('route'));
+app.use('/api/inquiries', require('./server/routes/inquiries'));
 app.use('/api/campaigns', require('./server/routes/campaigns'));
+app.use('/api/customer/account', require('./server/routes/account'));
 app.use('/api/settings', require('./server/routes/settings'));
+
+// Public: the policy catalogue and which policies must be accepted where. The
+// customer portal renders its consent checkboxes from this, so the client can
+// never drift from what the server actually enforces.
+app.get('/api/legal/policies', (req, res) => {
+  res.json({
+    policies: listPolicies().map(p => ({
+      slug: p.slug, title: p.title, version: p.version,
+      effective: p.effective, summary: p.summary, draft: !!p.draft,
+      acceptance: p.acceptance, url: `/legal/${p.slug}`
+    })),
+    acceptance_points: {
+      registration: requiredForPoint('registration'),
+      booking: requiredForPoint('booking')
+    }
+  });
+});
+
+// Authenticated customer: what they have accepted, and when.
+app.get('/api/legal/my-acceptances', authenticateCustomer, async (req, res, next) => {
+  try {
+    res.json(await listAcceptancesForCustomer(req.customer.id));
+  } catch (err) {
+    next(err);
+  }
+});
 
 if (TEST_MODE) {
   app.use('/api/__test__', require('./server/testHarness').buildRouter());
@@ -331,15 +711,24 @@ const { authenticateToken, requirePermission } = require('./server/auth');
 // render without a second round-trip.
 app.get('/api/admin/clients', authenticateToken, requirePermission('read'), async (req, res, next) => {
   try {
+    // Bounded. This endpoint loaded EVERY customer, dog, document and booking
+    // into memory and aggregated there — fine at hundreds of clients, a latency
+    // cliff at tens of thousands. The cap is generous enough that the panel is
+    // unchanged for any realistic present-day dataset, and `truncated` tells the
+    // caller when it has been hit rather than silently showing a partial list.
+    const MAX_ROWS = Math.min(5000, Math.max(50, Number(req.query.limit) || 2000));
+
     const [customersRes, dogsRes, documentsRes, bookingsRes] = await Promise.all([
-      query('SELECT id, name, email, phone, created_at FROM customers ORDER BY created_at DESC'),
-      query('SELECT id, customer_id, name, breed, weight, age, notes, created_at FROM dogs'),
-      query(`SELECT id, dog_id, original_name, mime_type, size_bytes, uploaded_at
-             FROM dog_documents ORDER BY uploaded_at DESC`),
+      query('SELECT id, name, email, phone, created_at FROM customers ORDER BY created_at DESC LIMIT $1', [MAX_ROWS]),
+      query('SELECT id, customer_id, name, breed, weight, age, notes, created_at FROM dogs LIMIT $1', [MAX_ROWS * 3]),
+      query(`SELECT id, dog_id, original_name,
+                    COALESCE(NULLIF(detected_mime, ''), mime_type) AS mime_type,
+                    size_bytes, scan_status, uploaded_at
+             FROM dog_documents ORDER BY uploaded_at DESC LIMIT $1`, [MAX_ROWS * 3]),
       query(`SELECT id, owner_name, email, phone, dog_name, service_name, preferred_dates,
-                    status, payment_status, amount_cents, customer_id, start_date, end_date,
-                    dog_count, created_at
-             FROM bookings WHERE status != 'cancelled' ORDER BY created_at DESC`)
+                    status, payment_status, amount_cents, refunded_cents, customer_id,
+                    start_date, end_date, dog_count, created_at
+             FROM bookings WHERE status != 'cancelled' ORDER BY created_at DESC LIMIT $1`, [MAX_ROWS * 5])
     ]);
 
     const customers = customersRes.rows;
@@ -438,6 +827,7 @@ app.get('/api/admin/clients', authenticateToken, requirePermission('read'), asyn
         status: b.status,
         payment_status: b.payment_status,
         amount_cents: Number(b.amount_cents) || 0,
+        refunded_cents: Number(b.refunded_cents) || 0,
         created_at: b.created_at
       });
 
@@ -460,9 +850,12 @@ app.get('/api/admin/clients', authenticateToken, requirePermission('read'), asyn
     }
 
     const clients = Array.from(clientsByEmail.values()).map(client => {
-      const paid = client.bookings.filter(b => b.payment_status === 'paid');
-      const pending = client.bookings.filter(b => b.status !== 'cancelled' && b.payment_status !== 'paid');
-      const total_spent_cents = paid.reduce((s, b) => s + b.amount_cents, 0);
+      // Revenue is NET: a partly refunded booking still earned what was kept,
+      // and counting it as unpaid both erased the retained amount and listed
+      // the customer as still owing the full price.
+      const total_spent_cents = client.bookings.reduce((s, b) => s + netRevenueCents(b), 0);
+      const pending = client.bookings.filter(
+        b => b.status !== 'cancelled' && !isPaymentSettled(b.payment_status));
       const pending_revenue_cents = pending.reduce((s, b) => s + b.amount_cents, 0);
       return {
         ...client,
@@ -508,6 +901,8 @@ app.get('/api/admin/clients', authenticateToken, requirePermission('read'), asyn
 
     res.json({
       clients,
+      truncated: customers.length >= MAX_ROWS,
+      limit: MAX_ROWS,
       kpis: {
         total_revenue_cents: totalRevenue,
         pending_revenue_cents: pendingRevenue,
@@ -544,8 +939,14 @@ app.get('/api/dashboard/stats', authenticateToken, requirePermission('read'), as
     query("SELECT COUNT(*)::int AS count FROM bookings WHERE status = 'confirmed'"),
     query('SELECT COUNT(*)::int AS count FROM photos'),
     query('SELECT COUNT(*)::int AS count FROM services WHERE active = TRUE'),
-    query("SELECT COUNT(*)::int AS count FROM bookings WHERE payment_status = 'paid'"),
-    query("SELECT COALESCE(SUM(amount_cents), 0)::bigint AS total FROM bookings WHERE payment_status = 'paid'"),
+    // A partly refunded booking was still paid for. Counting only 'paid' meant
+    // refunding $10 of a $100 booking dropped the whole $100 off the
+    // dashboard, reporting $0 earned instead of the $90 actually retained.
+    query(`SELECT COUNT(*)::int AS count FROM bookings WHERE payment_status = ANY($1)`,
+      [EARNING_PAYMENT_STATUSES]),
+    query(`SELECT COALESCE(SUM(GREATEST(amount_cents - COALESCE(refunded_cents, 0), 0)), 0)::bigint AS total
+             FROM bookings WHERE payment_status = ANY($1)`,
+      [EARNING_PAYMENT_STATUSES]),
     query('SELECT * FROM bookings ORDER BY created_at DESC LIMIT 5')
   ]);
 
@@ -571,6 +972,7 @@ app.use((req, res) => res.status(404).end());
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error('[error]', req.method, req.originalUrl, err);
+  metrics.increment('benny_unhandled_errors_total', {});
   const status = err.status || 500;
   const message = IS_PROD && status === 500 ? 'Internal server error' : (err.message || 'Internal server error');
   res.status(status).json({ error: message });
@@ -597,6 +999,21 @@ async function bootstrap() {
         `Check R2_BUCKET_NAME and that the R2 API token has Object Read & Write permission.`
       );
     }
+  }
+
+  // Report missing business/legal configuration loudly at boot. Public
+  // components that would have rendered an unconfigured fact hide themselves,
+  // so the site stays truthful, but an administrator needs to see WHY. The
+  // deploy-blocking version of this check is `npm run check:launch`.
+  try {
+    const result = await launchCheck();
+    if (result.ok) {
+      console.log('[launch-check]', formatLaunchReport(result));
+    } else {
+      console.error('[launch-check] ' + formatLaunchReport(result).split('\n').join('\n[launch-check] '));
+    }
+  } catch (err) {
+    console.error('[launch-check] could not run:', err.message);
   }
 
   app.listen(PORT, () => {

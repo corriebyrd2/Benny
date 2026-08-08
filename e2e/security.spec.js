@@ -140,9 +140,14 @@ test.describe('security regressions', () => {
 
     test('accepts a 10-char mixed password', async ({ request }) => {
       const res = await request.post('/api/customer/register', {
-        data: { name: 'Good', email: 'good@test.local', password: 'abcdefgh12' }
+        data: {
+          name: 'Good', email: 'good@test.local', password: 'abcdefgh12',
+          accept_policies: { terms: true, privacy: true }
+        }
       });
-      expect(res.status()).toBe(201);
+      // 202: accepted, no session issued. A weak password is still refused with
+      // 400 before this point, which is what this test distinguishes.
+      expect(res.status()).toBe(202);
     });
 
     test('the password reset flow enforces the same policy', async ({ request }) => {

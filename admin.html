@@ -6,15 +6,21 @@
   <title>Admin Portal | Benny and the Pets</title>
   <link rel="icon" type="image/png" href="images/bennyandthepets.png">
   <link rel="apple-touch-icon" href="images/bennyandthepets.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
       --primary: #FF6B35;
       --primary-dark: #E5551F;
+      /* #FF6B35 is only 2.84:1 on white. Text-bearing surfaces (filled
+         buttons, orange-on-white labels) use --primary-strong at 5.18:1;
+         --primary stays for borders, icons and hover glows. */
+      --primary-strong: #C2410C;
+      --primary-strong-dark: #9A3412;
       --secondary: #4ECDC4;
       --secondary-dark: #3AB5AD;
+      /* #4ECDC4 carries white text at only 1.93:1. Filled secondary buttons
+         use --secondary-strong (4.8:1); the bright teal stays decorative. */
+      --secondary-strong: #217F79;
+      --secondary-strong-dark: #146B66;
       --accent: #FFE66D;
       --dark: #2C3E50;
       --dark-light: #34495E;
@@ -25,6 +31,13 @@
       --success: #27AE60;
       --warning: #F39C12;
       --danger: #E74C3C;
+      /* AA-safe variants for surfaces that carry text. Measured against white:
+         success 4.72:1, warning 5.24:1, danger 5.44:1, info 5.39:1. The bright
+         values above stay for decorative fills, dots and borders. */
+      --success-strong: #1E8449;
+      --warning-strong: #946200;
+      --danger-strong: #C0392B;
+      --info-strong: #1F6FA8;
       --shadow: 0 2px 12px rgba(0,0,0,0.08);
       --shadow-lg: 0 8px 30px rgba(0,0,0,0.12);
       --radius: 12px;
@@ -84,24 +97,24 @@
       font-size: 0.95rem; cursor: pointer; border: none;
       transition: all var(--transition); text-decoration: none;
     }
-    .btn-primary { background: var(--primary); color: var(--white); }
+    .btn-primary { background: var(--primary-strong); color: var(--white); }
     .btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); }
-    .btn-secondary { background: var(--secondary); color: var(--white); }
-    .btn-secondary:hover { background: var(--secondary-dark); }
-    .btn-success { background: var(--success); color: var(--white); }
+    .btn-secondary { background: var(--secondary-strong); color: var(--white); }
+    .btn-secondary:hover { background: var(--secondary-strong-dark); }
+    .btn-success { background: var(--success-strong); color: var(--white); }
     .btn-success:hover { background: #219a52; }
-    .btn-danger { background: var(--danger); color: var(--white); }
+    .btn-danger { background: var(--danger-strong); color: var(--white); }
     .btn-danger:hover { background: #c0392b; }
     .btn-outline { background: transparent; border: 2px solid #ddd; color: var(--text); }
     .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
-    .btn-warning { background: #F39C12; color: var(--white); }
+    .btn-warning { background: var(--warning-strong); color: var(--white); }
     .btn-warning:hover { background: #D68910; }
-    .btn-info { background: #3498DB; color: var(--white); }
-    .btn-info:hover { background: #2980B9; }
+    .btn-info { background: var(--info-strong); color: var(--white); }
+    .btn-info:hover { background: #17557f; }
     .btn-sm { padding: 8px 16px; font-size: 0.85rem; }
     .btn-full { width: 100%; justify-content: center; }
 
-    .login-error { color: var(--danger); font-weight: 700; margin-top: 12px; font-size: 0.9rem; display: none; }
+    .login-error { color: var(--danger-strong); font-weight: 700; margin-top: 12px; font-size: 0.9rem; display: none; }
 
     /* Admin Layout */
     .admin-layout { display: none; min-height: 100vh; }
@@ -110,6 +123,10 @@
       position: fixed; left: 0; top: 0; bottom: 0; width: 260px;
       background: var(--dark); color: var(--white); padding: 24px 0;
       overflow-y: auto; z-index: 100;
+      /* A column, not an absolutely-positioned footer over a scrolling list:
+         with `position:absolute; bottom:0` the footer sat on top of the last
+         navigation item, which made Campaigns unclickable. */
+      display: flex; flex-direction: column;
     }
 
     .sidebar-brand {
@@ -121,7 +138,7 @@
 
     .sidebar-nav a {
       display: flex; align-items: center; gap: 12px;
-      padding: 14px 24px; color: rgba(255,255,255,0.7);
+      padding: 14px 24px; color: rgba(255,255,255,0.88);
       text-decoration: none; font-weight: 700; font-size: 0.95rem;
       transition: all var(--transition); border-left: 3px solid transparent;
     }
@@ -129,21 +146,58 @@
       color: var(--white); background: rgba(255,255,255,0.08);
       border-left-color: var(--primary);
     }
+    .nav-badge[hidden] { display: none; }
+    .nav-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 22px; height: 22px; padding: 0 6px; margin-left: auto;
+      border-radius: 999px; background: var(--danger-strong); color: #fff;
+      font-size: 0.75rem; font-weight: 800;
+    }
     .sidebar-nav a .nav-icon { font-size: 1.3rem; width: 28px; text-align: center; }
 
+    .sidebar-nav { flex: 0 0 auto; }
+
     .sidebar-footer {
-      position: absolute; bottom: 0; left: 0; right: 0;
-      padding: 16px 24px; border-top: 1px solid rgba(255,255,255,0.1);
+      margin-top: auto; flex: 0 0 auto;
+      padding: 16px 24px calc(16px + env(safe-area-inset-bottom, 0px));
+      border-top: 1px solid rgba(255,255,255,0.1);
     }
-    .sidebar-footer a {
-      color: rgba(255,255,255,0.5); text-decoration: none; font-size: 0.85rem;
+    .sidebar-footer a,
+    .sidebar-footer .logout-btn {
+      /* 0.5 alpha on the dark sidebar measured below AA for 13.6px text. */
+      color: rgba(255,255,255,0.86); text-decoration: none; font-size: 0.85rem;
       font-weight: 600; transition: color var(--transition);
+      background: none; border: 0; padding: 10px 0; cursor: pointer;
+      font-family: inherit; min-height: 44px; display: inline-flex; align-items: center;
     }
-    .sidebar-footer a:hover { color: var(--primary); }
+    .sidebar-footer a:hover,
+    .sidebar-footer .logout-btn:hover { color: var(--accent); }
 
     .main-content {
       margin-left: 260px; padding: 32px;
     }
+
+    /* Company Info */
+    .settings-group {
+      margin: 24px 0 12px; color: var(--dark); font-size: 1rem;
+      border-top: 1px solid #ececec; padding-top: 16px;
+    }
+    .settings-group:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+    .settings-hint { display: block; color: var(--text-light); font-size: 0.8rem; margin-top: 4px; }
+    .settings-problem { display: block; color: var(--danger-strong); font-size: 0.8rem; margin-top: 4px; font-weight: 700; }
+    .settings-required {
+      font-size: 0.7rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+      color: var(--danger-strong); margin-left: 6px;
+    }
+    .form-field input.is-rejected { border-color: var(--danger-strong); }
+    .launch-status {
+      max-width: 760px; margin-bottom: 20px; padding: 16px 20px;
+      border-radius: 10px; border: 1px solid;
+    }
+    .launch-status.blocked { background: #FDF2F2; border-color: #F5C6CB; color: #721C24; }
+    .launch-status.ready { background: #EAF7EE; border-color: #C3E6CB; color: #155724; }
+    .launch-status h3 { font-size: 0.95rem; margin-bottom: 6px; }
+    .launch-status ul { margin: 8px 0 0 18px; font-size: 0.88rem; }
 
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
@@ -322,7 +376,7 @@
       font-weight: 600; font-size: 0.9rem; animation: slideIn 0.3s ease;
       border-left: 4px solid var(--success);
     }
-    .toast.error { border-left-color: var(--danger); }
+    .toast.error { border-left-color: var(--danger-strong); }
     @keyframes slideIn {
       from { transform: translateX(100%); opacity: 0; }
       to { transform: translateX(0); opacity: 1; }
@@ -359,8 +413,8 @@
       margin-top: 6px; font-size: 0.78rem; color: var(--text-light); font-weight: 600;
     }
     .kpi-card.teal { border-left-color: var(--secondary); }
-    .kpi-card.green { border-left-color: var(--success); }
-    .kpi-card.yellow { border-left-color: var(--warning); }
+    .kpi-card.green { border-left-color: var(--success-strong); }
+    .kpi-card.yellow { border-left-color: var(--warning-strong); }
     .kpi-card.purple { border-left-color: #9B59B6; }
     .kpi-card.blue { border-left-color: #3498DB; }
 
@@ -463,8 +517,8 @@
       font-family: 'Fredoka One', cursive; font-size: 1.1rem; color: var(--dark);
       line-height: 1.1;
     }
-    .client-stat-value.revenue { color: var(--success); }
-    .client-stat-value.pending { color: var(--warning); }
+    .client-stat-value.revenue { color: var(--success-strong); }
+    .client-stat-value.pending { color: var(--warning-strong); }
     .client-stat-label {
       font-size: 0.7rem; color: var(--text-light); font-weight: 700;
       text-transform: uppercase; letter-spacing: 0.4px; margin-top: 2px;
@@ -631,6 +685,9 @@
         <a href="#" data-panel="reviews">
           <span class="nav-icon">&#11088;</span> Reviews
         </a>
+        <a href="#" data-panel="inquiries">
+          <span class="nav-icon">&#128172;</span> Enquiries <span id="inquiryBadge" class="nav-badge" hidden></span>
+        </a>
         <a href="#" data-panel="settings">
           <span class="nav-icon">&#9881;&#65039;</span> Company Info
         </a>
@@ -642,7 +699,7 @@
         </a>
       </nav>
       <div class="sidebar-footer">
-        <a href="#" id="logoutBtn">&#128682; Sign Out</a>
+        <button type="button" id="logoutBtn" class="logout-btn">&#128682; Sign Out</button>
       </div>
     </div>
 
@@ -814,8 +871,8 @@
         </div>
         <p style="color:var(--text-light); margin-bottom:24px; max-width:760px;">
           Reviews submitted from the homepage land here as <strong>Pending</strong>.
-          Approved reviews appear in the homepage &quot;Happy Tails&quot; carousel after
-          the built-in testimonials; pending and rejected reviews are never shown publicly.
+          Approved reviews are the <em>only</em> testimonials on the homepage &mdash; there
+          are no built-in ones. Pending and rejected reviews are never shown publicly.
         </p>
         <div class="card">
           <div class="card-body" style="overflow-x:auto;">
@@ -838,6 +895,44 @@
         </div>
       </div>
 
+      <!-- Enquiries Panel -->
+      <div class="panel" id="panel-inquiries">
+        <div class="page-header">
+          <h1>Enquiries</h1>
+          <select id="inquiryFilter" class="btn btn-outline btn-sm" style="cursor:pointer;">
+            <option value="new" selected>New</option>
+            <option value="in_progress">In progress</option>
+            <option value="answered">Answered</option>
+            <option value="spam">Spam</option>
+            <option value="">All</option>
+          </select>
+        </div>
+        <p style="color:var(--text-light); margin-bottom:24px; max-width:760px;">
+          Messages sent from the homepage contact form by people who do not have
+          an account. They are also emailed to you &mdash; but they are stored
+          here, so nothing is lost if email delivery fails.
+        </p>
+        <div class="card">
+          <div class="card-body" style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Received</th>
+                  <th>From</th>
+                  <th>About</th>
+                  <th style="min-width:280px;">Message</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="inquiriesTable">
+                <tr><td colspan="6" style="text-align:center; color: var(--text-light);">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <!-- Settings Panel -->
       <div class="panel" id="panel-settings">
         <div class="page-header">
@@ -847,67 +942,16 @@
         <p style="color:var(--text-light); margin-bottom:24px; max-width:760px;">
           These details appear on the homepage header, contact section, and footer.
           Changes are visible on the public site immediately after saving.
+          A field left empty is simply not shown — nothing is invented to fill the gap.
         </p>
+        <div id="launchStatus" class="launch-status" hidden></div>
+        <!-- The fields are generated from the server's business-profile
+             catalogue, so a field that the site needs is always editable
+             here. -->
         <form id="settingsForm" class="card" style="padding:24px; max-width:760px;">
-          <div class="form-field">
-            <label for="setBusinessName">Business Name</label>
-            <input type="text" id="setBusinessName" data-key="business_name">
+          <div id="settingsFields">
+            <p style="color:var(--text-light);">Loading&hellip;</p>
           </div>
-          <div class="form-field">
-            <label for="setFooterTagline">Footer Tagline</label>
-            <input type="text" id="setFooterTagline" data-key="footer_tagline">
-          </div>
-
-          <h3 style="margin:16px 0 12px; color:var(--dark); font-size:1rem;">Contact</h3>
-          <div class="form-field">
-            <label for="setAddress1">Address (line 1)</label>
-            <input type="text" id="setAddress1" data-key="contact_address_line1">
-          </div>
-          <div class="form-field">
-            <label for="setAddress2">Address (line 2)</label>
-            <input type="text" id="setAddress2" data-key="contact_address_line2">
-          </div>
-          <div class="form-field" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-            <div>
-              <label for="setPhoneDisplay">Phone (display)</label>
-              <input type="text" id="setPhoneDisplay" data-key="contact_phone_display">
-            </div>
-            <div>
-              <label for="setPhoneSecondary">Phone (secondary)</label>
-              <input type="text" id="setPhoneSecondary" data-key="contact_phone_secondary">
-            </div>
-          </div>
-          <div class="form-field">
-            <label for="setEmail">Email</label>
-            <input type="email" id="setEmail" data-key="contact_email">
-          </div>
-
-          <h3 style="margin:16px 0 12px; color:var(--dark); font-size:1rem;">Hours</h3>
-          <div class="form-field" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-            <div>
-              <label for="setHoursWeekday">Weekdays</label>
-              <input type="text" id="setHoursWeekday" data-key="hours_weekday" placeholder="Mon-Sat: 7am - 7pm">
-            </div>
-            <div>
-              <label for="setHoursWeekend">Weekend</label>
-              <input type="text" id="setHoursWeekend" data-key="hours_weekend" placeholder="Sun: 8am - 5pm">
-            </div>
-          </div>
-
-          <h3 style="margin:16px 0 12px; color:var(--dark); font-size:1rem;">Social</h3>
-          <div class="form-field">
-            <label for="setFacebook">Facebook URL</label>
-            <input type="url" id="setFacebook" data-key="facebook_url" placeholder="https://facebook.com/...">
-          </div>
-          <div class="form-field">
-            <label for="setInstagram">Instagram URL</label>
-            <input type="url" id="setInstagram" data-key="instagram_url" placeholder="https://instagram.com/...">
-          </div>
-          <div class="form-field">
-            <label for="setTiktok">TikTok URL</label>
-            <input type="url" id="setTiktok" data-key="tiktok_url" placeholder="https://tiktok.com/@...">
-          </div>
-
           <div style="display:flex; gap:12px; margin-top:8px;">
             <button type="submit" class="btn btn-primary">Save Company Info</button>
           </div>
@@ -1005,10 +1049,26 @@
 
   <div class="toast-container" id="toastContainer"></div>
 
+  <script src="/js/portal-actions.js"></script>
   <script>
     // --- State ---
-    let token = localStorage.getItem('benny_admin_token');
+    //
+    // The session token is NOT held here. It lives in an HttpOnly cookie the
+    // browser attaches automatically, so a script injected into this page
+    // cannot read it. An admin credential reaches every customer's personal
+    // data, which is precisely why it must not sit in localStorage. Admin
+    // sessions also expire far sooner than the old 24-hour token: 12 hours
+    // absolute, 1 hour idle.
     const API = '';
+
+    function csrfToken() {
+      const match = document.cookie.match(/(?:^|;\s*)bp_csrf=([^;]*)/);
+      return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    function looksSignedIn() {
+      return csrfToken() !== '';
+    }
 
     // --- Utilities ---
     function showToast(message, isError = false) {
@@ -1020,19 +1080,25 @@
       setTimeout(() => toast.remove(), 4000);
     }
 
+    // Escapes for BOTH text and attribute contexts. The previous version went
+    // through `div.textContent`, which does not escape quotes — and this file
+    // interpolates into `value="..."` in the service form and the settings
+    // form, where a value containing a double quote would have broken out of
+    // the attribute.
+    const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
     function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
+      return String(text ?? '').replace(/[&<>"']/g, c => HTML_ESCAPES[c]);
     }
 
     async function apiCall(path, options = {}) {
       const headers = { ...(options.headers || {}) };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      // The session cookie rides along automatically; this header only
+      // satisfies the double-submit CSRF check on state-changing requests.
+      headers['X-CSRF-Token'] = csrfToken();
       if (!(options.body instanceof FormData)) {
         headers['Content-Type'] = 'application/json';
       }
-      const res = await fetch(API + path, { ...options, headers });
+      const res = await fetch(API + path, { ...options, credentials: 'same-origin', headers });
       if (res.status === 401) {
         logout();
         throw new Error('Session expired');
@@ -1075,7 +1141,8 @@
     async function downloadDogDocumentAdmin(docId) {
       try {
         const res = await fetch('/api/dogs/admin/documents/' + docId + '/download', {
-          headers: { Authorization: 'Bearer ' + token }
+          credentials: 'same-origin',
+          headers: { 'X-CSRF-Token': csrfToken() }
         });
         if (!res.ok) throw new Error('Failed to download document');
         const blob = await res.blob();
@@ -1114,9 +1181,16 @@
     });
 
     // --- Auth ---
-    function logout() {
-      token = null;
-      localStorage.removeItem('benny_admin_token');
+    async function logout() {
+      // Ending the session is the SERVER's job. Clearing a client-side copy was
+      // never a logout — the old token stayed valid until it expired.
+      try {
+        await fetch(API + '/api/auth/logout', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'X-CSRF-Token': csrfToken() }
+        });
+      } catch { /* sign out locally even if the network is down */ }
       document.getElementById('loginScreen').style.display = 'flex';
       document.getElementById('adminLayout').style.display = 'none';
     }
@@ -1125,6 +1199,7 @@
       document.getElementById('loginScreen').style.display = 'none';
       document.getElementById('adminLayout').style.display = 'block';
       loadDashboard();
+      refreshInquiryBadge();
     }
 
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -1147,8 +1222,6 @@
           return;
         }
 
-        token = data.token;
-        localStorage.setItem('benny_admin_token', token);
         showAdmin();
       } catch (err) {
         errorEl.textContent = 'Login failed. Please try again.';
@@ -1188,6 +1261,7 @@
         case 'services': loadServices(); break;
         case 'photos': loadPhotos(); break;
         case 'reviews': loadReviews(); break;
+        case 'inquiries': loadInquiries(); break;
         case 'settings': loadSettings(); break;
         case 'payments': loadPayments(); break;
         case 'campaigns': loadCampaigns(); break;
@@ -1195,13 +1269,65 @@
     }
 
     // --- Company Info / Settings ---
+    //
+    // The form is BUILT from the server's field catalogue rather than written
+    // out by hand. The hand-written version had drifted: `legal_business_name`,
+    // `service_area` and `emergency_contact` are all required before launch and
+    // none of them had an input, so the owner could not satisfy the launch
+    // check from the panel at all.
+    const SETTING_INPUT_TYPE = { email: 'email', url: 'url', phone: 'tel', year: 'text' };
+
+    function renderLaunchStatus(missing) {
+      const box = document.getElementById('launchStatus');
+      const blocking = missing.filter(m => m.required === 'launch');
+      box.hidden = false;
+      if (blocking.length === 0) {
+        box.className = 'launch-status ready';
+        box.innerHTML = '<h3>&#9989; Ready to launch</h3>'
+          + '<p>Every detail the public site needs is filled in.</p>';
+        return;
+      }
+      box.className = 'launch-status blocked';
+      box.innerHTML = `
+        <h3>&#9888;&#65039; ${blocking.length} detail${blocking.length === 1 ? '' : 's'} still needed before launch</h3>
+        <p>The site hides anything it does not have rather than showing made-up
+           information, so these sections are missing from the public pages.</p>
+        <ul>${blocking.map(m =>
+          `<li><strong>${escapeHtml(m.label)}</strong> &mdash; ${escapeHtml(m.reason)}</li>`).join('')}</ul>`;
+    }
+
     async function loadSettings() {
+      const container = document.getElementById('settingsFields');
       try {
-        const settings = await apiCall('/api/settings');
-        document.querySelectorAll('#settingsForm [data-key]').forEach(input => {
-          const key = input.getAttribute('data-key');
-          if (settings[key] !== undefined) input.value = settings[key];
-        });
+        const data = await apiCall('/api/settings/admin');
+        const problems = new Map((data.missing || []).map(m => [m.key, m]));
+        const groups = (data.groups && data.groups.length)
+          ? data.groups
+          : [...new Set(data.fields.map(f => f.group || 'Other'))];
+
+        container.innerHTML = groups.map(group => {
+          const fields = data.fields.filter(f => (f.group || 'Other') === group);
+          if (!fields.length) return '';
+          return `<h3 class="settings-group">${escapeHtml(group)}</h3>` + fields.map(f => {
+            const problem = problems.get(f.key);
+            // "empty" is only worth flagging when the field blocks launch —
+            // an optional blank field is a deliberate choice, not a fault.
+            const flag = problem && problem.reason !== 'empty'
+              ? `<small class="settings-problem">Stored but not published &mdash; ${escapeHtml(problem.reason)}</small>`
+              : '';
+            return `
+              <div class="form-field">
+                <label for="set_${f.key}">${escapeHtml(f.label)}${
+                  f.required === 'launch' ? '<span class="settings-required">required</span>' : ''}</label>
+                <input type="${SETTING_INPUT_TYPE[f.type] || 'text'}" id="set_${f.key}"
+                       data-key="${f.key}" value="${escapeHtml(data.values[f.key] || '')}">
+                ${f.hint ? `<small class="settings-hint">${escapeHtml(f.hint)}</small>` : ''}
+                ${flag}
+              </div>`;
+          }).join('');
+        }).join('');
+
+        renderLaunchStatus(data.missing || []);
       } catch (err) {
         showToast('Failed to load company info', true);
       }
@@ -1211,6 +1337,7 @@
       e.preventDefault();
       const payload = {};
       document.querySelectorAll('#settingsForm [data-key]').forEach(input => {
+        input.classList.remove('is-rejected');
         payload[input.getAttribute('data-key')] = input.value;
       });
       try {
@@ -1219,7 +1346,14 @@
           body: JSON.stringify(payload)
         });
         showToast('Company info saved — homepage will refresh with new values');
+        loadSettings();
       } catch (err) {
+        // Point at the field that was refused instead of only saying why.
+        for (const key of Object.keys(payload)) {
+          if (err.message && err.message.includes(`${key}:`)) {
+            document.getElementById(`set_${key}`)?.classList.add('is-rejected');
+          }
+        }
         showToast(err.message, true);
       }
     });
@@ -1280,7 +1414,7 @@
             <td>${statusBadge(b.status)}</td>
             <td>${statusBadge(b.payment_status)}</td>
             <td>
-              <button class="btn btn-sm btn-outline" onclick="viewBooking(${b.id})">View</button>
+              <button class="btn btn-sm btn-outline" data-action="viewBooking" data-arg0="${b.id}">View</button>
             </td>
           </tr>
           `;
@@ -1324,8 +1458,9 @@
               <strong>Dogs on stay:</strong>
               <span style="display:inline-flex;align-items:center;gap:6px;margin-left:6px;">
                 <input type="number" id="editDogCount" value="${currentDogCount}" min="1" max="10"
+                       aria-label="Number of dogs on this stay"
                        style="width:64px;padding:4px 6px;border:2px solid #e0e0e0;border-radius:6px;font-family:inherit;">
-                <button class="btn btn-sm btn-outline" onclick="saveDogCount(${b.id})">Update &amp; re-price</button>
+                <button class="btn btn-sm btn-outline" data-action="saveDogCount" data-arg0="${b.id}">Update &amp; re-price</button>
               </span>
               <small style="display:block;color:var(--text-light);margin-top:4px;">Rate is per dog &mdash; changing this recomputes the amount.</small>
             </div>`
@@ -1337,8 +1472,9 @@
               <span style="display:inline-flex;align-items:center;gap:6px;margin-left:6px;">
                 <span>$</span>
                 <input type="number" id="editAmountDollars" value="${currentAmountDollars}" min="0" step="0.01"
+                       aria-label="Booking amount in dollars"
                        style="width:96px;padding:4px 6px;border:2px solid #e0e0e0;border-radius:6px;font-family:inherit;">
-                <button class="btn btn-sm btn-outline" onclick="saveBookingPrice(${b.id})">Save price</button>
+                <button class="btn btn-sm btn-outline" data-action="saveBookingPrice" data-arg0="${b.id}">Save price</button>
               </span>
               <small style="display:block;color:var(--text-light);margin-top:4px;">
                 Override the calculated price${currentDogCount > 1 ? ` (currently ${currentDogCount} dogs)` : ''}.
@@ -1364,7 +1500,7 @@
             </div>
             ${b.message ? `<div><strong>Message:</strong><p style="margin-top:4px;color:var(--text-light)">${escapeHtml(b.message)}</p></div>` : ''}
             <div id="cancelReasonSection" style="display:none;">
-              <label style="font-weight:700;display:block;margin-bottom:6px;">Reason for cancellation:</label>
+              <label for="cancelReasonInput" style="font-weight:700;display:block;margin-bottom:6px;">Reason for cancellation:</label>
               <textarea id="cancelReasonInput" style="width:100%;padding:10px;border:2px solid #e0e0e0;border-radius:6px;font-family:inherit;font-size:0.9rem;min-height:60px;resize:vertical;" placeholder="Enter reason (visible to customer)..."></textarea>
             </div>
           </div>
@@ -1382,27 +1518,27 @@
       const isFinal = b.status === 'cancelled' || (b.status === 'completed' && b.payment_status === 'paid');
 
       if (isFinal) {
-        return `<button class="btn btn-danger btn-sm" onclick="deleteBooking(${b.id})">Delete Record</button>`;
+        return `<button class="btn btn-danger btn-sm" data-action="deleteBooking" data-arg0="${b.id}">Delete Record</button>`;
       }
 
       let buttons = [];
 
       // Cancel — always available if not already cancelled/completed
-      buttons.push(`<button class="btn btn-danger btn-sm" onclick="showCancelForm(${b.id})">Cancel Request</button>`);
+      buttons.push(`<button class="btn btn-danger btn-sm" data-action="showCancelForm" data-arg0="${b.id}">Cancel Request</button>`);
 
       // Approve — available for pending bookings
       if (b.status === 'pending') {
-        buttons.push(`<button class="btn btn-success btn-sm" onclick="approveBooking(${b.id})">Approve & Request Payment</button>`);
+        buttons.push(`<button class="btn btn-success btn-sm" data-action="approveBooking" data-arg0="${b.id}">Approve & Request Payment</button>`);
       }
 
       // Request Payment — available for confirmed bookings that are unpaid
       if (b.status === 'confirmed' && (b.payment_status === 'unpaid' || b.payment_status === 'requested')) {
-        buttons.push(`<button class="btn btn-info btn-sm" onclick="sendPaymentRequest(${b.id})">Send Payment Request</button>`);
+        buttons.push(`<button class="btn btn-info btn-sm" data-action="sendPaymentRequest" data-arg0="${b.id}">Send Payment Request</button>`);
       }
 
       // Complete & Paid — available for confirmed bookings
       if (b.status === 'confirmed' || b.status === 'pending') {
-        buttons.push(`<button class="btn btn-warning btn-sm" onclick="completeBooking(${b.id})">Complete & Mark Paid</button>`);
+        buttons.push(`<button class="btn btn-warning btn-sm" data-action="completeBooking" data-arg0="${b.id}">Complete & Mark Paid</button>`);
       }
 
       return buttons.join('\n');
@@ -1414,8 +1550,8 @@
       document.getElementById('cancelReasonInput').focus();
       // Replace footer with confirm/back buttons
       document.getElementById('modalFooter').innerHTML = `
-        <button class="btn btn-outline btn-sm" onclick="viewBooking(${id})">Back</button>
-        <button class="btn btn-danger btn-sm" onclick="confirmCancel(${id})">Confirm Cancellation</button>
+        <button class="btn btn-outline btn-sm" data-action="viewBooking" data-arg0="${id}">Back</button>
+        <button class="btn btn-danger btn-sm" data-action="confirmCancel" data-arg0="${id}">Confirm Cancellation</button>
       `;
     }
 
@@ -1579,8 +1715,8 @@
               ${(Array.isArray(s.perks) ? s.perks : []).map(p => `<span style="display:inline-block;background:#f0f0f0;padding:2px 8px;border-radius:4px;font-size:0.8rem;margin:2px;">${escapeHtml(p)}</span>`).join('')}
             </div>
             <div class="card-actions">
-              <button class="btn btn-sm btn-outline" onclick="editService(${s.id})">Edit</button>
-              <button class="btn btn-sm btn-danger" onclick="deleteService(${s.id})">Delete</button>
+              <button class="btn btn-sm btn-outline" data-action="editService" data-arg0="${s.id}">Edit</button>
+              <button class="btn btn-sm btn-danger" data-action="deleteService" data-arg0="${s.id}">Delete</button>
             </div>
           </div>
         `).join('');
@@ -1596,29 +1732,35 @@
       const body = `
         <form id="serviceForm">
           <div class="form-field">
-            <label>Service Name</label>
+            <label for="svcName">Service Name</label>
             <input type="text" id="svcName" value="${escapeHtml(service?.name || '')}" required>
           </div>
           <div class="form-field">
-            <label>Description</label>
+            <label for="svcDesc">Description</label>
             <textarea id="svcDesc" rows="3">${escapeHtml(service?.description || '')}</textarea>
           </div>
           <div class="form-field">
-            <label>Icon (HTML entity or emoji)</label>
-            <input type="text" id="svcIcon" value="${service?.icon || ''}" placeholder="&#128054;">
+            <label for="svcIcon">Icon (HTML entity or emoji)</label>
+            <input type="text" id="svcIcon" value="${escapeHtml(service?.icon || '')}" placeholder="&#128054;">
           </div>
           <div class="form-field" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div>
-              <label>Price (cents)</label>
+              <label for="svcPriceCents">Price (cents)</label>
               <input type="number" id="svcPriceCents" value="${service?.price_cents || 0}" min="0">
             </div>
             <div>
-              <label>Price Label</label>
-              <input type="text" id="svcPriceLabel" value="${escapeHtml(service?.price_label || '')}" placeholder="From $30/day">
+              <!-- The customer-facing label is DERIVED from the price and the
+                   billing unit. It used to be a second free-text field, which
+                   is how "$30" and "From $35/day" ended up on the same service;
+                   the server refuses to accept one now. -->
+              <label for="svcPriceLabel">Shown to customers as</label>
+              <input type="text" id="svcPriceLabel" value="${escapeHtml(service?.price_label || '')}"
+                     readonly aria-describedby="svcPriceLabelHelp">
+              <small id="svcPriceLabelHelp" class="settings-hint">Worked out from the price and billing unit.</small>
             </div>
           </div>
           <div class="form-field">
-            <label>Billing (how the price is charged)</label>
+            <label for="svcBillingUnit">Billing (how the price is charged)</label>
             <select id="svcBillingUnit">
               <option value="session" ${(service?.billing_unit || 'session') === 'session' ? 'selected' : ''}>Per session — flat fee</option>
               <option value="night" ${service?.billing_unit === 'night' ? 'selected' : ''}>Per night — × nights of stay</option>
@@ -1626,11 +1768,11 @@
             </select>
           </div>
           <div class="form-field">
-            <label>Perks (one per line)</label>
+            <label for="svcPerks">Perks (one per line)</label>
             <textarea id="svcPerks" rows="4" placeholder="Private suites\nEvening walk\nBreakfast">${escapeHtml(perks)}</textarea>
           </div>
           <div class="form-field">
-            <label>Stripe Price ID (optional)</label>
+            <label for="svcStripeId">Stripe Price ID (optional)</label>
             <input type="text" id="svcStripeId" value="${escapeHtml(service?.stripe_price_id || '')}" placeholder="price_...">
           </div>
           <div style="display:flex;gap:16px;">
@@ -1640,7 +1782,7 @@
         </form>
       `;
 
-      const footer = `<button class="btn btn-primary" onclick="saveService(${service?.id || 'null'})">${isEdit ? 'Save Changes' : 'Create Service'}</button>`;
+      const footer = `<button class="btn btn-primary" data-action="saveService" data-arg0="${service?.id || 'null'}">${isEdit ? 'Save Changes' : 'Create Service'}</button>`;
       openModal(isEdit ? 'Edit Service' : 'Add Service', body, footer);
     }
 
@@ -1662,7 +1804,8 @@
         description: document.getElementById('svcDesc').value,
         icon: document.getElementById('svcIcon').value,
         price_cents: parseInt(document.getElementById('svcPriceCents').value) || 0,
-        price_label: document.getElementById('svcPriceLabel').value,
+        // No price_label — the server derives it and rejects an attempt to set
+        // one. Sending it made every save from this form fail with a 400.
         perks: document.getElementById('svcPerks').value.split('\n').filter(p => p.trim()),
         stripe_price_id: document.getElementById('svcStripeId').value,
         is_featured: document.getElementById('svcFeatured').checked,
@@ -1718,15 +1861,15 @@
       return `
         <div class="photo-card">
           <img src="${p.url}" alt="${escapeHtml(p.caption)}" loading="lazy"
-            onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+            data-fallback="next">
           <div class="photo-placeholder" style="display:none;">&#128247;</div>
           <div class="photo-card-body">
             <p><span class="section-badge">${escapeHtml(sectionLabel(section))}</span></p>
             <p>${escapeHtml(p.caption || 'No caption')}</p>
             <p><small>Layout: ${escapeHtml(p.layout)} | ${p.show_on_homepage ? 'On homepage' : 'Hidden'}</small></p>
             <div class="photo-card-actions">
-              <button class="btn btn-sm btn-outline" onclick="editPhoto(${p.id})">Edit</button>
-              <button class="btn btn-sm btn-danger" onclick="deletePhoto(${p.id})">Delete</button>
+              <button class="btn btn-sm btn-outline" data-action="editPhoto" data-arg0="${p.id}">Edit</button>
+              <button class="btn btn-sm btn-danger" data-action="deletePhoto" data-arg0="${p.id}">Delete</button>
             </div>
           </div>
         </div>
@@ -1754,7 +1897,7 @@
                   <span class="section-hint">${escapeHtml(section.hint)}</span>
                 </div>
                 <button class="btn btn-sm btn-primary" style="flex-shrink:0;"
-                  onclick="openPhotoUploadForm('${section.key}')">+ Upload Photo</button>
+                  data-action="openPhotoUploadForm" data-arg0="${section.key}">+ Upload Photo</button>
               </div>
               ${body}
             </div>
@@ -1809,7 +1952,7 @@
       `;
 
       openModal('Upload Photo', body,
-        '<button class="btn btn-primary" onclick="uploadPhoto()">Upload</button>');
+        '<button class="btn btn-primary" data-action="uploadPhoto">Upload</button>');
     }
 
     async function uploadPhoto() {
@@ -1877,7 +2020,7 @@
         `;
 
         openModal('Edit Photo', body,
-          `<button class="btn btn-primary" onclick="savePhotoEdit(${id})">Save</button>`);
+          `<button class="btn btn-primary" data-action="savePhotoEdit" data-arg0="${id}">Save</button>`);
       } catch (err) {
         showToast(err.message, true);
       }
@@ -1920,6 +2063,69 @@
       return '&#11088;'.repeat(n);
     }
 
+    async function loadInquiries() {
+      const tbody = document.getElementById('inquiriesTable');
+      const status = document.getElementById('inquiryFilter').value;
+      try {
+        const list = await apiCall('/api/inquiries' + (status ? `?status=${status}` : ''));
+        if (!list.length) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--text-light);">No enquiries here.</td></tr>';
+        } else {
+          tbody.innerHTML = list.map(i => {
+            const actions = [];
+            if (i.status !== 'answered') {
+              actions.push(`<button class="btn btn-sm btn-success" data-action="setInquiryStatus" data-arg0="${i.id}" data-arg1="answered">Mark answered</button>`);
+            }
+            if (i.status === 'new') {
+              actions.push(`<button class="btn btn-sm btn-info" data-action="setInquiryStatus" data-arg0="${i.id}" data-arg1="in_progress">In progress</button>`);
+            }
+            if (i.status !== 'spam') {
+              actions.push(`<button class="btn btn-sm btn-outline" data-action="setInquiryStatus" data-arg0="${i.id}" data-arg1="spam">Spam</button>`);
+            }
+            return `<tr>
+              <td>${new Date(i.created_at).toLocaleDateString()}</td>
+              <td>
+                <strong>${escapeHtml(i.name)}</strong><br>
+                <a href="mailto:${escapeHtml(i.email)}">${escapeHtml(i.email)}</a>
+                ${i.phone ? `<br>${escapeHtml(i.phone)}` : ''}
+              </td>
+              <td>${escapeHtml(i.service_name || 'General')}</td>
+              <td style="white-space:pre-wrap;">${escapeHtml(i.message)}</td>
+              <td>${escapeHtml(i.status.replace('_', ' '))}</td>
+              <td>${actions.join(' ')}</td>
+            </tr>`;
+          }).join('');
+        }
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--danger-strong);">${escapeHtml(err.message)}</td></tr>`;
+      }
+      refreshInquiryBadge();
+    }
+
+    async function setInquiryStatus(id, status) {
+      try {
+        await apiCall('/api/inquiries/' + id, { method: 'PUT', body: JSON.stringify({ status }) });
+        showToast('Enquiry updated');
+        loadInquiries();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
+    // Unanswered enquiries are the one thing an owner must not miss, so the
+    // count rides on the sidebar rather than only inside the panel.
+    async function refreshInquiryBadge() {
+      const badge = document.getElementById('inquiryBadge');
+      if (!badge) return;
+      try {
+        const stats = await apiCall('/api/inquiries/stats');
+        badge.textContent = stats.new_count;
+        badge.hidden = stats.new_count === 0;
+      } catch {
+        badge.hidden = true;
+      }
+    }
+
     async function loadReviews() {
       try {
         const filter = document.getElementById('reviewFilter').value;
@@ -1937,12 +2143,12 @@
         tbody.innerHTML = reviews.map(r => {
           const actions = [];
           if (r.status !== 'approved') {
-            actions.push(`<button class="btn btn-sm btn-success" onclick="setReviewStatus(${r.id}, 'approved')">Approve</button>`);
+            actions.push(`<button class="btn btn-sm btn-success" data-action="setReviewStatus" data-arg0="${r.id}" data-arg1="approved">Approve</button>`);
           }
           if (r.status !== 'rejected') {
-            actions.push(`<button class="btn btn-sm btn-warning" onclick="setReviewStatus(${r.id}, 'rejected')">${r.status === 'approved' ? 'Remove from site' : 'Reject'}</button>`);
+            actions.push(`<button class="btn btn-sm btn-warning" data-action="setReviewStatus" data-arg0="${r.id}" data-arg1="rejected">${r.status === 'approved' ? 'Remove from site' : 'Reject'}</button>`);
           }
-          actions.push(`<button class="btn btn-sm btn-danger" onclick="deleteReview(${r.id})">Delete</button>`);
+          actions.push(`<button class="btn btn-sm btn-danger" data-action="deleteReview" data-arg0="${r.id}">Delete</button>`);
           return `
           <tr>
             <td style="white-space:nowrap;">${formatDate(r.created_at)}</td>
@@ -2026,10 +2232,10 @@
 
         tbody.innerHTML = bookings.map(b => {
           const unpaidActions = [
-            `<button class="btn btn-sm btn-success" onclick="sendPaymentRequest(${b.id})">Request Payment</button>`
+            `<button class="btn btn-sm btn-success" data-action="sendPaymentRequest" data-arg0="${b.id}">Request Payment</button>`
           ];
           if (b.stripe_session_id || (b.stripe_payment_id || '').startsWith('pi_')) {
-            unpaidActions.push(`<button class="btn btn-sm btn-outline" onclick="syncPaymentStatus(${b.id})">Sync with Stripe</button>`);
+            unpaidActions.push(`<button class="btn btn-sm btn-outline" data-action="syncPaymentStatus" data-arg0="${b.id}">Sync with Stripe</button>`);
           }
           return `
           <tr>
@@ -2212,7 +2418,7 @@
 
       return `
         <div class="client-card" id="client-card-${idx}">
-          <div class="client-card-header" onclick="toggleClient(${idx})">
+          <div class="client-card-header" data-action="toggleClient" data-arg0="${idx}">
             <div class="client-avatar ${isGuest ? 'guest' : ''}">${escapeHtml(initials)}</div>
             <div class="client-info">
               <h3>
@@ -2268,7 +2474,7 @@
         const docs = Array.isArray(d.documents) ? d.documents : [];
         const docsHtml = docs.length
           ? `<div class="dog-docs-admin">${docs.map(doc => `
-              <button type="button" class="doc-link" onclick="downloadDogDocumentAdmin(${doc.id})">&#128196; ${escapeHtml(doc.original_name)} (${formatFileSize(doc.size_bytes)})</button>
+              <button type="button" class="doc-link" data-action="downloadDogDocumentAdmin" data-arg0="${doc.id}">&#128196; ${escapeHtml(doc.original_name)} (${formatFileSize(doc.size_bytes)})</button>
             `).join('')}</div>`
           : (d.source === 'profile' ? '<div class="dog-docs-empty">No docs uploaded</div>' : '');
         return `
@@ -2314,7 +2520,7 @@
             <td>${formatCents(b.amount_cents)}</td>
             <td>${statusBadge(b.status)}</td>
             <td>${statusBadge(b.payment_status)}</td>
-            <td><button class="btn btn-sm btn-outline" onclick="event.stopPropagation(); viewBooking(${b.id})">View</button></td>
+            <td><button class="btn btn-sm btn-outline" data-action="viewBooking" data-arg0="${b.id}" data-stop="1">View</button></td>
           </tr>
         `;
       }).join('');
@@ -2402,15 +2608,16 @@
       }
     });
 
+    document.getElementById('inquiryFilter').addEventListener('change', loadInquiries);
+
     // --- Init ---
-    if (token) {
-      // Validate token by making a test request
+    // The CSRF cookie is a hint that a session may exist; only the server can
+    // confirm it, so probe an authenticated endpoint and show the login screen
+    // if it says otherwise.
+    if (looksSignedIn()) {
       apiCall('/api/dashboard/stats')
         .then(() => showAdmin())
-        .catch(() => {
-          token = null;
-          localStorage.removeItem('benny_admin_token');
-        });
+        .catch(() => { /* apiCall already reverted to the login screen */ });
     }
   </script>
 </body>

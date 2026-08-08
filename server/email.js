@@ -20,12 +20,28 @@ if (API_KEY && FROM_EMAIL) {
 let transport = {
   async send(msg) {
     if (!configured) return;
-    await sgMail.send(msg);
+    try {
+      await sgMail.send(msg);
+    } catch (err) {
+      // Counted before rethrowing: a silently failing mail provider is one of
+      // the few faults with no user-visible symptom until someone complains.
+      require('./metrics').increment('benny_email_failures_total', {});
+      throw err;
+    }
   }
 };
 
-function setTransport(t) {
+// Replace the transport. The test harness also passes { markConfigured: true }
+// so that "is email configured?" stops depending on whether a SENDGRID_API_KEY
+// happens to be present in the environment.
+//
+// This mattered: sendMarketingCampaign() short-circuits to
+// { recipientCount: 0 } when unconfigured, so the campaign test passed on any
+// machine with an ambient SendGrid key and failed on CI, which has none. A test
+// suite must not read a real secret to decide how the code behaves.
+function setTransport(t, { markConfigured = false } = {}) {
   transport = t;
+  if (markConfigured) configured = true;
 }
 
 // SendGrid's Mail Send API caps total recipients (to+cc+bcc) at 1000 per call.
@@ -193,6 +209,120 @@ async function send({ to, subject, html, text, templateId, dynamicTemplateData, 
     const detail = err.response?.body?.errors || err.message;
     console.error('[email] send failed:', subject, '→', to, detail);
   }
+}
+
+// A guest enquiry — someone who is not ready to create an account. The
+// database row is the record of truth; this is only the notification, so the
+// caller treats a failure here as non-fatal.
+// Sent when money goes back. A refund the customer only discovers from their
+// bank statement is a support ticket waiting to happen.
+// Sent on a genuinely new registration.
+async function sendEmailVerificationToCustomer({ to, name, verifyLink }) {
+  await send({
+    to,
+    subject: 'Confirm your email address',
+    text: [
+      `Hi ${name},`,
+      '',
+      'Thanks for creating an account. Confirm your email address here:',
+      verifyLink,
+      '',
+      'The link works for 7 days. If you did not create this account you can ignore this email.'
+    ].join('\n'),
+    html: `
+      <p>Hi ${escapeHtml(name)},</p>
+      <p>Thanks for creating an account. Please confirm your email address:</p>
+      <p><a href="${escapeHtml(verifyLink)}">Confirm my email address</a></p>
+      <p>The link works for 7 days. If you did not create this account you can ignore this email.</p>`
+  });
+}
+
+// Sent when someone tries to register an address that ALREADY has an account.
+//
+// This is what makes the identical registration response safe to give: the
+// person who owns the address finds out, while the person who submitted the
+// form learns nothing. It must never say "your password is X" or reveal
+// anything beyond the fact that an account exists — which the real owner
+// already knows.
+async function sendRegistrationAttemptToExistingCustomer({ to, name, signInLink, resetLink }) {
+  await send({
+    to,
+    subject: 'Someone tried to create an account with your email address',
+    text: [
+      `Hi ${name},`,
+      '',
+      'Someone just tried to sign up with this email address, but you already',
+      'have an account with us.',
+      '',
+      `If that was you, sign in instead: ${signInLink}`,
+      `Forgotten your password? ${resetLink}`,
+      '',
+      'If it was not you, no action is needed — no new account was created and',
+      'nothing about your account has changed.'
+    ].join('\n'),
+    html: `
+      <p>Hi ${escapeHtml(name)},</p>
+      <p>Someone just tried to sign up with this email address, but you already have an account with us.</p>
+      <p>If that was you, <a href="${escapeHtml(signInLink)}">sign in instead</a>.
+      Forgotten your password? <a href="${escapeHtml(resetLink)}">Reset it here</a>.</p>
+      <p>If it was not you, no action is needed &mdash; no new account was created
+      and nothing about your account has changed.</p>`
+  });
+}
+
+async function sendRefundIssuedToCustomer({ booking, amountCents, tier }) {
+  if (!booking || !booking.email) return;
+  const amount = `$${(Number(amountCents || 0) / 100).toFixed(2)}`;
+  const lines = [
+    `We've refunded ${amount} for your booking of ${booking.service_name}.`,
+    '',
+    'It usually takes 5-10 business days to appear, depending on your bank.',
+    '',
+    'Our cancellation and refund policy explains how the amount is worked out.'
+  ];
+  await send({
+    to: booking.email,
+    subject: `Refund issued — ${amount}`,
+    text: lines.join('\n'),
+    html: `
+      <p>We've refunded <strong>${escapeHtml(amount)}</strong> for your booking of
+      ${escapeHtml(booking.service_name)}.</p>
+      <p>It usually takes 5&ndash;10 business days to appear, depending on your bank.</p>
+      ${PUBLIC_URL ? `<p><a href="${PUBLIC_URL}/legal/cancellation-policy">How refunds are calculated</a></p>` : ''}`,
+    categories: ['refund'],
+    customArgs: { booking_id: String(booking.id), refund_tier: String(tier || '') }
+  });
+}
+
+async function sendInquiryToOwner({ inquiry }) {
+  if (!OWNER_EMAIL) return;
+  const link = PUBLIC_URL ? `${PUBLIC_URL}/admin` : null;
+  const lines = [
+    'A new enquiry came in through the website.',
+    '',
+    `From: ${inquiry.name} <${inquiry.email}>`,
+    inquiry.phone ? `Phone: ${inquiry.phone}` : null,
+    inquiry.service_name ? `About: ${inquiry.service_name}` : null,
+    '',
+    inquiry.message,
+    '',
+    link ? `Manage: ${link}` : null
+  ].filter(Boolean);
+
+  await send({
+    to: OWNER_EMAIL,
+    // replyTo means hitting reply in the mail client answers the customer.
+    replyTo: inquiry.email,
+    subject: `Website enquiry from ${inquiry.name}`,
+    text: lines.join('\n'),
+    html: `
+      <p>A new enquiry came in through the website.</p>
+      <p><strong>${escapeHtml(inquiry.name)}</strong> &lt;${escapeHtml(inquiry.email)}&gt;
+      ${inquiry.phone ? `<br>Phone: ${escapeHtml(inquiry.phone)}` : ''}
+      ${inquiry.service_name ? `<br>About: ${escapeHtml(inquiry.service_name)}` : ''}</p>
+      <blockquote>${escapeHtml(inquiry.message).replace(/\n/g, '<br>')}</blockquote>
+      ${link ? `<p><a href="${link}">Manage enquiries</a></p>` : ''}`
+  });
 }
 
 async function sendNewBookingToOwner({ booking }) {
@@ -434,6 +564,10 @@ async function sendPaymentReceivedToOwner({ booking }) {
 
 module.exports = {
   setTransport,
+  sendInquiryToOwner,
+  sendEmailVerificationToCustomer,
+  sendRefundIssuedToCustomer,
+  sendRegistrationAttemptToExistingCustomer,
   sendMarketingCampaign,
   sendNewBookingToOwner,
   sendBookingReceivedToCustomer,

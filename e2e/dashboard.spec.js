@@ -37,7 +37,11 @@ test.describe('dashboard + services + photos (admin)', () => {
     expect(stats.pendingBookings).toBe(1);
     expect(stats.confirmedBookings).toBe(2); // b1 approved, b2 confirmed via webhook
     expect(stats.paidBookings).toBe(1);
-    expect(stats.activeServices).toBeGreaterThanOrEqual(4);
+    // Only services the business actually delivers are seeded active; grooming
+    // and training are seeded inactive pending verified rates (see
+    // server/database.js seed and e2e/catalog-trust.spec.js).
+    const publicServices = await (await request.get('/api/services')).json();
+    expect(stats.activeServices).toBe(publicServices.length);
     expect(stats.recentBookings).toHaveLength(3);
     expect(stats.totalRevenue).toBe(b2.amount_cents);
   });
@@ -54,7 +58,6 @@ test.describe('dashboard + services + photos (admin)', () => {
         name: 'Test Service',
         description: 'Only in tests',
         price_cents: 9999,
-        price_label: '$99.99',
         perks: ['perk one', 'perk two'],
         is_featured: true,
         display_order: 99
@@ -72,7 +75,7 @@ test.describe('dashboard + services + photos (admin)', () => {
 
     const update = await request.put(`/api/services/${id}`, {
       headers: { authorization: `Bearer ${token}` },
-      data: { price_label: '$88/session', active: false }
+      data: { price_cents: 8800, active: false }
     });
     expect(update.status()).toBe(200);
 

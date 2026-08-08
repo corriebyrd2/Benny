@@ -1,26 +1,17 @@
 const express = require('express');
 const { query } = require('../database');
 const { authenticateToken, requirePermission, logAudit } = require('../auth');
+const {
+  FIELDS, FIELD_KEYS, getBusinessProfile, launchCheck, validateValue
+} = require('../businessProfile');
 
 const router = express.Router();
 
-// Whitelist — prevents arbitrary keys from being written and constrains what
-// clients can set. If you add a new setting, add its key here and reference it
-// from the homepage.
-const ALLOWED_KEYS = new Set([
-  'business_name',
-  'footer_tagline',
-  'contact_address_line1',
-  'contact_address_line2',
-  'contact_phone_display',
-  'contact_phone_secondary',
-  'contact_email',
-  'hours_weekday',
-  'hours_weekend',
-  'facebook_url',
-  'instagram_url',
-  'tiktok_url'
-]);
+// The writable keys ARE the business-profile field catalogue — one list, so a
+// new profile field cannot be added in one place and silently be unwritable in
+// the other.
+const ALLOWED_KEYS = new Set(FIELD_KEYS);
+const FIELD_BY_KEY = new Map(FIELDS.map(f => [f.key, f]));
 
 function rowsToObject(rows) {
   const out = {};
@@ -28,19 +19,73 @@ function rowsToObject(rows) {
   return out;
 }
 
-// Public: Get all site settings (company info shown on the homepage).
-router.get('/', async (req, res) => {
-  const { rows } = await query('SELECT key, value FROM site_settings');
-  res.json(rowsToObject(rows));
+// Public: the business facts that are configured AND structurally valid.
+// Unverified or placeholder values are omitted entirely rather than served to
+// the browser, so no client can render them by accident.
+router.get('/', async (req, res, next) => {
+  try {
+    const profile = await getBusinessProfile();
+    res.json(profile.values);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Admin: the raw stored rows, including values that failed validation, so the
+// settings screen can show an administrator exactly what is wrong.
+router.get('/admin', authenticateToken, requirePermission('read'), async (req, res, next) => {
+  try {
+    const { rows } = await query('SELECT key, value FROM site_settings');
+    const profile = await getBusinessProfile();
+    res.json({
+      values: rowsToObject(rows),
+      fields: FIELDS,
+      missing: profile.missing
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Admin: launch gate. `ok: false` lists exactly which business facts are still
+// missing or still placeholder text, with the reason for each.
+router.get('/launch-check', authenticateToken, requirePermission('read'), async (req, res, next) => {
+  try {
+    const result = await launchCheck();
+    res.status(result.ok ? 200 : 409).json(result);
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Admin: Update one or more settings.
 router.put('/', authenticateToken, requirePermission('write'), async (req, res) => {
   const body = req.body || {};
   const updates = [];
+  const rejected = [];
   for (const [key, value] of Object.entries(body)) {
     if (!ALLOWED_KEYS.has(key)) continue;
-    updates.push([key, typeof value === 'string' ? value : String(value ?? '')]);
+    const str = typeof value === 'string' ? value : String(value ?? '');
+    // Clearing a field is always allowed — that is how an administrator
+    // removes something they can no longer stand behind. A NON-empty value has
+    // to be structurally plausible for its type, so an obviously fictional
+    // "(555) ..." number or a non-https social URL is refused at the door
+    // rather than published.
+    if (str.trim()) {
+      const problem = validateValue(FIELD_BY_KEY.get(key), str);
+      if (problem) {
+        rejected.push({ key, reason: problem });
+        continue;
+      }
+    }
+    updates.push([key, str]);
+  }
+
+  if (rejected.length) {
+    return res.status(400).json({
+      error: rejected.map(r => `${r.key}: ${r.reason}`).join('; '),
+      rejected
+    });
   }
 
   if (updates.length === 0) {
@@ -59,8 +104,8 @@ router.put('/', authenticateToken, requirePermission('write'), async (req, res) 
   await logAudit(req.admin.id, req.admin.email, 'update', 'site_settings',
     updates.map(u => u[0]).join(','), 'success');
 
-  const { rows } = await query('SELECT key, value FROM site_settings');
-  res.json(rowsToObject(rows));
+  const profile = await getBusinessProfile();
+  res.json(profile.values);
 });
 
 module.exports = router;

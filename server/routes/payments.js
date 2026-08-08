@@ -4,6 +4,8 @@ const { authenticateToken, requirePermission, logAudit } = require('../auth');
 const { authenticateCustomer } = require('../customerAuth');
 const mailer = require('../email');
 const { getStripe } = require('../stripeClient');
+const { recordBookingEvent } = require('../bookingAudit');
+const { quoteBooking, stripeLineItems } = require('../pricing');
 
 const router = express.Router();
 
@@ -24,6 +26,27 @@ async function notifyPaid(bookingId) {
     mailer.sendPaymentReceivedToCustomer({ booking }),
     mailer.sendPaymentReceivedToOwner({ booking })
   ]);
+}
+
+// Build Stripe line items for a booking from the authoritative pricing module,
+// so every checkout surface (admin link, customer self-serve, approval email)
+// charges and itemises the same way.
+async function lineItemsForBooking(booking) {
+  const { rows } = await query('SELECT * FROM services WHERE id = $1', [booking.service_id]);
+  const service = rows[0] || { name: booking.service_name, price_cents: booking.amount_cents, billing_unit: 'session' };
+  const quote = quoteBooking({
+    service,
+    startDate: booking.start_date,
+    endDate: booking.end_date,
+    dogCount: booking.dog_count
+  });
+  return stripeLineItems({
+    service,
+    quote,
+    bookingId: booking.id,
+    dogName: booking.dog_name,
+    authoritativeTotalCents: booking.amount_cents
+  });
 }
 
 // Reconcile a booking's payment status with Stripe. Webhooks are the primary
@@ -205,20 +228,18 @@ router.post('/send-payment-link', authenticateToken, requirePermission('write'),
   if (!booking) {
     return res.status(404).json({ error: 'Booking not found' });
   }
+  // Minting a link for a cancelled or already-settled booking would let the
+  // customer pay for something they cannot receive, or pay twice.
+  if (booking.status === 'cancelled') {
+    return res.status(400).json({ error: 'Cannot send a payment link for a cancelled booking' });
+  }
+  if (booking.payment_status === 'paid') {
+    return res.status(400).json({ error: 'Booking is already paid' });
+  }
 
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ['card'],
-    line_items: [{
-      price_data: {
-        currency: 'usd',
-        product_data: {
-          name: booking.service_name,
-          description: `Booking for ${booking.dog_name} - Benny and the Pets`
-        },
-        unit_amount: booking.amount_cents
-      },
-      quantity: 1
-    }],
+    line_items: await lineItemsForBooking(booking),
     mode: 'payment',
     metadata: { booking_id: booking.id.toString() },
     success_url: `${req.protocol}://${req.get('host')}/my-bookings?email=${encodeURIComponent(booking.email)}&booking=${booking.id}`,
@@ -270,17 +291,7 @@ router.post('/customer-checkout', authenticateCustomer, async (req, res) => {
   const protocol = req.protocol;
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ['card'],
-    line_items: [{
-      price_data: {
-        currency: 'usd',
-        product_data: {
-          name: booking.service_name,
-          description: `Booking #${booking.id} for ${booking.dog_name}`
-        },
-        unit_amount: booking.amount_cents
-      },
-      quantity: 1
-    }],
+    line_items: await lineItemsForBooking(booking),
     mode: 'payment',
     metadata: { booking_id: booking.id.toString() },
     success_url: `${protocol}://${host}/my-bookings?payment=success&booking=${booking.id}`,
@@ -320,6 +331,34 @@ router.post('/webhook', async (req, res) => {
     return res.status(400).json({ error: `Webhook signature verification failed: ${err.message}` });
   }
 
+  // Exactly-once processing. Claiming the event id first means a duplicate or
+  // replayed delivery short-circuits here instead of re-running the handler,
+  // and the row records that we saw it even if processing later fails.
+  let claimed;
+  try {
+    claimed = await query(
+      `INSERT INTO stripe_events (event_id, event_type, booking_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (event_id) DO NOTHING
+       RETURNING event_id`,
+      [
+        event.id,
+        event.type,
+        parseInt((event.data && event.data.object && event.data.object.metadata
+          && event.data.object.metadata.booking_id) || '', 10) || null
+      ]
+    );
+  } catch (err) {
+    // The ledger itself is unavailable. Answer 5xx so Stripe retries rather
+    // than dropping a real payment notification.
+    console.error('[webhook] could not record event', event.id, err.message);
+    return res.status(503).json({ error: 'Event ledger unavailable, retry' });
+  }
+
+  if (claimed.rowCount === 0) {
+    return res.json({ received: true, duplicate: true });
+  }
+
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
@@ -339,7 +378,17 @@ router.post('/webhook', async (req, res) => {
              WHERE id = $2 AND payment_status != 'paid'`,
             [session.payment_intent, bookingId]
           );
-          if (result.rowCount > 0) await notifyPaid(bookingId);
+          if (result.rowCount > 0) {
+            await recordBookingEvent({
+              bookingId,
+              event: 'payment_succeeded',
+              to: { payment_status: 'paid' },
+              actorType: 'stripe_webhook',
+              actorId: event.id,
+              detail: String(session.id || '')
+            });
+            await notifyPaid(bookingId);
+          }
         }
         break;
       }
@@ -355,13 +404,37 @@ router.post('/webhook', async (req, res) => {
              WHERE id = $2 AND payment_status != 'paid'`,
             [intent.id, bookingId]
           );
-          if (result.rowCount > 0) await notifyPaid(bookingId);
+          if (result.rowCount > 0) {
+            await recordBookingEvent({
+              bookingId,
+              event: 'payment_succeeded',
+              to: { payment_status: 'paid' },
+              actorType: 'stripe_webhook',
+              actorId: event.id,
+              detail: intent.id
+            });
+            await notifyPaid(bookingId);
+          }
         }
         break;
       }
     }
+    await query(
+      `UPDATE stripe_events SET processed_at = NOW(), status = 'processed' WHERE event_id = $1`,
+      [event.id]
+    );
   } catch (err) {
-    console.error('[webhook] DB update failed for', event.type, 'event', event.id, err);
+    console.error('[webhook] processing failed for', event.type, 'event', event.id, err);
+    // Release the claim so Stripe's retry can process the event rather than
+    // being deduplicated against a row that never completed.
+    try {
+      await query('DELETE FROM stripe_events WHERE event_id = $1 AND processed_at IS NULL', [event.id]);
+    } catch (cleanupErr) {
+      console.error('[webhook] could not release event claim', event.id, cleanupErr.message);
+    }
+    // 5xx tells Stripe to retry with backoff. Returning 200 here (the previous
+    // behaviour) silently lost real payments whenever the DB write failed.
+    return res.status(500).json({ error: 'Event processing failed, retry' });
   }
 
   res.json({ received: true });

@@ -37,7 +37,7 @@ html {
 }
 
 body {
-  font-family: 'Nunito', sans-serif;
+  font-family: 'Nunito', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
   color: var(--text);
   background: var(--bg);
   line-height: 1.7;
@@ -45,7 +45,7 @@ body {
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'Fredoka One', cursive;
+  font-family: 'Fredoka One', 'Trebuchet MS', 'Segoe UI', system-ui, -apple-system, sans-serif;
   line-height: 1.2;
 }
 
@@ -122,7 +122,7 @@ img {
 }
 
 .logo {
-  font-family: 'Fredoka One', cursive;
+  font-family: 'Fredoka One', 'Trebuchet MS', 'Segoe UI', system-ui, -apple-system, sans-serif;
   font-size: 1.5rem;
   color: var(--dark);
   display: flex;
@@ -226,7 +226,7 @@ img {
   gap: 8px;
   padding: 14px 32px;
   border-radius: 50px;
-  font-family: 'Nunito', sans-serif;
+  font-family: 'Nunito', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
   font-weight: 800;
   font-size: 1rem;
   cursor: pointer;
@@ -347,14 +347,14 @@ img {
 
 .stat {
   text-align: center;
-  font-family: 'Fredoka One', cursive;
+  font-family: 'Fredoka One', 'Trebuchet MS', 'Segoe UI', system-ui, -apple-system, sans-serif;
   font-size: 1.8rem;
   color: var(--dark);
 }
 
 .stat-label {
   display: block;
-  font-family: 'Nunito', sans-serif;
+  font-family: 'Nunito', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--text-light);
@@ -723,7 +723,7 @@ img {
 }
 
 .boop-count {
-  font-family: 'Fredoka One', cursive;
+  font-family: 'Fredoka One', 'Trebuchet MS', 'Segoe UI', system-ui, -apple-system, sans-serif;
   font-size: 2.5rem;
   color: var(--accent);
 }
@@ -938,7 +938,7 @@ img {
   padding: 12px 16px;
   border: 2px solid #e0e0e0;
   border-radius: 16px;
-  font-family: 'Nunito', sans-serif;
+  font-family: 'Nunito', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
   font-size: 0.95rem;
   background: #fafafa;
   transition: border-color var(--transition);
@@ -1059,7 +1059,7 @@ img {
   padding: 12px 16px;
   border: 2px solid #e0e0e0;
   border-radius: var(--radius-sm);
-  font-family: 'Nunito', sans-serif;
+  font-family: 'Nunito', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
   font-size: 1rem;
   transition: border-color var(--transition);
   background: var(--bg);
@@ -1212,7 +1212,7 @@ img {
   border-radius: 50px;
   background: rgba(255, 255, 255, 0.1);
   color: var(--white);
-  font-family: 'Nunito', sans-serif;
+  font-family: 'Nunito', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
   font-size: 0.9rem;
 }
 
@@ -1425,4 +1425,488 @@ img {
   .contact-info {
     grid-template-columns: 1fr;
   }
+}
+
+/* ==========================================================================
+   Accessibility and new components (WCAG 2.2 AA remediation)
+   ========================================================================== */
+
+/* --- Skip link ---------------------------------------------------------
+   Present on every page as the first focusable element. It is off-screen
+   until focused rather than display:none, because a hidden element cannot
+   receive focus at all. */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -100px;
+  z-index: 10001;
+  padding: 12px 20px;
+  background: var(--white, #fff);
+  color: var(--text, #2d2a26);
+  border: 2px solid var(--primary, #ff8c42);
+  border-radius: 8px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+.skip-link:focus {
+  top: 8px;
+}
+
+/* Visually hidden but available to assistive technology. Used for the long
+   form of every price, star rating and icon-only control. */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- Focus visibility --------------------------------------------------
+   A single, high-contrast focus ring applied to everything focusable. The
+   previous stylesheet relied on the browser default, which disappears
+   entirely against the orange and cream backgrounds used here. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid #1b4dd8;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+/* On dark sections the blue ring loses contrast; invert it there. */
+.footer :where(a, button, input, textarea):focus-visible,
+.contact :where(a, button, input, textarea):focus-visible,
+.fun-section :where(a, button):focus-visible {
+  outline-color: #ffd166;
+}
+
+/* --- Target size (WCAG 2.2 AA, 24x24 minimum; 44x44 comfortable) ------- */
+.nav-links a,
+.footer-links a,
+.social-link,
+.carousel-btn,
+.review-star,
+.btn {
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.footer-links a,
+.nav-links a {
+  padding: 10px 8px;
+}
+.social-link {
+  width: 44px;
+  height: 44px;
+}
+/* The dots stay visually small but carry a 44px transparent hit area. */
+.carousel-dot {
+  position: relative;
+  width: 12px;
+  height: 12px;
+}
+.carousel-dot::after {
+  content: '';
+  position: absolute;
+  inset: -16px;
+}
+.carousel-dots {
+  gap: 20px;
+}
+.review-star {
+  background: none;
+  border: none;
+  font-size: 1.75rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.35;
+  padding: 6px;
+}
+.review-star.active {
+  opacity: 1;
+}
+.review-rating-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0 0 16px;
+}
+.review-rating-fieldset legend {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+/* --- Form fields with visible labels ----------------------------------- */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+  text-align: left;
+  width: 100%;
+}
+.field label {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.field .optional {
+  font-weight: 400;
+  opacity: 0.75;
+}
+.field input,
+.field textarea {
+  width: 100%;
+  padding: 12px 14px;
+  min-height: 44px;
+  border: 2px solid rgba(0, 0, 0, 0.18);
+  border-radius: 10px;
+  font: inherit;
+  background: var(--white, #fff);
+  color: var(--text, #2d2a26);
+}
+.field-help {
+  font-size: 0.85rem;
+  opacity: 0.85;
+  margin: 0;
+}
+.consent-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  text-align: left;
+}
+.consent-row input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+.consent-row label {
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+/* Status messages. Never colour-only: success and error also differ by the
+   leading symbol supplied in ::before. */
+.form-msg,
+.review-form-msg,
+.newsletter-msg {
+  margin: 12px 0 0;
+  font-weight: 700;
+  min-height: 1.4em;
+}
+.form-msg.success::before,
+.review-form-msg.success::before {
+  content: '\2713\00a0';
+}
+.form-msg.error::before,
+.review-form-msg.error::before {
+  content: '\26A0\00a0';
+}
+.form-msg.success,
+.review-form-msg.success {
+  color: #1c6b3d;
+}
+.form-msg.error,
+.review-form-msg.error {
+  color: #a3231b;
+}
+.footer .form-msg.success { color: #8ce0ac; }
+.footer .form-msg.error { color: #ffb3ad; }
+
+/* --- Boop button -------------------------------------------------------
+   Was a click-handled <div>; now a real button, so the browser default
+   chrome has to be reset rather than the semantics discarded. */
+button.boop-dog {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* --- Service status and catalog notes ---------------------------------- */
+.service-status {
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 6px 12px;
+  border-radius: 999px;
+  display: inline-block;
+  margin: 8px 0;
+}
+.service-status-inquiry {
+  background: #fdf0d5;
+  color: #6b4a00;
+}
+.service-status-unavailable {
+  background: #f2e6e5;
+  color: #7a1f18;
+}
+.service-cta {
+  margin-top: 12px;
+}
+.services-note,
+.empty-state {
+  max-width: 640px;
+  margin: 24px auto 0;
+  text-align: center;
+  opacity: 0.9;
+}
+
+.hero-eyebrow {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+.hero-assurances {
+  list-style: none;
+  padding: 0;
+  margin: 28px 0 0;
+  display: grid;
+  gap: 8px;
+}
+.hero-assurances li {
+  padding-left: 28px;
+  position: relative;
+}
+.hero-assurances li::before {
+  content: '\2713';
+  position: absolute;
+  left: 0;
+  font-weight: 800;
+  color: var(--secondary, #4ecdc4);
+}
+
+.about-credentials {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+  display: grid;
+  gap: 10px;
+}
+.about-credentials li {
+  display: flex;
+  flex-direction: column;
+}
+.about-credentials span {
+  opacity: 0.85;
+  font-size: 0.9rem;
+}
+
+/* --- How-it-works steps ------------------------------------------------ */
+.how-it-works {
+  padding: 80px 0;
+}
+.steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.steps li {
+  background: var(--white, #fff);
+  border-radius: var(--radius, 20px);
+  padding: 24px;
+  box-shadow: var(--shadow, 0 10px 30px rgba(0, 0, 0, 0.08));
+}
+.steps h3 {
+  font-size: 1.05rem;
+  margin-bottom: 8px;
+}
+
+/* --- Document pages (policies, service detail) ------------------------- */
+.doc-page {
+  padding: 120px 0 80px;
+}
+.container-narrow {
+  max-width: 760px;
+}
+.doc-page h1 {
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  margin-bottom: 8px;
+}
+.doc-page h2 {
+  font-size: 1.3rem;
+  margin: 32px 0 8px;
+}
+.doc-page p {
+  margin-bottom: 12px;
+  line-height: 1.7;
+}
+.doc-meta {
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+.doc-summary {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.doc-draft-notice {
+  border: 3px solid #b3540f;
+  background: #fff4e6;
+  color: #5a2c00;
+  border-radius: 12px;
+  padding: 20px;
+  margin: 24px 0;
+}
+.doc-draft-notice h2 {
+  margin-top: 0;
+  font-size: 1.1rem;
+}
+.doc-index {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.doc-index-cards li {
+  background: var(--white, #fff);
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: var(--shadow, 0 10px 30px rgba(0, 0, 0, 0.08));
+  display: grid;
+  gap: 4px;
+}
+.doc-index-summary {
+  font-size: 0.95rem;
+}
+.doc-index-meta {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+.breadcrumb ol {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  margin: 0 0 20px;
+  font-size: 0.9rem;
+}
+.breadcrumb li + li::before {
+  content: '/\00a0';
+  opacity: 0.6;
+}
+.navbar-solid {
+  background: var(--white, #fff);
+  box-shadow: var(--shadow, 0 10px 30px rgba(0, 0, 0, 0.08));
+}
+.service-detail-price .service-price {
+  font-size: 1.4rem;
+}
+
+/* --- Gallery figures --------------------------------------------------- */
+.gallery-item figcaption {
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  background: var(--white, #fff);
+}
+.gallery-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.hero-photo,
+.about-photo {
+  max-width: 100%;
+  border-radius: 16px;
+  display: block;
+}
+.about-photo {
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+}
+.hero-photo {
+  max-height: 500px;
+  object-fit: contain;
+}
+
+/* --- Layout safety ----------------------------------------------------
+   Two defects this prevents: long unbroken strings (uploaded file names,
+   customer-supplied dog names) pushing the page wider than the viewport,
+   and any single element establishing a horizontal scrollbar on the body. */
+html, body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+body {
+  overflow-wrap: break-word;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+img, video, table, pre {
+  max-width: 100%;
+}
+.testimonial-card blockquote {
+  margin: 0;
+}
+
+/* --- Reduced motion ----------------------------------------------------
+   Anything decorative stops. Note the carousel's transform transition is
+   included: an unexpected slide is motion too. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
+  .paw-prints {
+    display: none;
+  }
+}
+
+/* --- Forced colours / high contrast ------------------------------------ */
+@media (forced-colors: active) {
+  .btn,
+  .carousel-dot,
+  .social-link {
+    border: 1px solid currentColor;
+  }
+}
+
+/* --- Portal consent controls ------------------------------------------- */
+.consent-fieldset {
+  border: 2px solid rgba(0, 0, 0, 0.12);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: 0 0 18px;
+}
+.consent-fieldset legend {
+  font-weight: 700;
+  padding: 0 6px;
+  font-size: 0.95rem;
+}
+.required-marker {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #7a1f18;
+  color: #fff;
 }

@@ -4,10 +4,10 @@ const { authenticateToken, requirePermission, logAudit } = require('../auth');
 const { authenticateCustomer } = require('../customerAuth');
 const mailer = require('../email');
 const { getStripe } = require('../stripeClient');
+const { quoteBooking, stripeLineItems } = require('../pricing');
 
 const router = express.Router();
 
-const MS_PER_DAY = 86400000;
 const MAX_DOGS_PER_BOOKING = 10;
 
 // Allowed values for the two independent status columns. Used to reject typos
@@ -54,37 +54,26 @@ async function expireOpenStripeSessions(stripe, booking) {
   }
 }
 
-// Number of nights between two YYYY-MM-DD dates (0 if end <= start or invalid).
-function nightsBetween(startDate, endDate) {
-  const ms = new Date(endDate).getTime() - new Date(startDate).getTime();
-  if (!Number.isFinite(ms) || ms <= 0) return 0;
-  return Math.round(ms / MS_PER_DAY);
-}
-
-// The billing unit is stored on the service (billing_unit: night | day |
-// session). Older rows created before that column fall back to the legacy
-// price_label heuristic so their pricing is unchanged.
-function billingUnitFor(service) {
-  const unit = String(service.billing_unit || '').toLowerCase();
-  if (unit === 'night' || unit === 'day' || unit === 'session') return unit;
-  const label = String(service.price_label || '').toLowerCase();
-  if (label.includes('night')) return 'night';
-  if (label.includes('day')) return 'day';
-  return 'session';
-}
-
-// Boarding/daycare are billed per-night/per-day, so the total must scale with
-// the length of stay; grooming/training are per-session (flat). Every service
-// rate is also per-dog — a booking for two pups doubles the price.
+// Pricing is owned by server/pricing.js — the single authoritative source used
+// by marketing cards, booking quotes, Stripe line items, emails and receipts.
+// Nothing here re-derives an amount from a label or a client-supplied value.
 function computeAmountCents(service, startDate, endDate, dogCount) {
-  const base = Number(service.price_cents) || 0;
-  const count = normalizeDogCount(dogCount);
-  const unit = billingUnitFor(service);
-  if (unit === 'session' || !startDate || !endDate) return base * count;
-  const nights = nightsBetween(startDate, endDate);
-  // Per-night charges the number of nights; per-day charges inclusive days.
-  const qty = unit === 'night' ? Math.max(1, nights) : Math.max(1, nights + 1);
-  return base * qty * count;
+  return quoteBooking({ service, startDate, endDate, dogCount }).total_cents;
+}
+
+// A service may be publicly visible without being bookable (see
+// migrations/0014). Only 'bookable' services may be selected in a booking; the
+// others route to an inquiry or show an explicit unavailable status.
+function bookableError(service) {
+  if (!service) return 'Invalid service selected';
+  if (service.active === false) return 'Invalid service selected';
+  if (service.booking_mode === 'inquiry') {
+    return `${service.name} is not available for instant booking yet. Please contact us to enquire.`;
+  }
+  if (service.booking_mode === 'unavailable') {
+    return `${service.name} is temporarily unavailable.`;
+  }
+  return null;
 }
 
 // Public: Check availability for a given date
@@ -125,8 +114,9 @@ router.post('/', async (req, res) => {
 
   const { rows: serviceRows } = await query('SELECT * FROM services WHERE id = $1', [service_id]);
   const service = serviceRows[0];
-  if (!service) {
-    return res.status(400).json({ error: 'Invalid service selected' });
+  const notBookable = bookableError(service);
+  if (notBookable) {
+    return res.status(400).json({ error: notBookable });
   }
 
   const dogs = normalizeDogCount(dog_count);
@@ -232,8 +222,9 @@ router.post('/customer-book', authenticateCustomer, async (req, res) => {
     [service_id]
   );
   const service = serviceRows[0];
-  if (!service) {
-    return res.status(400).json({ error: 'Invalid service selected' });
+  const notBookable = bookableError(service);
+  if (notBookable) {
+    return res.status(400).json({ error: notBookable });
   }
 
   const { rows: customerRows } = await query('SELECT * FROM customers WHERE id = $1', [req.customer.id]);
@@ -510,19 +501,25 @@ router.post('/:id/approve', authenticateToken, requirePermission('write'), async
   if (stripe) {
     try {
       const base = `${req.protocol}://${req.get('host')}`;
+      // Line items are built from the same quote the customer was shown, so the
+      // Stripe dashboard, Stripe's own receipt and our confirmation email all
+      // display an identical breakdown instead of three separate derivations.
+      const { rows: svcRows } = await query('SELECT * FROM services WHERE id = $1', [booking.service_id]);
+      const quote = quoteBooking({
+        service: svcRows[0] || { price_cents: booking.amount_cents, billing_unit: 'session' },
+        startDate: booking.start_date,
+        endDate: booking.end_date,
+        dogCount: booking.dog_count
+      });
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
-        line_items: [{
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: booking.service_name,
-              description: `Booking #${booking.id} for ${booking.dog_name} - Benny and the Pets`
-            },
-            unit_amount: booking.amount_cents
-          },
-          quantity: 1
-        }],
+        line_items: stripeLineItems({
+          service: svcRows[0] || { name: booking.service_name },
+          quote,
+          bookingId: booking.id,
+          dogName: booking.dog_name,
+          authoritativeTotalCents: booking.amount_cents
+        }),
         mode: 'payment',
         metadata: { booking_id: booking.id.toString() },
         success_url: `${base}/my-bookings?email=${encodeURIComponent(booking.email)}&booking=${booking.id}`,

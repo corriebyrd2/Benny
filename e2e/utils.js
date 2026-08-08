@@ -36,6 +36,10 @@ async function registerCustomer(request, overrides = {}) {
     password: 'password123',
     phone: '555-0100',
     dog_name: 'Buddy',
+    // Registration requires explicit acceptance of the terms and privacy
+    // policy. Fixtures accept, so specs that are not about consent aren't
+    // coupled to it; e2e/legal.spec.js covers the refusal paths.
+    accept_policies: { terms: true, privacy: true },
     ...overrides
   };
   const res = await request.post('/api/customer/register', { data });

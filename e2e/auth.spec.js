@@ -57,7 +57,8 @@ test.describe('auth', () => {
           email: 'jane@test.local',
           password: 'password123',
           phone: '555-0100',
-          dog_name: 'Fido'
+          dog_name: 'Fido',
+          accept_policies: { terms: true, privacy: true }
         }
       });
       expect(res.status()).toBe(201);
@@ -77,10 +78,16 @@ test.describe('auth', () => {
 
     test('rejects duplicate email (case-insensitive)', async ({ request }) => {
       await request.post('/api/customer/register', {
-        data: { name: 'First', email: 'dup@test.local', password: 'password123' }
+        data: {
+          name: 'First', email: 'dup@test.local', password: 'password123',
+          accept_policies: { terms: true, privacy: true }
+        }
       });
       const res = await request.post('/api/customer/register', {
-        data: { name: 'Second', email: 'DUP@test.local', password: 'password123' }
+        data: {
+          name: 'Second', email: 'DUP@test.local', password: 'password123',
+          accept_policies: { terms: true, privacy: true }
+        }
       });
       expect(res.status()).toBe(409);
     });
@@ -91,7 +98,8 @@ test.describe('auth', () => {
           name: 'Login Tester',
           email: 'login@test.local',
           password: 'password123',
-          dog_name: 'Rover'
+          dog_name: 'Rover',
+          accept_policies: { terms: true, privacy: true }
         }
       });
       const loginRes = await request.post('/api/customer/login', {

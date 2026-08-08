@@ -140,7 +140,10 @@ test.describe('security regressions', () => {
 
     test('accepts a 10-char mixed password', async ({ request }) => {
       const res = await request.post('/api/customer/register', {
-        data: { name: 'Good', email: 'good@test.local', password: 'abcdefgh12' }
+        data: {
+          name: 'Good', email: 'good@test.local', password: 'abcdefgh12',
+          accept_policies: { terms: true, privacy: true }
+        }
       });
       expect(res.status()).toBe(201);
     });

@@ -68,11 +68,15 @@ test.describe('subscribers (newsletter)', () => {
   });
 
   test('accepts a valid email and is idempotent on retry', async ({ request }) => {
-    const a = await request.post('/api/subscribe', { data: { email: 'reader@test.local' } });
+    // Marketing consent is now mandatory and explicit; see e2e/legal.spec.js
+    // for the refusal path.
+    const a = await request.post('/api/subscribe',
+      { data: { email: 'reader@test.local', marketing_consent: true } });
     expect(a.status()).toBe(200);
 
     // Second submit with the same address — no duplicate, still 200.
-    const b = await request.post('/api/subscribe', { data: { email: 'READER@test.local' } });
+    const b = await request.post('/api/subscribe',
+      { data: { email: 'READER@test.local', marketing_consent: true } });
     expect(b.status()).toBe(200);
 
     // Confirm there's only one row by sending a campaign and counting the BCC.
@@ -89,7 +93,8 @@ test.describe('subscribers (newsletter)', () => {
   test('rejects malformed emails', async ({ request }) => {
     const cases = ['', 'no-at-sign', 'spaces in@email.com', 'a@b'];
     for (const email of cases) {
-      const res = await request.post('/api/subscribe', { data: { email } });
+      const res = await request.post('/api/subscribe',
+        { data: { email, marketing_consent: true } });
       expect(res.status(), `payload=${email}`).toBe(400);
     }
   });
@@ -98,7 +103,7 @@ test.describe('subscribers (newsletter)', () => {
     let lastStatus = 0;
     for (let i = 0; i < 25; i++) {
       const res = await request.post('/api/subscribe', {
-        data: { email: `flood-${i}@test.local` }
+        data: { email: `flood-${i}@test.local`, marketing_consent: true }
       });
       lastStatus = res.status();
       if (lastStatus === 429) break;
@@ -112,12 +117,15 @@ test.describe('site settings', () => {
     await resetAll(request);
   });
 
-  test('public GET returns the seeded defaults', async ({ request }) => {
+  test('public GET returns only verified values, never placeholders', async ({ request }) => {
     const res = await request.get('/api/settings');
     expect(res.status()).toBe(200);
     const body = await res.json();
     expect(body.business_name).toBe('Benny and the Pets');
-    expect(body.contact_email).toBeTruthy();
+    // Contact details are no longer seeded — there is no truthful default —
+    // so they must be absent rather than fictional.
+    expect(body.contact_email).toBeUndefined();
+    expect(body.contact_address_line1).toBeUndefined();
   });
 
   test('admin PUT updates whitelisted keys', async ({ request }) => {
@@ -126,13 +134,15 @@ test.describe('site settings', () => {
       headers: { authorization: `Bearer ${token}` },
       data: {
         business_name: 'Updated Name',
-        contact_phone_display: '(555) 999-0000'
+        // A real-looking number: the settings API now refuses to store a
+        // directory-reserved 555 placeholder (see e2e/catalog-trust.spec.js).
+        contact_phone_display: '(412) 867-5309'
       }
     });
     expect(res.status()).toBe(200);
     const out = await res.json();
     expect(out.business_name).toBe('Updated Name');
-    expect(out.contact_phone_display).toBe('(555) 999-0000');
+    expect(out.contact_phone_display).toBe('(412) 867-5309');
 
     // Public GET sees the change immediately.
     const pub = await request.get('/api/settings');
@@ -274,8 +284,8 @@ test.describe('campaigns', () => {
   });
 
   test('admin sees subscriber count via /api/campaigns/stats', async ({ request }) => {
-    await request.post('/api/subscribe', { data: { email: 's1@test.local' } });
-    await request.post('/api/subscribe', { data: { email: 's2@test.local' } });
+    await request.post('/api/subscribe', { data: { email: 's1@test.local', marketing_consent: true } });
+    await request.post('/api/subscribe', { data: { email: 's2@test.local', marketing_consent: true } });
 
     const token = await loginAdmin(request);
     const res = await request.get('/api/campaigns/stats', {

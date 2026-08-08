@@ -17,6 +17,12 @@ const {
 } = require('./server/customerAuth');
 const { sendPasswordResetToCustomer } = require('./server/email');
 const { init: initDb, query } = require('./server/database');
+const assets = require('./server/assets');
+const { newNonce } = require('./server/render');
+const { launchCheck, formatLaunchReport } = require('./server/businessProfile');
+const htmlShell = require('./server/htmlShell');
+const { validateAcceptance, recordAcceptance, listAcceptancesForCustomer } = require('./server/policyAcceptance');
+const { listPolicies, requiredForPoint } = require('./server/legal');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -76,16 +82,57 @@ app.set('trust proxy', 1);
 // express.static keeps its own ETag handling for cacheable assets.
 app.set('etag', false);
 
-// Security headers. CSP is disabled because admin.html/customer.html use extensive
-// inline scripts/styles that a strict CSP would break. HSTS is only enabled in
-// production — sending it from a local dev server would lock browsers into
-// http→https upgrades that fail when developers come back to plain http.
+// Per-request CSP nonce. The admin and customer portals carry large inline
+// <script>/<style> blocks; stamping a nonce into them (see server/htmlShell.js)
+// is what lets the policy below run WITHOUT 'unsafe-inline'.
+app.use((req, res, next) => {
+  res.locals.cspNonce = newNonce();
+  next();
+});
+
+// Security headers.
+//
+// CSP was previously disabled outright ("inline scripts would break"), which
+// left the app with no defence-in-depth against injected script at all. The
+// policy below carries no 'unsafe-inline' and no 'unsafe-eval'.
+//
+// frame-ancestors 'none' is the frame protection (X-Frame-Options is legacy and
+// helmet still emits it alongside). connect-src is same-origin only: the app
+// makes no cross-origin XHR. Stripe Checkout is a full-page redirect, not an
+// embed, so it needs no frame-src or script-src entry.
 app.use(helmet({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: {
+      'default-src': ["'self'"],
+      'base-uri': ["'self'"],
+      'object-src': ["'none'"],
+      'frame-ancestors': ["'none'"],
+      'form-action': ["'self'"],
+      'script-src': ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
+      'style-src': ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
+      'font-src': ["'self'", 'data:'],
+      'img-src': ["'self'", 'data:', 'blob:'],
+      'connect-src': ["'self'"],
+      'manifest-src': ["'self'"],
+      'upgrade-insecure-requests': IS_PROD ? [] : null
+    }
+  },
   crossOriginEmbedderPolicy: false,
-  crossOriginResourcePolicy: { policy: 'cross-origin' },
-  hsts: IS_PROD ? { maxAge: 15552000, includeSubDomains: true } : false
+  crossOriginResourcePolicy: { policy: 'same-origin' },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  hsts: IS_PROD ? { maxAge: 63072000, includeSubDomains: true, preload: true } : false
 }));
+
+// Permissions-Policy: switch off browser features this app never uses, so an
+// injected script cannot silently reach for a camera, microphone or location.
+app.use((req, res, next) => {
+  res.setHeader('Permissions-Policy',
+    'accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), ' +
+    'fullscreen=(self), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), ' +
+    'midi=(), payment=(), publickey-credentials-get=(), screen-wake-lock=(), usb=(), xr-spatial-tracking=()');
+  next();
+});
 
 app.use(compression());
 
@@ -98,17 +145,37 @@ app.use(compression());
 // while credentials: true is set.
 const allowedOrigins = (process.env.FRONTEND_ORIGIN || '')
   .split(',').map(s => s.trim()).filter(Boolean);
-app.use(cors((req, cb) => {
+
+function originAllowed(req) {
   const origin = req.header('Origin');
-  const sameOrigin = origin && origin === `${req.protocol}://${req.get('host')}`;
-  const allowed =
-    !origin ||
-    sameOrigin ||
-    allowedOrigins.includes(origin) ||
-    (allowedOrigins.length === 0 && !IS_PROD);
-  if (!allowed) return cb(new Error('Not allowed by CORS'));
+  if (!origin) return true;
+  if (origin === `${req.protocol}://${req.get('host')}`) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  // Outside production, an empty allowlist means "developer machine" — accept
+  // anything so a local frontend on another port can work. In production an
+  // empty allowlist means same-origin only.
+  return allowedOrigins.length === 0 && !IS_PROD;
+}
+
+app.use(cors((req, cb) => {
+  // Never signal an allowlist decision by throwing: the thrown error reached
+  // the generic error handler and the browser got an opaque 500, which is
+  // indistinguishable from the server being broken. Reflect no CORS headers
+  // instead and let the explicit 403 below answer the request.
+  if (!originAllowed(req)) return cb(null, { origin: false });
   cb(null, { origin: true, credentials: true });
 }));
+
+// Explicit, machine-readable CORS denial. A disallowed cross-origin request
+// gets a 403 with a clear reason rather than a 500 or a silent hang.
+app.use((req, res, next) => {
+  if (originAllowed(req)) return next();
+  if (req.method === 'OPTIONS') return res.status(403).end();
+  return res.status(403).json({
+    error: 'cors_origin_not_allowed',
+    message: 'This origin is not permitted to call the API.'
+  });
+});
 
 // Webhooks need the raw body for signature verification, so they must be
 // mounted BEFORE express.json() consumes the stream.
@@ -148,17 +215,27 @@ app.get('/healthz', async (req, res, next) => {
   }
 });
 
-// Static assets — explicit directories only, to avoid exposing server.js, package.json, .env, etc.
-app.use('/css', express.static(path.join(__dirname, 'css'), { maxAge: IS_PROD ? '7d' : 0 }));
-app.use('/js', express.static(path.join(__dirname, 'js'), { maxAge: IS_PROD ? '7d' : 0 }));
-app.use('/images', express.static(path.join(__dirname, 'images'), { maxAge: IS_PROD ? '30d' : 0 }));
+// Content-hashed assets first: /css/style.<hash>.css and /js/main.<hash>.js are
+// immutable for a year. The unhashed paths remain available for anything not
+// yet migrated, with a short max-age.
+app.use(assets.middleware);
+app.use('/css', express.static(path.join(__dirname, 'css'), { maxAge: IS_PROD ? '1h' : 0 }));
+app.use('/js', express.static(path.join(__dirname, 'js'), { maxAge: IS_PROD ? '1h' : 0 }));
+app.use('/images', express.static(path.join(__dirname, 'images'), {
+  maxAge: IS_PROD ? '30d' : 0,
+  immutable: IS_PROD
+}));
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: IS_PROD ? '30d' : 0 }));
 
-// HTML pages
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
-app.get('/my-bookings', (req, res) => res.sendFile(path.join(__dirname, 'customer.html')));
+// Server-rendered public pages (homepage, /services/:slug, /legal/*,
+// robots.txt, sitemap.xml, site.webmanifest).
+app.use('/', require('./server/routes/pages'));
+
+// Account portals. Served through htmlShell so their inline scripts receive
+// this request's CSP nonce.
+app.get('/admin', htmlShell.serve(path.join(__dirname, 'admin.html')));
+app.get('/my-bookings', htmlShell.serve(path.join(__dirname, 'customer.html')));
 
 // Rate limiters
 const authLimiter = rateLimit({
@@ -219,20 +296,56 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 });
 
 // Customer auth
-app.post('/api/customer/register', registerLimiter, async (req, res) => {
-  const { name, email, password, phone, dog_name } = req.body;
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: 'Name, email, and password are required' });
+app.post('/api/customer/register', registerLimiter, async (req, res, next) => {
+  try {
+    const { name, email, password, phone, dog_name, accept_policies, marketing_consent } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Name, email, and password are required' });
+    }
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return res.status(400).json({ error: passwordError });
+    }
+
+    // Contractual acceptance is required and must be explicit — an absent field
+    // is a refusal, never a default. Marketing consent is a SEPARATE, optional
+    // flag and is never inferred from accepting the terms.
+    const acceptanceErrors = validateAcceptance('registration', accept_policies);
+    if (acceptanceErrors.length) {
+      return res.status(400).json({
+        error: acceptanceErrors.join('; '),
+        required_policies: requiredForPoint('registration')
+      });
+    }
+
+    const result = await registerCustomer(name, email, password, phone, dog_name);
+    if (result.error) {
+      return res.status(409).json({ error: result.error });
+    }
+
+    await recordAcceptance({
+      customerId: result.customer.id,
+      email: result.customer.email,
+      point: 'registration',
+      accepted: accept_policies,
+      req
+    });
+
+    if (marketing_consent === true) {
+      await query(
+        `INSERT INTO subscribers (email, source, consent_at, consent_source)
+         VALUES ($1, $2, NOW(), $2)
+         ON CONFLICT (LOWER(email)) DO UPDATE
+           SET unsubscribed_at = NULL, consent_at = NOW(),
+               consent_source = EXCLUDED.consent_source`,
+        [result.customer.email, 'registration']
+      ).catch(err => console.error('[register] marketing opt-in failed', err.message));
+    }
+
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
   }
-  const passwordError = validatePassword(password);
-  if (passwordError) {
-    return res.status(400).json({ error: passwordError });
-  }
-  const result = await registerCustomer(name, email, password, phone, dog_name);
-  if (result.error) {
-    return res.status(409).json({ error: result.error });
-  }
-  res.status(201).json(result);
 });
 
 app.post('/api/customer/login', authLimiter, async (req, res) => {
@@ -317,6 +430,32 @@ app.post('/api/reviews', reviewSubmitLimiter, (req, res, next) => next('route'))
 app.use('/api/reviews', require('./server/routes/reviews'));
 app.use('/api/campaigns', require('./server/routes/campaigns'));
 app.use('/api/settings', require('./server/routes/settings'));
+
+// Public: the policy catalogue and which policies must be accepted where. The
+// customer portal renders its consent checkboxes from this, so the client can
+// never drift from what the server actually enforces.
+app.get('/api/legal/policies', (req, res) => {
+  res.json({
+    policies: listPolicies().map(p => ({
+      slug: p.slug, title: p.title, version: p.version,
+      effective: p.effective, summary: p.summary, draft: !!p.draft,
+      acceptance: p.acceptance, url: `/legal/${p.slug}`
+    })),
+    acceptance_points: {
+      registration: requiredForPoint('registration'),
+      booking: requiredForPoint('booking')
+    }
+  });
+});
+
+// Authenticated customer: what they have accepted, and when.
+app.get('/api/legal/my-acceptances', authenticateCustomer, async (req, res, next) => {
+  try {
+    res.json(await listAcceptancesForCustomer(req.customer.id));
+  } catch (err) {
+    next(err);
+  }
+});
 
 if (TEST_MODE) {
   app.use('/api/__test__', require('./server/testHarness').buildRouter());
@@ -597,6 +736,21 @@ async function bootstrap() {
         `Check R2_BUCKET_NAME and that the R2 API token has Object Read & Write permission.`
       );
     }
+  }
+
+  // Report missing business/legal configuration loudly at boot. Public
+  // components that would have rendered an unconfigured fact hide themselves,
+  // so the site stays truthful, but an administrator needs to see WHY. The
+  // deploy-blocking version of this check is `npm run check:launch`.
+  try {
+    const result = await launchCheck();
+    if (result.ok) {
+      console.log('[launch-check]', formatLaunchReport(result));
+    } else {
+      console.error('[launch-check] ' + formatLaunchReport(result).split('\n').join('\n[launch-check] '));
+    }
+  } catch (err) {
+    console.error('[launch-check] could not run:', err.message);
   }
 
   app.listen(PORT, () => {

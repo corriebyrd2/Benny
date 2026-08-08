@@ -150,17 +150,25 @@ function buildRouter() {
     try {
       // Truncate every app table in dependency order. Using CASCADE is safer
       // for FKs, but RESTART IDENTITY resets SERIALs so tests have predictable ids.
+      // Every app table. site_settings was previously missing, so a spec that
+      // edited a setting leaked into later specs (the homepage title assertion
+      // failed against a business_name another spec had written).
       await pool.query(`
         TRUNCATE TABLE
           email_events,
+          stripe_events,
+          booking_events,
           dog_documents,
           dogs,
           bookings,
           customers,
+          password_reset_tokens,
           photos,
           reviews,
           services,
+          site_settings,
           subscribers,
+          policy_acceptances,
           audit_logs,
           admins
         RESTART IDENTITY CASCADE

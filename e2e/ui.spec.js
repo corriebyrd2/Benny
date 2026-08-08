@@ -11,24 +11,30 @@ test.describe('homepage UI', () => {
     await resetAll(request);
   });
 
-  test('renders services from the API and the hero CTA links to the customer portal', async ({ page }) => {
+  test('renders services from the catalog and the hero CTA links to the customer portal', async ({ page, request }) => {
+    const apiServices = await (await request.get('/api/services')).json();
     await page.goto('/');
-    await expect(page.locator('.services-grid .service-card')).toHaveCount(4, { timeout: 10_000 });
-    await expect(page.getByText('Overnight Boarding').first()).toBeVisible();
+    await expect(page.locator('.services-grid .service-card')).toHaveCount(apiServices.length);
+    await expect(page.getByRole('heading', { name: 'Overnight Boarding' })).toBeVisible();
 
-    const cta = page.getByRole('link', { name: /book a stay/i }).first();
+    const cta = page.getByRole('link', { name: /request a booking/i }).first();
     await expect(cta).toHaveAttribute('href', '/my-bookings');
   });
 
-  test('newsletter signup posts and acknowledges success', async ({ page }) => {
+  test('newsletter signup requires explicit consent, then posts', async ({ page }) => {
     await page.goto('/');
-    const formResponse = page.waitForResponse((res) => res.url().endsWith('/api/subscribe'));
-
     await page.locator('#newsletterEmail').fill('home-subscribe@test.local');
-    await page.locator('#newsletterForm button[type="submit"]').click();
 
-    const res = await formResponse;
-    expect(res.status()).toBe(200);
+    // Consent box starts UNTICKED and submitting without it must not send.
+    await expect(page.locator('#newsletterConsent')).not.toBeChecked();
+    await page.locator('#newsletterForm button[type="submit"]').click();
+    await expect(page.locator('#newsletterMsg')).toContainText(/tick the box/i);
+
+    const formResponse = page.waitForResponse(res => res.url().endsWith('/api/subscribe'));
+    await page.locator('#newsletterConsent').check();
+    await page.locator('#newsletterForm button[type="submit"]').click();
+    expect((await formResponse).status()).toBe(200);
+    await expect(page.locator('#newsletterMsg')).toContainText(/subscribed/i);
   });
 });
 
@@ -67,6 +73,17 @@ test.describe('customer portal UI', () => {
     await page.locator('#regPassword').fill('uistrongpw1');
     await page.locator('#regDog').fill('Biscuit');
 
+    // Contractual acceptance is required and starts unticked. Submitting
+    // without it must be refused in the browser, before any request is made.
+    await expect(page.locator('#regAcceptTerms')).not.toBeChecked();
+    await page.locator('#regBtn').click();
+    await expect(page.locator('#registerError')).toContainText(/Terms of Service/i);
+    await expect(page.locator('#dashboard')).not.toHaveClass(/active/);
+
+    // Marketing consent stays optional and separately unticked.
+    await expect(page.locator('#regMarketing')).not.toBeChecked();
+    await page.locator('#regAcceptTerms').check();
+
     const reg = page.waitForResponse((r) => r.url().endsWith('/api/customer/register'));
     await page.locator('#regBtn').click();
     const res = await reg;
@@ -84,7 +101,8 @@ test.describe('customer portal UI', () => {
         name: 'Logged In',
         email: 'login-ui@test.local',
         password: 'uipassword11',
-        dog_name: 'Daisy'
+        dog_name: 'Daisy',
+        accept_policies: { terms: true, privacy: true }
       }
     });
     expect(reg.status()).toBe(201);

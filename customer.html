@@ -6,9 +6,6 @@
   <title>Customer Portal | Benny and the Pets</title>
   <link rel="icon" type="image/png" href="images/bennyandthepets.png">
   <link rel="apple-touch-icon" href="images/bennyandthepets.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
       --primary: #FF6B35;
@@ -1094,7 +1091,7 @@
         </div>
         <div class="nav-user" id="navLinksAuth" style="display:none;">
           <span class="nav-user-name" id="navUserName"></span>
-          <button class="nav-logout" onclick="logout()">Log Out</button>
+          <button class="nav-logout" data-action="logout">Log Out</button>
         </div>
       </div>
     </div>
@@ -1182,12 +1179,32 @@
           </div>
           <div class="form-group">
             <label for="regPhone">Phone Number (optional)</label>
-            <input type="tel" id="regPhone" placeholder="(555) 123-4567">
+            <input type="tel" id="regPhone" autocomplete="tel">
           </div>
           <div class="form-group">
             <label for="regDog">Dog's Name (optional)</label>
             <input type="text" id="regDog" placeholder="Benny">
           </div>
+          <fieldset class="consent-fieldset">
+            <legend>Before you create an account</legend>
+            <div class="consent-row">
+              <input type="checkbox" id="regAcceptTerms" name="accept_terms">
+              <label for="regAcceptTerms">
+                I have read and agree to the
+                <a href="/legal/terms" target="_blank" rel="noopener">Terms of Service</a>
+                and the
+                <a href="/legal/privacy" target="_blank" rel="noopener">Privacy Policy</a>.
+                <span class="required-marker">Required</span>
+              </label>
+            </div>
+            <div class="consent-row">
+              <input type="checkbox" id="regMarketing" name="marketing_consent">
+              <label for="regMarketing">
+                Send me occasional marketing email. This is optional, separate from
+                booking emails, and I can unsubscribe from any message.
+              </label>
+            </div>
+          </fieldset>
           <button type="submit" class="btn btn-primary btn-full" id="regBtn">Create Account</button>
         </form>
       </div>
@@ -1217,8 +1234,8 @@
           <h3>Booking Submitted!</h3>
           <p id="successMessage">Your booking has been received. We'll confirm it shortly.</p>
           <br>
-          <button class="btn btn-secondary btn-sm" onclick="resetBookingForm()">Book Another Service</button>
-          <button class="btn btn-outline btn-sm" onclick="switchPanel('bookings')">View My Bookings</button>
+          <button class="btn btn-secondary btn-sm" data-action="resetBookingForm">Book Another Service</button>
+          <button class="btn btn-outline btn-sm" data-action="switchPanel" data-arg0="bookings">View My Bookings</button>
         </div>
 
         <div class="booking-form-card" id="bookingFormCard">
@@ -1287,14 +1304,14 @@
         <div class="booking-form-card">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
             <h2>My Dogs</h2>
-            <button class="btn btn-primary btn-sm" onclick="showAddDogForm()">+ Add Dog</button>
+            <button class="btn btn-primary btn-sm" data-action="showAddDogForm">+ Add Dog</button>
           </div>
           <div id="dogsList"></div>
         </div>
 
         <div class="booking-form-card" id="dogFormCard" style="display:none;">
           <h2 id="dogFormTitle">Add a Dog</h2>
-          <form id="dogForm" onsubmit="saveDog(event)">
+          <form id="dogForm" data-submit="saveDog">
             <input type="hidden" id="dogFormId">
             <div class="form-error" id="dogFormError"></div>
             <div class="form-row">
@@ -1323,7 +1340,7 @@
             </div>
             <div style="display:flex;gap:12px;">
               <button type="submit" class="btn btn-primary" id="dogFormBtn">Save Dog</button>
-              <button type="button" class="btn btn-outline" onclick="hideDogForm()">Cancel</button>
+              <button type="button" class="btn btn-outline" data-action="hideDogForm">Cancel</button>
             </div>
           </form>
         </div>
@@ -1352,6 +1369,7 @@
     </div>
   </footer>
 
+  <script src="/js/portal-actions.js"></script>
   <script>
     // State
     let token = localStorage.getItem('customerToken');
@@ -1711,6 +1729,18 @@
       const regError = document.getElementById('registerError');
       regError.classList.remove('visible');
       const regBtn = document.getElementById('regBtn');
+      const acceptTerms = document.getElementById('regAcceptTerms');
+
+      // Contractual acceptance is required and must be an explicit tick. The
+      // server enforces this too — this check only makes the reason visible
+      // next to the control instead of as a generic failure.
+      if (!acceptTerms.checked) {
+        regError.textContent = 'Please accept the Terms of Service and Privacy Policy to continue.';
+        regError.classList.add('visible');
+        acceptTerms.focus();
+        return;
+      }
+
       regBtn.disabled = true;
       regBtn.innerHTML = '<span class="loading-spinner"></span>';
 
@@ -1723,7 +1753,10 @@
             email: document.getElementById('regEmail').value.trim(),
             password: document.getElementById('regPassword').value,
             phone: document.getElementById('regPhone').value.trim(),
-            dog_name: document.getElementById('regDog').value.trim()
+            dog_name: document.getElementById('regDog').value.trim(),
+            // One tick covers both documents, which is what the label says.
+            accept_policies: { terms: true, privacy: true },
+            marketing_consent: document.getElementById('regMarketing').checked
           })
         });
 
@@ -1759,7 +1792,7 @@
     function renderServiceOptions() {
       const grid = document.getElementById('serviceGrid');
       grid.innerHTML = services.map(s => `
-        <div class="service-option" data-id="${s.id}" onclick="selectService(${s.id})">
+        <div class="service-option" data-id="${s.id}" data-action="selectService" data-arg0="${s.id}">
           <div class="service-icon">${s.icon}</div>
           <div class="service-name">${escapeHtml(s.name)}</div>
           <div class="service-price">${escapeHtml(s.price_label)}</div>
@@ -1879,7 +1912,7 @@
             <div class="empty-icon">&#128062;</div>
             <h3>No Bookings Yet</h3>
             <p>You haven't made any bookings yet. Book a service for your pup!</p>
-            <button class="btn btn-primary" onclick="switchPanel('book')">Book a Service</button>
+            <button class="btn btn-primary" data-action="switchPanel" data-arg0="book">Book a Service</button>
           </div>
         `;
         return;
@@ -1891,7 +1924,7 @@
           <span class="badge" style="background:var(--accent);color:var(--dark);padding:6px 16px;font-size:0.85rem;">${bookings.length} booking${bookings.length !== 1 ? 's' : ''}</span>
         </div>
       ` + bookings.map(booking => `
-        <div class="booking-card status-${booking.status}${booking.payment_status === 'requested' ? ' payment-requested' : ''}" onclick="openDetail(${booking.id})">
+        <div class="booking-card status-${booking.status}${booking.payment_status === 'requested' ? ' payment-requested' : ''}" data-action="openDetail" data-arg0="${booking.id}">
           <div class="booking-card-header">
             <div class="booking-card-title">
               <span class="dog-emoji">&#128054;</span>
@@ -1923,7 +1956,7 @@
           ${booking.payment_status === 'requested' ? `
             <div class="payment-requested-banner">
               <span class="banner-text">&#128179; Payment of ${formatAmount(booking.amount_cents)} is due for this booking</span>
-              <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); initiatePayment(${booking.id})">Pay Now</button>
+              <button class="btn btn-primary btn-sm" data-action="initiatePayment" data-arg0="${booking.id}" data-stop="1">Pay Now</button>
             </div>
           ` : ''}
           ${booking.status === 'cancelled' && booking.cancel_reason ? `
@@ -1938,9 +1971,9 @@
             </div>
             <div class="actions">
               ${booking.payment_status === 'requested' ? `
-                <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); initiatePayment(${booking.id})">Pay Now</button>
+                <button class="btn btn-secondary btn-sm" data-action="initiatePayment" data-arg0="${booking.id}" data-stop="1">Pay Now</button>
               ` : ''}
-              <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openDetail(${booking.id})">View Details</button>
+              <button class="btn btn-outline btn-sm" data-action="openDetail" data-arg0="${booking.id}" data-stop="1">View Details</button>
             </div>
           </div>
         </div>
@@ -2013,7 +2046,7 @@
           </div>
           ${booking.payment_status === 'requested' && booking.status !== 'cancelled' ? `
             <p style="color:#004085;font-weight:700;font-size:0.9rem;margin-bottom:12px;">The team has requested payment for this booking.</p>
-            <button class="btn btn-primary" onclick="initiatePayment(${booking.id})">Pay Now — ${formatAmount(booking.amount_cents)}</button>
+            <button class="btn btn-primary" data-action="initiatePayment" data-arg0="${booking.id}">Pay Now — ${formatAmount(booking.amount_cents)}</button>
           ` : ''}
           ${booking.payment_status === 'unpaid' && booking.status !== 'cancelled' ? `
             <p style="color:var(--text-light);font-weight:600;font-size:0.9rem;">Payment will be requested when your booking is confirmed.</p>
@@ -2174,7 +2207,7 @@
             <div class="empty-icon">&#128054;</div>
             <h3>No Dogs Yet</h3>
             <p>Add your dog's profile to make booking easier!</p>
-            <button class="btn btn-primary" onclick="showAddDogForm()">Add Your First Dog</button>
+            <button class="btn btn-primary" data-action="showAddDogForm">Add Your First Dog</button>
           </div>
         `;
         return;
@@ -2193,8 +2226,8 @@
             ${renderDogDocuments(d)}
           </div>
           <div class="dog-card-actions">
-            <button class="btn-icon" onclick="showEditDogForm(${d.id})" title="Edit">&#9998;</button>
-            <button class="btn-icon delete" onclick="deleteDog(${d.id})" title="Delete">&#128465;</button>
+            <button class="btn-icon" data-action="showEditDogForm" data-arg0="${d.id}" title="Edit">&#9998;</button>
+            <button class="btn-icon delete" data-action="deleteDog" data-arg0="${d.id}" title="Delete">&#128465;</button>
           </div>
         </div>
       `).join('');
@@ -2212,7 +2245,7 @@
       const list = docs.length
         ? `<div class="dog-doc-list">${docs.map(doc => `
             <div class="dog-doc-item">
-              <button type="button" class="btn-link" onclick="downloadDogDocument(${doc.id})">&#128196; ${escapeHtml(doc.original_name)}</button>
+              <button type="button" class="btn-link" data-action="downloadDogDocument" data-arg0="${doc.id}">&#128196; ${escapeHtml(doc.original_name)}</button>
               <span>${formatFileSize(doc.size_bytes)}</span>
             </div>
           `).join('')}</div>`
@@ -2221,7 +2254,7 @@
         <div class="dog-documents">
           <h4>&#128196; Documents</h4>
           ${list}
-          <form class="dog-doc-upload" onsubmit="uploadDogDocument(event, ${dog.id})">
+          <form class="dog-doc-upload" data-submit="uploadDogDocument" data-arg0="${dog.id}">
             <input type="file" name="document" required>
             <button type="submit" class="btn btn-secondary">Upload</button>
           </form>

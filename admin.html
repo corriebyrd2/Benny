@@ -6,9 +6,6 @@
   <title>Admin Portal | Benny and the Pets</title>
   <link rel="icon" type="image/png" href="images/bennyandthepets.png">
   <link rel="apple-touch-icon" href="images/bennyandthepets.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
       --primary: #FF6B35;
@@ -1005,6 +1002,7 @@
 
   <div class="toast-container" id="toastContainer"></div>
 
+  <script src="/js/portal-actions.js"></script>
   <script>
     // --- State ---
     let token = localStorage.getItem('benny_admin_token');
@@ -1280,7 +1278,7 @@
             <td>${statusBadge(b.status)}</td>
             <td>${statusBadge(b.payment_status)}</td>
             <td>
-              <button class="btn btn-sm btn-outline" onclick="viewBooking(${b.id})">View</button>
+              <button class="btn btn-sm btn-outline" data-action="viewBooking" data-arg0="${b.id}">View</button>
             </td>
           </tr>
           `;
@@ -1325,7 +1323,7 @@
               <span style="display:inline-flex;align-items:center;gap:6px;margin-left:6px;">
                 <input type="number" id="editDogCount" value="${currentDogCount}" min="1" max="10"
                        style="width:64px;padding:4px 6px;border:2px solid #e0e0e0;border-radius:6px;font-family:inherit;">
-                <button class="btn btn-sm btn-outline" onclick="saveDogCount(${b.id})">Update &amp; re-price</button>
+                <button class="btn btn-sm btn-outline" data-action="saveDogCount" data-arg0="${b.id}">Update &amp; re-price</button>
               </span>
               <small style="display:block;color:var(--text-light);margin-top:4px;">Rate is per dog &mdash; changing this recomputes the amount.</small>
             </div>`
@@ -1338,7 +1336,7 @@
                 <span>$</span>
                 <input type="number" id="editAmountDollars" value="${currentAmountDollars}" min="0" step="0.01"
                        style="width:96px;padding:4px 6px;border:2px solid #e0e0e0;border-radius:6px;font-family:inherit;">
-                <button class="btn btn-sm btn-outline" onclick="saveBookingPrice(${b.id})">Save price</button>
+                <button class="btn btn-sm btn-outline" data-action="saveBookingPrice" data-arg0="${b.id}">Save price</button>
               </span>
               <small style="display:block;color:var(--text-light);margin-top:4px;">
                 Override the calculated price${currentDogCount > 1 ? ` (currently ${currentDogCount} dogs)` : ''}.
@@ -1382,27 +1380,27 @@
       const isFinal = b.status === 'cancelled' || (b.status === 'completed' && b.payment_status === 'paid');
 
       if (isFinal) {
-        return `<button class="btn btn-danger btn-sm" onclick="deleteBooking(${b.id})">Delete Record</button>`;
+        return `<button class="btn btn-danger btn-sm" data-action="deleteBooking" data-arg0="${b.id}">Delete Record</button>`;
       }
 
       let buttons = [];
 
       // Cancel — always available if not already cancelled/completed
-      buttons.push(`<button class="btn btn-danger btn-sm" onclick="showCancelForm(${b.id})">Cancel Request</button>`);
+      buttons.push(`<button class="btn btn-danger btn-sm" data-action="showCancelForm" data-arg0="${b.id}">Cancel Request</button>`);
 
       // Approve — available for pending bookings
       if (b.status === 'pending') {
-        buttons.push(`<button class="btn btn-success btn-sm" onclick="approveBooking(${b.id})">Approve & Request Payment</button>`);
+        buttons.push(`<button class="btn btn-success btn-sm" data-action="approveBooking" data-arg0="${b.id}">Approve & Request Payment</button>`);
       }
 
       // Request Payment — available for confirmed bookings that are unpaid
       if (b.status === 'confirmed' && (b.payment_status === 'unpaid' || b.payment_status === 'requested')) {
-        buttons.push(`<button class="btn btn-info btn-sm" onclick="sendPaymentRequest(${b.id})">Send Payment Request</button>`);
+        buttons.push(`<button class="btn btn-info btn-sm" data-action="sendPaymentRequest" data-arg0="${b.id}">Send Payment Request</button>`);
       }
 
       // Complete & Paid — available for confirmed bookings
       if (b.status === 'confirmed' || b.status === 'pending') {
-        buttons.push(`<button class="btn btn-warning btn-sm" onclick="completeBooking(${b.id})">Complete & Mark Paid</button>`);
+        buttons.push(`<button class="btn btn-warning btn-sm" data-action="completeBooking" data-arg0="${b.id}">Complete & Mark Paid</button>`);
       }
 
       return buttons.join('\n');
@@ -1414,8 +1412,8 @@
       document.getElementById('cancelReasonInput').focus();
       // Replace footer with confirm/back buttons
       document.getElementById('modalFooter').innerHTML = `
-        <button class="btn btn-outline btn-sm" onclick="viewBooking(${id})">Back</button>
-        <button class="btn btn-danger btn-sm" onclick="confirmCancel(${id})">Confirm Cancellation</button>
+        <button class="btn btn-outline btn-sm" data-action="viewBooking" data-arg0="${id}">Back</button>
+        <button class="btn btn-danger btn-sm" data-action="confirmCancel" data-arg0="${id}">Confirm Cancellation</button>
       `;
     }
 
@@ -1579,8 +1577,8 @@
               ${(Array.isArray(s.perks) ? s.perks : []).map(p => `<span style="display:inline-block;background:#f0f0f0;padding:2px 8px;border-radius:4px;font-size:0.8rem;margin:2px;">${escapeHtml(p)}</span>`).join('')}
             </div>
             <div class="card-actions">
-              <button class="btn btn-sm btn-outline" onclick="editService(${s.id})">Edit</button>
-              <button class="btn btn-sm btn-danger" onclick="deleteService(${s.id})">Delete</button>
+              <button class="btn btn-sm btn-outline" data-action="editService" data-arg0="${s.id}">Edit</button>
+              <button class="btn btn-sm btn-danger" data-action="deleteService" data-arg0="${s.id}">Delete</button>
             </div>
           </div>
         `).join('');
@@ -1640,7 +1638,7 @@
         </form>
       `;
 
-      const footer = `<button class="btn btn-primary" onclick="saveService(${service?.id || 'null'})">${isEdit ? 'Save Changes' : 'Create Service'}</button>`;
+      const footer = `<button class="btn btn-primary" data-action="saveService" data-arg0="${service?.id || 'null'}">${isEdit ? 'Save Changes' : 'Create Service'}</button>`;
       openModal(isEdit ? 'Edit Service' : 'Add Service', body, footer);
     }
 
@@ -1718,15 +1716,15 @@
       return `
         <div class="photo-card">
           <img src="${p.url}" alt="${escapeHtml(p.caption)}" loading="lazy"
-            onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+            data-fallback="next">
           <div class="photo-placeholder" style="display:none;">&#128247;</div>
           <div class="photo-card-body">
             <p><span class="section-badge">${escapeHtml(sectionLabel(section))}</span></p>
             <p>${escapeHtml(p.caption || 'No caption')}</p>
             <p><small>Layout: ${escapeHtml(p.layout)} | ${p.show_on_homepage ? 'On homepage' : 'Hidden'}</small></p>
             <div class="photo-card-actions">
-              <button class="btn btn-sm btn-outline" onclick="editPhoto(${p.id})">Edit</button>
-              <button class="btn btn-sm btn-danger" onclick="deletePhoto(${p.id})">Delete</button>
+              <button class="btn btn-sm btn-outline" data-action="editPhoto" data-arg0="${p.id}">Edit</button>
+              <button class="btn btn-sm btn-danger" data-action="deletePhoto" data-arg0="${p.id}">Delete</button>
             </div>
           </div>
         </div>
@@ -1754,7 +1752,7 @@
                   <span class="section-hint">${escapeHtml(section.hint)}</span>
                 </div>
                 <button class="btn btn-sm btn-primary" style="flex-shrink:0;"
-                  onclick="openPhotoUploadForm('${section.key}')">+ Upload Photo</button>
+                  data-action="openPhotoUploadForm" data-arg0="${section.key}">+ Upload Photo</button>
               </div>
               ${body}
             </div>
@@ -1809,7 +1807,7 @@
       `;
 
       openModal('Upload Photo', body,
-        '<button class="btn btn-primary" onclick="uploadPhoto()">Upload</button>');
+        '<button class="btn btn-primary" data-action="uploadPhoto">Upload</button>');
     }
 
     async function uploadPhoto() {
@@ -1877,7 +1875,7 @@
         `;
 
         openModal('Edit Photo', body,
-          `<button class="btn btn-primary" onclick="savePhotoEdit(${id})">Save</button>`);
+          `<button class="btn btn-primary" data-action="savePhotoEdit" data-arg0="${id}">Save</button>`);
       } catch (err) {
         showToast(err.message, true);
       }
@@ -1937,12 +1935,12 @@
         tbody.innerHTML = reviews.map(r => {
           const actions = [];
           if (r.status !== 'approved') {
-            actions.push(`<button class="btn btn-sm btn-success" onclick="setReviewStatus(${r.id}, 'approved')">Approve</button>`);
+            actions.push(`<button class="btn btn-sm btn-success" data-action="setReviewStatus" data-arg0="${r.id}" data-arg1="approved">Approve</button>`);
           }
           if (r.status !== 'rejected') {
-            actions.push(`<button class="btn btn-sm btn-warning" onclick="setReviewStatus(${r.id}, 'rejected')">${r.status === 'approved' ? 'Remove from site' : 'Reject'}</button>`);
+            actions.push(`<button class="btn btn-sm btn-warning" data-action="setReviewStatus" data-arg0="${r.id}" data-arg1="rejected">${r.status === 'approved' ? 'Remove from site' : 'Reject'}</button>`);
           }
-          actions.push(`<button class="btn btn-sm btn-danger" onclick="deleteReview(${r.id})">Delete</button>`);
+          actions.push(`<button class="btn btn-sm btn-danger" data-action="deleteReview" data-arg0="${r.id}">Delete</button>`);
           return `
           <tr>
             <td style="white-space:nowrap;">${formatDate(r.created_at)}</td>
@@ -2026,10 +2024,10 @@
 
         tbody.innerHTML = bookings.map(b => {
           const unpaidActions = [
-            `<button class="btn btn-sm btn-success" onclick="sendPaymentRequest(${b.id})">Request Payment</button>`
+            `<button class="btn btn-sm btn-success" data-action="sendPaymentRequest" data-arg0="${b.id}">Request Payment</button>`
           ];
           if (b.stripe_session_id || (b.stripe_payment_id || '').startsWith('pi_')) {
-            unpaidActions.push(`<button class="btn btn-sm btn-outline" onclick="syncPaymentStatus(${b.id})">Sync with Stripe</button>`);
+            unpaidActions.push(`<button class="btn btn-sm btn-outline" data-action="syncPaymentStatus" data-arg0="${b.id}">Sync with Stripe</button>`);
           }
           return `
           <tr>
@@ -2212,7 +2210,7 @@
 
       return `
         <div class="client-card" id="client-card-${idx}">
-          <div class="client-card-header" onclick="toggleClient(${idx})">
+          <div class="client-card-header" data-action="toggleClient" data-arg0="${idx}">
             <div class="client-avatar ${isGuest ? 'guest' : ''}">${escapeHtml(initials)}</div>
             <div class="client-info">
               <h3>
@@ -2268,7 +2266,7 @@
         const docs = Array.isArray(d.documents) ? d.documents : [];
         const docsHtml = docs.length
           ? `<div class="dog-docs-admin">${docs.map(doc => `
-              <button type="button" class="doc-link" onclick="downloadDogDocumentAdmin(${doc.id})">&#128196; ${escapeHtml(doc.original_name)} (${formatFileSize(doc.size_bytes)})</button>
+              <button type="button" class="doc-link" data-action="downloadDogDocumentAdmin" data-arg0="${doc.id}">&#128196; ${escapeHtml(doc.original_name)} (${formatFileSize(doc.size_bytes)})</button>
             `).join('')}</div>`
           : (d.source === 'profile' ? '<div class="dog-docs-empty">No docs uploaded</div>' : '');
         return `
@@ -2314,7 +2312,7 @@
             <td>${formatCents(b.amount_cents)}</td>
             <td>${statusBadge(b.status)}</td>
             <td>${statusBadge(b.payment_status)}</td>
-            <td><button class="btn btn-sm btn-outline" onclick="event.stopPropagation(); viewBooking(${b.id})">View</button></td>
+            <td><button class="btn btn-sm btn-outline" data-action="viewBooking" data-arg0="${b.id}" data-stop="1">View</button></td>
           </tr>
         `;
       }).join('');

@@ -217,3 +217,5 @@ router.delete('/:id', authenticateToken, requirePermission('delete'), async (req
 });
 
 module.exports = router;
+module.exports.photoUrl = photoUrl;
+module.exports.withUrl = withUrl;

@@ -480,6 +480,12 @@ router.get('/', async (req, res, next) => {
           .join('\n'),
         footer_legal_html: footerLegalHtml(),
         contact_html: contactHtml(profile),
+        // Drives the "what's it about?" selector on the enquiry form. Every
+        // service is offered, including the enquiry-only ones — asking about
+        // grooming is exactly what that form is for.
+        inquiry_service_options: list
+          .map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`)
+          .join('\n'),
         social_html: socialHtml(profile),
         credentials_html: credentialsHtml(profile),
         gallery_html: galleryHtml(photos),

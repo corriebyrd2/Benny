@@ -142,6 +142,13 @@
       color: var(--white); background: rgba(255,255,255,0.08);
       border-left-color: var(--primary);
     }
+    .nav-badge[hidden] { display: none; }
+    .nav-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 22px; height: 22px; padding: 0 6px; margin-left: auto;
+      border-radius: 999px; background: var(--danger-strong); color: #fff;
+      font-size: 0.75rem; font-weight: 800;
+    }
     .sidebar-nav a .nav-icon { font-size: 1.3rem; width: 28px; text-align: center; }
 
     .sidebar-footer {
@@ -649,6 +656,9 @@
         <a href="#" data-panel="reviews">
           <span class="nav-icon">&#11088;</span> Reviews
         </a>
+        <a href="#" data-panel="inquiries">
+          <span class="nav-icon">&#128172;</span> Enquiries <span id="inquiryBadge" class="nav-badge" hidden></span>
+        </a>
         <a href="#" data-panel="settings">
           <span class="nav-icon">&#9881;&#65039;</span> Company Info
         </a>
@@ -849,6 +859,44 @@
                 </tr>
               </thead>
               <tbody id="reviewsTable">
+                <tr><td colspan="6" style="text-align:center; color: var(--text-light);">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Enquiries Panel -->
+      <div class="panel" id="panel-inquiries">
+        <div class="page-header">
+          <h1>Enquiries</h1>
+          <select id="inquiryFilter" class="btn btn-outline btn-sm" style="cursor:pointer;">
+            <option value="new" selected>New</option>
+            <option value="in_progress">In progress</option>
+            <option value="answered">Answered</option>
+            <option value="spam">Spam</option>
+            <option value="">All</option>
+          </select>
+        </div>
+        <p style="color:var(--text-light); margin-bottom:24px; max-width:760px;">
+          Messages sent from the homepage contact form by people who do not have
+          an account. They are also emailed to you &mdash; but they are stored
+          here, so nothing is lost if email delivery fails.
+        </p>
+        <div class="card">
+          <div class="card-body" style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Received</th>
+                  <th>From</th>
+                  <th>About</th>
+                  <th style="min-width:280px;">Message</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="inquiriesTable">
                 <tr><td colspan="6" style="text-align:center; color: var(--text-light);">Loading...</td></tr>
               </tbody>
             </table>
@@ -1169,6 +1217,7 @@
       document.getElementById('loginScreen').style.display = 'none';
       document.getElementById('adminLayout').style.display = 'block';
       loadDashboard();
+      refreshInquiryBadge();
     }
 
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -1230,6 +1279,7 @@
         case 'services': loadServices(); break;
         case 'photos': loadPhotos(); break;
         case 'reviews': loadReviews(); break;
+        case 'inquiries': loadInquiries(); break;
         case 'settings': loadSettings(); break;
         case 'payments': loadPayments(); break;
         case 'campaigns': loadCampaigns(); break;
@@ -1962,6 +2012,69 @@
       return '&#11088;'.repeat(n);
     }
 
+    async function loadInquiries() {
+      const tbody = document.getElementById('inquiriesTable');
+      const status = document.getElementById('inquiryFilter').value;
+      try {
+        const list = await apiCall('/api/inquiries' + (status ? `?status=${status}` : ''));
+        if (!list.length) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--text-light);">No enquiries here.</td></tr>';
+        } else {
+          tbody.innerHTML = list.map(i => {
+            const actions = [];
+            if (i.status !== 'answered') {
+              actions.push(`<button class="btn btn-sm btn-success" data-action="setInquiryStatus" data-arg0="${i.id}" data-arg1="answered">Mark answered</button>`);
+            }
+            if (i.status === 'new') {
+              actions.push(`<button class="btn btn-sm btn-info" data-action="setInquiryStatus" data-arg0="${i.id}" data-arg1="in_progress">In progress</button>`);
+            }
+            if (i.status !== 'spam') {
+              actions.push(`<button class="btn btn-sm btn-outline" data-action="setInquiryStatus" data-arg0="${i.id}" data-arg1="spam">Spam</button>`);
+            }
+            return `<tr>
+              <td>${new Date(i.created_at).toLocaleDateString()}</td>
+              <td>
+                <strong>${escapeHtml(i.name)}</strong><br>
+                <a href="mailto:${escapeHtml(i.email)}">${escapeHtml(i.email)}</a>
+                ${i.phone ? `<br>${escapeHtml(i.phone)}` : ''}
+              </td>
+              <td>${escapeHtml(i.service_name || 'General')}</td>
+              <td style="white-space:pre-wrap;">${escapeHtml(i.message)}</td>
+              <td>${escapeHtml(i.status.replace('_', ' '))}</td>
+              <td>${actions.join(' ')}</td>
+            </tr>`;
+          }).join('');
+        }
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--danger-strong);">${escapeHtml(err.message)}</td></tr>`;
+      }
+      refreshInquiryBadge();
+    }
+
+    async function setInquiryStatus(id, status) {
+      try {
+        await apiCall('/api/inquiries/' + id, { method: 'PUT', body: JSON.stringify({ status }) });
+        showToast('Enquiry updated');
+        loadInquiries();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    }
+
+    // Unanswered enquiries are the one thing an owner must not miss, so the
+    // count rides on the sidebar rather than only inside the panel.
+    async function refreshInquiryBadge() {
+      const badge = document.getElementById('inquiryBadge');
+      if (!badge) return;
+      try {
+        const stats = await apiCall('/api/inquiries/stats');
+        badge.textContent = stats.new_count;
+        badge.hidden = stats.new_count === 0;
+      } catch {
+        badge.hidden = true;
+      }
+    }
+
     async function loadReviews() {
       try {
         const filter = document.getElementById('reviewFilter').value;
@@ -2443,6 +2556,8 @@
         btn.textContent = 'Send to the Pack';
       }
     });
+
+    document.getElementById('inquiryFilter').addEventListener('change', loadInquiries);
 
     // --- Init ---
     // The CSRF cookie is a hint that a session may exist; only the server can

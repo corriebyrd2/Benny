@@ -274,6 +274,13 @@ const publicBookingLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many booking requests. Try again in an hour.' }
 });
+const inquiryLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many enquiries. Please try again in an hour, or email us directly.' }
+});
 const reviewSubmitLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 5,
@@ -281,7 +288,7 @@ const reviewSubmitLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many review submissions. Try again in an hour.' }
 });
-app.locals.limiters = { authLimiter, registerLimiter, subscribeLimiter, passwordResetRequestLimiter, publicBookingLimiter, reviewSubmitLimiter };
+app.locals.limiters = { authLimiter, registerLimiter, subscribeLimiter, passwordResetRequestLimiter, publicBookingLimiter, reviewSubmitLimiter, inquiryLimiter };
 
 // Admin auth
 app.post('/api/auth/login', authLimiter, async (req, res, next) => {
@@ -516,6 +523,8 @@ app.use('/api/subscribe', subscribeLimiter, require('./server/routes/subscribers
 // moderation routes on the same router stay unlimited.
 app.post('/api/reviews', reviewSubmitLimiter, (req, res, next) => next('route'));
 app.use('/api/reviews', require('./server/routes/reviews'));
+app.post('/api/inquiries', inquiryLimiter, (req, res, next) => next('route'));
+app.use('/api/inquiries', require('./server/routes/inquiries'));
 app.use('/api/campaigns', require('./server/routes/campaigns'));
 app.use('/api/settings', require('./server/routes/settings'));
 

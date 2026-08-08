@@ -157,6 +157,8 @@ function buildRouter() {
         TRUNCATE TABLE
           email_events,
           document_events,
+          inquiries,
+          sessions,
           stripe_events,
           booking_events,
           dog_documents,

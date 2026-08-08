@@ -195,12 +195,58 @@
           <p class="section-desc">Questions about a stay, a dog with particular needs, or dates we haven't listed? Ask before you book.</p>
         </div>
         <div class="contact-grid">
-          <div class="contact-booking-cta">
-            <h3>Ready to book?</h3>
-            <p>Create an account or sign in to send a booking request for your dog.</p>
-            <a href="/my-bookings" class="btn btn-primary">Go to my account</a>
+          <div class="contact-form-wrap">
+            <h3 id="inquiry-heading">Send us a message</h3>
+            <p id="inquiry-help">
+              No account needed. Tell us what you're after and we'll reply by
+              email &mdash; usually within one business day.
+            </p>
+            <form id="inquiryForm" aria-labelledby="inquiry-heading" aria-describedby="inquiry-help" novalidate>
+              <div class="field">
+                <label for="inquiryName">Your name</label>
+                <input type="text" id="inquiryName" name="name" autocomplete="name" maxlength="120" required>
+              </div>
+              <div class="field">
+                <label for="inquiryEmail">Email address</label>
+                <input type="email" id="inquiryEmail" name="email" autocomplete="email" maxlength="254" required>
+              </div>
+              <div class="field">
+                <label for="inquiryPhone">Phone <span class="optional">(optional)</span></label>
+                <input type="tel" id="inquiryPhone" name="phone" autocomplete="tel" maxlength="40">
+              </div>
+              <div class="field">
+                <label for="inquiryService">What's it about? <span class="optional">(optional)</span></label>
+                <select id="inquiryService" name="service_id">
+                  <option value="">General question</option>
+                  {{{inquiry_service_options}}}
+                </select>
+              </div>
+              <div class="field">
+                <label for="inquiryMessage">Your message</label>
+                <textarea id="inquiryMessage" name="message" rows="5" maxlength="4000" required
+                          aria-describedby="inquiryMessageHelp"></textarea>
+                <p class="field-help" id="inquiryMessageHelp">
+                  Dates, your dog's breed and age, and anything we should know all help.
+                  See our <a href="/legal/privacy">Privacy Policy</a> for how we handle your details.
+                </p>
+              </div>
+              <!-- Honeypot: hidden from people, irresistible to bots. -->
+              <div class="hp-field" aria-hidden="true">
+                <label for="inquiryWebsite">Leave this field empty</label>
+                <input type="text" id="inquiryWebsite" name="website" tabindex="-1" autocomplete="off">
+              </div>
+              <button type="submit" class="btn btn-primary">Send message</button>
+              <p class="form-msg" id="inquiryMsg" role="status" aria-live="polite"></p>
+            </form>
           </div>
-          {{{contact_html}}}
+          <div class="contact-side">
+            <div class="contact-booking-cta">
+              <h3>Ready to book?</h3>
+              <p>Create an account or sign in to send a booking request for your dog.</p>
+              <a href="/my-bookings" class="btn btn-secondary">Go to my account</a>
+            </div>
+            {{{contact_html}}}
+          </div>
         </div>
       </div>
     </section>

@@ -204,6 +204,40 @@ async function send({ to, subject, html, text, templateId, dynamicTemplateData, 
   }
 }
 
+// A guest enquiry — someone who is not ready to create an account. The
+// database row is the record of truth; this is only the notification, so the
+// caller treats a failure here as non-fatal.
+async function sendInquiryToOwner({ inquiry }) {
+  if (!OWNER_EMAIL) return;
+  const link = PUBLIC_URL ? `${PUBLIC_URL}/admin` : null;
+  const lines = [
+    'A new enquiry came in through the website.',
+    '',
+    `From: ${inquiry.name} <${inquiry.email}>`,
+    inquiry.phone ? `Phone: ${inquiry.phone}` : null,
+    inquiry.service_name ? `About: ${inquiry.service_name}` : null,
+    '',
+    inquiry.message,
+    '',
+    link ? `Manage: ${link}` : null
+  ].filter(Boolean);
+
+  await send({
+    to: OWNER_EMAIL,
+    // replyTo means hitting reply in the mail client answers the customer.
+    replyTo: inquiry.email,
+    subject: `Website enquiry from ${inquiry.name}`,
+    text: lines.join('\n'),
+    html: `
+      <p>A new enquiry came in through the website.</p>
+      <p><strong>${escapeHtml(inquiry.name)}</strong> &lt;${escapeHtml(inquiry.email)}&gt;
+      ${inquiry.phone ? `<br>Phone: ${escapeHtml(inquiry.phone)}` : ''}
+      ${inquiry.service_name ? `<br>About: ${escapeHtml(inquiry.service_name)}` : ''}</p>
+      <blockquote>${escapeHtml(inquiry.message).replace(/\n/g, '<br>')}</blockquote>
+      ${link ? `<p><a href="${link}">Manage enquiries</a></p>` : ''}`
+  });
+}
+
 async function sendNewBookingToOwner({ booking }) {
   if (!OWNER_EMAIL) return;
   const link = PUBLIC_URL ? `${PUBLIC_URL}/admin` : null;
@@ -443,6 +477,7 @@ async function sendPaymentReceivedToOwner({ booking }) {
 
 module.exports = {
   setTransport,
+  sendInquiryToOwner,
   sendMarketingCampaign,
   sendNewBookingToOwner,
   sendBookingReceivedToCustomer,

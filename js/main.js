@@ -446,6 +446,50 @@
     });
   }
 
+  function initInquiryForm() {
+    const form = document.getElementById('inquiryForm');
+    if (!form) return;
+    const message = document.getElementById('inquiryMsg');
+    const button = form.querySelector('button[type="submit"]');
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const name = form.querySelector('#inquiryName');
+      const email = form.querySelector('#inquiryEmail');
+      const body = form.querySelector('#inquiryMessage');
+
+      // Validate in the order the fields appear and move focus to the first
+      // problem, so a keyboard user is taken to what needs fixing.
+      for (const [field, problem] of [
+        [name, !name.value.trim() && 'Please tell us your name.'],
+        [email, !email.value.trim() && 'Please give us an email address so we can reply.'],
+        [body, body.value.trim().length < 10 && 'Please tell us a little more about what you need.']
+      ]) {
+        if (!problem) continue;
+        field.focus();
+        message.className = 'form-msg error';
+        message.textContent = problem;
+        return;
+      }
+
+      await submitForm({
+        form, button, message, busyLabel: 'Sending…',
+        run: async () => {
+          const serviceId = form.querySelector('#inquiryService').value;
+          const data = await postJson('/api/inquiries', {
+            name: name.value.trim(),
+            email: email.value.trim(),
+            phone: form.querySelector('#inquiryPhone').value.trim(),
+            message: body.value.trim(),
+            service_id: serviceId ? Number(serviceId) : undefined,
+            website: form.querySelector('#inquiryWebsite').value
+          });
+          return data.message || 'Thanks — we have your message and will reply by email.';
+        }
+      });
+    });
+  }
+
   onReady(() => {
     initPawPrints();
     initNav();
@@ -455,5 +499,6 @@
     initBoop();
     initReviewForm();
     initNewsletterForm();
+    initInquiryForm();
   });
 })();

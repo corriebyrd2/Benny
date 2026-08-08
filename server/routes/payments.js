@@ -5,6 +5,7 @@ const { authenticateCustomer } = require('../customerAuth');
 const mailer = require('../email');
 const { getStripe } = require('../stripeClient');
 const { recordBookingEvent } = require('../bookingAudit');
+const metrics = require('../metrics');
 const { quoteBooking, stripeLineItems, refundForCancellation, formatAmount } = require('../pricing');
 
 const router = express.Router();
@@ -356,6 +357,7 @@ router.post('/webhook', async (req, res) => {
   }
 
   if (claimed.rowCount === 0) {
+    metrics.increment('benny_webhook_events_total', { outcome: 'duplicate' });
     return res.json({ received: true, duplicate: true });
   }
 
@@ -423,8 +425,10 @@ router.post('/webhook', async (req, res) => {
       `UPDATE stripe_events SET processed_at = NOW(), status = 'processed' WHERE event_id = $1`,
       [event.id]
     );
+    metrics.increment('benny_webhook_events_total', { outcome: 'processed' });
   } catch (err) {
     console.error('[webhook] processing failed for', event.type, 'event', event.id, err);
+    metrics.increment('benny_webhook_events_total', { outcome: 'failed' });
     // Release the claim so Stripe's retry can process the event rather than
     // being deduplicated against a row that never completed.
     try {
@@ -594,6 +598,7 @@ router.post('/refund/:booking_id', authenticateToken, requirePermission('write')
       });
     } catch (err) {
       console.error('[refund] Stripe refused the refund for booking', booking.id, err.message);
+      metrics.increment('benny_payment_failures_total', { operation: 'refund' });
       return res.status(502).json({ error: `The payment provider refused the refund: ${err.message}` });
     }
 

@@ -20,7 +20,14 @@ if (API_KEY && FROM_EMAIL) {
 let transport = {
   async send(msg) {
     if (!configured) return;
-    await sgMail.send(msg);
+    try {
+      await sgMail.send(msg);
+    } catch (err) {
+      // Counted before rethrowing: a silently failing mail provider is one of
+      // the few faults with no user-visible symptom until someone complains.
+      require('./metrics').increment('benny_email_failures_total', {});
+      throw err;
+    }
   }
 };
 

@@ -60,6 +60,12 @@ module.exports = defineConfig({
       STRIPE_PUBLISHABLE_KEY: 'pk_test_e2e_stub',
       STRIPE_WEBHOOK_SECRET: process.env.E2E_STRIPE_WEBHOOK_SECRET || 'whsec_e2e_test_secret',
       PUBLIC_URL: BASE_URL,
+      // Give the test server a NON-EMPTY CORS allowlist. With an empty list
+      // outside production the middleware deliberately allows any origin so a
+      // local frontend on another port can work — which means the rejection
+      // path would never be exercised by the suite. Setting it explicitly makes
+      // e2e/headers.spec.js test the behaviour production actually has.
+      FRONTEND_ORIGIN: BASE_URL,
       // Keep SendGrid unset; the harness overrides the transport anyway.
       SENDGRID_FROM_EMAIL: 'test@bennyandthepets.test'
     }

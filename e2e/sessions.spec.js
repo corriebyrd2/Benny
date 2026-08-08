@@ -22,7 +22,7 @@ function cookieNamed(cookies, name) {
 test.describe('cookie properties', () => {
   test.beforeEach(async ({ request }) => { await resetAll(request); });
 
-  test('the session cookie is HttpOnly and SameSite, the CSRF cookie is readable', async ({ page, request }) => {
+  test('the session cookie is HttpOnly and SameSite, the CSRF cookie is readable @xbrowser', async ({ page, request }) => {
     const { email, password } = await registerCustomer(request);
 
     await page.goto('/my-bookings');
@@ -44,7 +44,7 @@ test.describe('cookie properties', () => {
     expect(csrf.httpOnly).toBe(false);
   });
 
-  test('page scripts cannot read the session token', async ({ page, request }) => {
+  test('page scripts cannot read the session token @xbrowser', async ({ page, request }) => {
     const { email, password } = await registerCustomer(request);
     await page.goto('/my-bookings');
     await page.locator('#loginEmail').fill(email);
@@ -67,7 +67,7 @@ test.describe('cookie properties', () => {
     expect(visible.localStorage).not.toMatch(/token/i);
   });
 
-  test('the browser can use the portal with no token in storage at all', async ({ page, request }) => {
+  test('the browser can use the portal with no token in storage at all @xbrowser', async ({ page, request }) => {
     const { email, password } = await registerCustomer(request);
     await page.goto('/my-bookings');
     await page.locator('#loginEmail').fill(email);

@@ -50,7 +50,7 @@ test.describe('the contact section is not a dead end', () => {
     await expect(options).toHaveCount(services.length + 1);
   });
 
-  test('submitting the form stores the enquiry and confirms to the visitor', async ({ page, request }) => {
+  test('submitting the form stores the enquiry and confirms to the visitor @xbrowser', async ({ page, request }) => {
     await page.goto('/');
     await page.locator('#inquiryName').fill('Prospective Customer');
     await page.locator('#inquiryEmail').fill('prospect@test.local');

@@ -71,9 +71,37 @@ module.exports = defineConfig({
     }
   },
   projects: [
+    // Chromium runs the full suite. Firefox and WebKit run a cross-browser
+    // subset (tagged @xbrowser) rather than everything: the value is in
+    // catching ENGINE differences — layout, form controls, date inputs, cookie
+    // handling — not in re-running API assertions three times, which would
+    // triple CI time for no extra signal.
     {
       name: 'chromium',
       use: { browserName: 'chromium' }
+    },
+    {
+      name: 'firefox',
+      use: { browserName: 'firefox' },
+      grep: /@xbrowser/
+    },
+    {
+      name: 'webkit',
+      // WebKit is the engine behind Safari and Mobile Safari, which is where
+      // the audit brief's iOS coverage actually comes from.
+      use: { browserName: 'webkit' },
+      grep: /@xbrowser/
+    },
+    // Visual regression is opt-in: see VISUAL_BASELINES in TESTING.md. Snapshot
+    // bytes depend on the host's fonts and GPU, so baselines captured on one
+    // machine produce false failures on another. Enforcing them in CI would
+    // trade real signal for noise.
+    {
+      name: 'visual',
+      testMatch: /visual\.spec\.js/,
+      use: { browserName: 'chromium', viewport: { width: 1280, height: 900 } }
     }
-  ]
+  ],
+  // The visual project is excluded from a default run; ask for it by name.
+  testIgnore: process.env.VISUAL_BASELINES ? [] : ['**/visual.spec.js']
 });

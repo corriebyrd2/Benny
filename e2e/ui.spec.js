@@ -63,7 +63,7 @@ test.describe('customer portal UI', () => {
     await expect(page.locator('#dashboard')).not.toHaveClass(/active/);
   });
 
-  test('register → asked to sign in, then the dashboard appears', async ({ page }) => {
+  test('register → asked to sign in, then the dashboard appears @xbrowser', async ({ page }) => {
     await page.goto('/my-bookings');
     const switchLink = page.locator('a, button', { hasText: /sign up|create account|register/i }).first();
     if (await switchLink.count()) await switchLink.click();
@@ -102,7 +102,7 @@ test.describe('customer portal UI', () => {
     await expect(page.locator('#welcomeText')).toContainText('Penny');
   });
 
-  test('login with valid credentials reveals the dashboard', async ({ page, request }) => {
+  test('login with valid credentials reveals the dashboard @xbrowser', async ({ page, request }) => {
     // Pre-create the account through the API so we don't depend on the
     // register-form spec passing first.
     const reg = await request.post('/api/customer/register', {

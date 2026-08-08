@@ -53,7 +53,7 @@ test.describe('public pages at every supported viewport', () => {
   test.beforeEach(async ({ request }) => { await resetAll(request); });
 
   for (const viewport of VIEWPORTS) {
-    test(`no horizontal overflow at ${viewport.name}`, async ({ page }) => {
+    test(`no horizontal overflow at ${viewport.name} @xbrowser`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       for (const path of PUBLIC_PATHS) {
         await page.goto(path);
@@ -65,7 +65,7 @@ test.describe('public pages at every supported viewport', () => {
     });
   }
 
-  test('the primary call to action is reachable without scrolling sideways at 320px', async ({ page }) => {
+  test('the primary call to action is reachable without scrolling sideways at 320px @xbrowser', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 568 });
     await page.goto('/');
     const cta = page.locator('.hero-buttons').getByRole('link', { name: /request a booking/i });
@@ -76,7 +76,7 @@ test.describe('public pages at every supported viewport', () => {
     expect(box.height, 'CTA is below the comfortable touch target').toBeGreaterThanOrEqual(44);
   });
 
-  test('navigation is usable on a small screen', async ({ page }) => {
+  test('navigation is usable on a small screen @xbrowser', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/');
 
@@ -91,7 +91,7 @@ test.describe('public pages at every supported viewport', () => {
     await expect(firstLink).toBeInViewport();
   });
 
-  test('landscape phone still fits', async ({ page }) => {
+  test('landscape phone still fits @xbrowser', async ({ page }) => {
     await page.setViewportSize({ width: 812, height: 375 });
     await page.goto('/');
     expect(await documentOverflow(page)).toBeLessThanOrEqual(1);
@@ -154,7 +154,7 @@ test.describe('long user-supplied content does not break the layout', () => {
 test.describe('authenticated portals on mobile', () => {
   test.beforeEach(async ({ request }) => { await resetAll(request); });
 
-  test('the customer dashboard fits a phone', async ({ page, request }) => {
+  test('the customer dashboard fits a phone @xbrowser', async ({ page, request }) => {
     const { email, password } = await registerCustomer(request);
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/my-bookings');
@@ -185,7 +185,7 @@ test.describe('authenticated portals on mobile', () => {
 test.describe('forms on mobile', () => {
   test.beforeEach(async ({ request }) => { await resetAll(request); });
 
-  test('inputs are at least 16px so iOS does not zoom on focus', async ({ page }) => {
+  test('inputs are at least 16px so iOS does not zoom on focus @xbrowser', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/');
     // Only text-entry controls trigger the iOS focus zoom; a checkbox's font
@@ -200,7 +200,7 @@ test.describe('forms on mobile', () => {
     expect(tooSmall).toEqual([]);
   });
 
-  test('form controls fit the viewport width', async ({ page }) => {
+  test('form controls fit the viewport width @xbrowser', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 568 });
     await page.goto('/');
     for (const selector of ['#reviewName', '#reviewText', '#newsletterEmail']) {

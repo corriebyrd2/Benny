@@ -7,8 +7,18 @@
 :root {
   --primary: #FF6B35;
   --primary-dark: #E5551F;
+  /* Text-bearing surfaces need a darker orange. #FF6B35 gives only 2.84:1
+     against white — well under the 4.5:1 WCAG AA minimum — so it is kept for
+     decorative accents (borders, icons, hover glows) while filled buttons and
+     orange-on-white text use --primary-strong (5.18:1). */
+  --primary-strong: #C2410C;
+  --primary-strong-dark: #9A3412;
   --secondary: #4ECDC4;
   --secondary-dark: #3AB5AD;
+  /* #4ECDC4 carries white text at only 1.93:1. Filled secondary surfaces use
+     --secondary-strong (4.8:1); the bright teal stays decorative. */
+  --secondary-strong: #217F79;
+  --secondary-strong-dark: #146B66;
   --accent: #FFE66D;
   --dark: #2C3E50;
   --dark-light: #34495E;
@@ -187,7 +197,7 @@ img {
 }
 
 .nav-cta {
-  background: var(--primary);
+  background: var(--primary-strong);
   color: var(--white) !important;
   padding: 10px 24px;
   border-radius: 50px;
@@ -196,7 +206,7 @@ img {
 }
 
 .nav-cta:hover {
-  background: var(--primary-dark);
+  background: var(--primary-strong-dark);
   transform: translateY(-2px);
   box-shadow: 0 4px 15px rgba(255, 107, 53, 0.4);
 }
@@ -235,12 +245,12 @@ img {
 }
 
 .btn-primary {
-  background: var(--primary);
+  background: var(--primary-strong);
   color: var(--white);
 }
 
 .btn-primary:hover {
-  background: var(--primary-dark);
+  background: var(--primary-strong-dark);
   transform: translateY(-3px);
   box-shadow: 0 8px 25px rgba(255, 107, 53, 0.4);
 }
@@ -1181,12 +1191,12 @@ img {
 }
 
 .footer-links a {
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.87);
   transition: color var(--transition);
 }
 
 .footer-links a:hover {
-  color: var(--primary);
+  color: var(--accent);
 }
 
 .footer-newsletter h4 {
@@ -1240,7 +1250,9 @@ img {
 .footer-bottom {
   text-align: center;
   padding: 20px 0;
-  color: rgba(255, 255, 255, 0.5);
+  /* 0.5 alpha over the dark footer measured 4.05:1 — below AA for this
+     13.6px text. 0.82 gives 8.1:1. */
+  color: rgba(255, 255, 255, 0.82);
   font-size: 0.85rem;
 }
 
@@ -1346,33 +1358,6 @@ img {
 }
 
 @media (max-width: 768px) {
-  .nav-toggle {
-    display: flex;
-  }
-
-  .nav-links {
-    position: fixed;
-    top: 0;
-    right: -100%;
-    width: 280px;
-    height: 100vh;
-    background: var(--white);
-    flex-direction: column;
-    justify-content: center;
-    gap: 24px;
-    padding: 40px;
-    box-shadow: var(--shadow-lg);
-    transition: right var(--transition);
-  }
-
-  .nav-links.active {
-    right: 0;
-  }
-
-  .nav-links a::after {
-    display: none;
-  }
-
   .gallery-grid {
     grid-template-columns: repeat(2, 1fr);
     grid-auto-rows: 200px;
@@ -1909,4 +1894,108 @@ img, video, table, pre {
   border-radius: 999px;
   background: #7a1f18;
   color: #fff;
+}
+
+/* Footer body links (policies, accessibility) inherit the footer's own text
+   colour rather than the faint 50%-alpha the copyright line used to set. */
+.footer p a,
+.footer-bottom a {
+  color: #ffffff;
+  text-decoration: underline;
+}
+.footer p a:hover,
+.footer-bottom a:hover {
+  color: var(--accent);
+}
+
+/* --- Mobile navigation ---------------------------------------------------
+   The drawer breakpoint matches the layout breakpoint (968px). It was 768px,
+   so 769-968px viewports — landscape phones and portrait tablets — kept the
+   horizontal nav, whose links wrapped onto three rows and produced a 197px
+   tall navbar over a 375px tall viewport. */
+@media (max-width: 968px) {
+  .nav-toggle {
+    display: flex;
+  }
+
+  .nav-links {
+    position: fixed;
+    top: 0;
+    right: -100%;
+    width: min(280px, 80vw);
+    height: 100vh;
+    height: 100dvh;
+    background: var(--white);
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    gap: 8px;
+    /* Scrollable, and clear of the notch/home indicator: at 375px tall the
+       links do not fit and must not be unreachable. */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: calc(72px + env(safe-area-inset-top)) 32px calc(32px + env(safe-area-inset-bottom));
+    box-shadow: var(--shadow-lg);
+    transition: right var(--transition);
+  }
+
+  .nav-links.active {
+    right: 0;
+  }
+
+  .nav-links a::after {
+    display: none;
+  }
+
+  /* The close affordance must stay above the drawer it controls. */
+  .nav-toggle {
+    position: relative;
+    z-index: 1002;
+  }
+  .nav-links {
+    z-index: 1001;
+  }
+}
+
+/* --- Mobile form controls ------------------------------------------------
+   iOS Safari zooms the viewport whenever a focused input renders below 16px,
+   which then leaves the rest of the page scrolled sideways. Every text control
+   is held at 16px on small screens. */
+@media (max-width: 968px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+/* --- Small-screen hero ---------------------------------------------------
+   At 320x568 the hero's 120px top padding plus a 2.5rem title pushed the
+   primary "Request a booking" button below the fold, so the one action the
+   page exists for was invisible on the smallest supported phone. Tightening
+   the vertical rhythm on short viewports brings it back above the fold
+   without changing the desktop composition. */
+@media (max-width: 480px), (max-height: 600px) {
+  .hero {
+    min-height: auto;
+    padding: 84px 20px 40px;
+  }
+  .hero-title {
+    font-size: clamp(1.9rem, 8vw, 2.4rem);
+    margin-bottom: 12px;
+  }
+  .hero-subtitle {
+    font-size: 0.98rem;
+    margin-bottom: 16px;
+  }
+  .hero-eyebrow {
+    margin-bottom: 6px;
+  }
+  .hero-buttons {
+    gap: 10px;
+  }
+  .hero-assurances {
+    margin-top: 18px;
+    font-size: 0.9rem;
+  }
 }

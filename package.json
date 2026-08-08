@@ -39,6 +39,7 @@
     "stripe": "^20.4.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.59.1"
   }
 }

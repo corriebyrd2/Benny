@@ -1,4 +1,4 @@
-name: E2E Tests
+name: Tests
 
 on:
   pull_request:
@@ -9,9 +9,33 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
+    # CI runs against a throwaway Postgres service container rather than a
+    # hosted Neon branch. The previous setup required an E2E_DATABASE_URL
+    # repository secret; when that secret is unset — which it is — every run
+    # fails before a single test executes, so the suite provided no signal at
+    # all. A service container needs no secret, is destroyed with the job, and
+    # removes any possibility of a test run reaching real customer data.
+    #
+    # E2E_DATABASE_URL is still honoured when set, so a maintainer can point CI
+    # at a Neon branch to reproduce a provider-specific issue.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: benny
+          POSTGRES_PASSWORD: benny
+          POSTGRES_DB: benny_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U benny"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
       CI: '1'
-      E2E_DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
       E2E_JWT_SECRET: e2e-ci-jwt-secret
       E2E_ADMIN_EMAIL: admin@test.local
       E2E_ADMIN_PASSWORD: test-admin-password-e2e
@@ -22,11 +46,32 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Resolve the test database URL
+        run: |
+          if [ -n "${{ secrets.E2E_DATABASE_URL }}" ]; then
+            echo "E2E_DATABASE_URL=${{ secrets.E2E_DATABASE_URL }}" >> "$GITHUB_ENV"
+            echo "Using the configured E2E_DATABASE_URL secret."
+          else
+            echo "E2E_DATABASE_URL=postgresql://benny:benny@127.0.0.1:5432/benny_e2e?sslmode=disable" >> "$GITHUB_ENV"
+            echo "Using the Postgres service container."
+          fi
+
+      - name: Unit tests (pricing, business profile)
+        run: npm run test:unit
+
+      - name: Business and legal configuration gate
+        # Reports which owner-supplied business facts are still missing and
+        # which policy documents are still draft. Non-blocking here because the
+        # CI database is intentionally empty; a production deploy pipeline runs
+        # the same command WITHOUT `|| true` so a release cannot ship
+        # placeholder contact details. See DEPLOY.md.
+        run: npm run check:launch || true
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium

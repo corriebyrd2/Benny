@@ -10,8 +10,17 @@
     :root {
       --primary: #FF6B35;
       --primary-dark: #E5551F;
+      /* #FF6B35 is only 2.84:1 on white. Text-bearing surfaces (filled
+         buttons, orange-on-white labels) use --primary-strong at 5.18:1;
+         --primary stays for borders, icons and hover glows. */
+      --primary-strong: #C2410C;
+      --primary-strong-dark: #9A3412;
       --secondary: #4ECDC4;
       --secondary-dark: #3AB5AD;
+      /* #4ECDC4 carries white text at only 1.93:1. Filled secondary buttons
+         use --secondary-strong (4.8:1); the bright teal stays decorative. */
+      --secondary-strong: #217F79;
+      --secondary-strong-dark: #146B66;
       --accent: #FFE66D;
       --dark: #2C3E50;
       --dark-light: #34495E;
@@ -22,6 +31,13 @@
       --success: #27AE60;
       --warning: #F39C12;
       --danger: #E74C3C;
+      /* AA-safe variants for surfaces that carry text. Measured against white:
+         success 4.72:1, warning 5.24:1, danger 5.44:1, info 5.39:1. The bright
+         values above stay for decorative fills, dots and borders. */
+      --success-strong: #1E8449;
+      --warning-strong: #946200;
+      --danger-strong: #C0392B;
+      --info-strong: #1F6FA8;
       --shadow: 0 2px 12px rgba(0,0,0,0.08);
       --shadow-lg: 0 8px 30px rgba(0,0,0,0.12);
       --radius: 12px;
@@ -81,24 +97,24 @@
       font-size: 0.95rem; cursor: pointer; border: none;
       transition: all var(--transition); text-decoration: none;
     }
-    .btn-primary { background: var(--primary); color: var(--white); }
+    .btn-primary { background: var(--primary-strong); color: var(--white); }
     .btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); }
-    .btn-secondary { background: var(--secondary); color: var(--white); }
-    .btn-secondary:hover { background: var(--secondary-dark); }
-    .btn-success { background: var(--success); color: var(--white); }
+    .btn-secondary { background: var(--secondary-strong); color: var(--white); }
+    .btn-secondary:hover { background: var(--secondary-strong-dark); }
+    .btn-success { background: var(--success-strong); color: var(--white); }
     .btn-success:hover { background: #219a52; }
-    .btn-danger { background: var(--danger); color: var(--white); }
+    .btn-danger { background: var(--danger-strong); color: var(--white); }
     .btn-danger:hover { background: #c0392b; }
     .btn-outline { background: transparent; border: 2px solid #ddd; color: var(--text); }
     .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
-    .btn-warning { background: #F39C12; color: var(--white); }
+    .btn-warning { background: var(--warning-strong); color: var(--white); }
     .btn-warning:hover { background: #D68910; }
-    .btn-info { background: #3498DB; color: var(--white); }
-    .btn-info:hover { background: #2980B9; }
+    .btn-info { background: var(--info-strong); color: var(--white); }
+    .btn-info:hover { background: #17557f; }
     .btn-sm { padding: 8px 16px; font-size: 0.85rem; }
     .btn-full { width: 100%; justify-content: center; }
 
-    .login-error { color: var(--danger); font-weight: 700; margin-top: 12px; font-size: 0.9rem; display: none; }
+    .login-error { color: var(--danger-strong); font-weight: 700; margin-top: 12px; font-size: 0.9rem; display: none; }
 
     /* Admin Layout */
     .admin-layout { display: none; min-height: 100vh; }
@@ -118,7 +134,7 @@
 
     .sidebar-nav a {
       display: flex; align-items: center; gap: 12px;
-      padding: 14px 24px; color: rgba(255,255,255,0.7);
+      padding: 14px 24px; color: rgba(255,255,255,0.88);
       text-decoration: none; font-weight: 700; font-size: 0.95rem;
       transition: all var(--transition); border-left: 3px solid transparent;
     }
@@ -132,11 +148,16 @@
       position: absolute; bottom: 0; left: 0; right: 0;
       padding: 16px 24px; border-top: 1px solid rgba(255,255,255,0.1);
     }
-    .sidebar-footer a {
-      color: rgba(255,255,255,0.5); text-decoration: none; font-size: 0.85rem;
+    .sidebar-footer a,
+    .sidebar-footer .logout-btn {
+      /* 0.5 alpha on the dark sidebar measured below AA for 13.6px text. */
+      color: rgba(255,255,255,0.86); text-decoration: none; font-size: 0.85rem;
       font-weight: 600; transition: color var(--transition);
+      background: none; border: 0; padding: 10px 0; cursor: pointer;
+      font-family: inherit; min-height: 44px; display: inline-flex; align-items: center;
     }
-    .sidebar-footer a:hover { color: var(--primary); }
+    .sidebar-footer a:hover,
+    .sidebar-footer .logout-btn:hover { color: var(--accent); }
 
     .main-content {
       margin-left: 260px; padding: 32px;
@@ -319,7 +340,7 @@
       font-weight: 600; font-size: 0.9rem; animation: slideIn 0.3s ease;
       border-left: 4px solid var(--success);
     }
-    .toast.error { border-left-color: var(--danger); }
+    .toast.error { border-left-color: var(--danger-strong); }
     @keyframes slideIn {
       from { transform: translateX(100%); opacity: 0; }
       to { transform: translateX(0); opacity: 1; }
@@ -356,8 +377,8 @@
       margin-top: 6px; font-size: 0.78rem; color: var(--text-light); font-weight: 600;
     }
     .kpi-card.teal { border-left-color: var(--secondary); }
-    .kpi-card.green { border-left-color: var(--success); }
-    .kpi-card.yellow { border-left-color: var(--warning); }
+    .kpi-card.green { border-left-color: var(--success-strong); }
+    .kpi-card.yellow { border-left-color: var(--warning-strong); }
     .kpi-card.purple { border-left-color: #9B59B6; }
     .kpi-card.blue { border-left-color: #3498DB; }
 
@@ -460,8 +481,8 @@
       font-family: 'Fredoka One', cursive; font-size: 1.1rem; color: var(--dark);
       line-height: 1.1;
     }
-    .client-stat-value.revenue { color: var(--success); }
-    .client-stat-value.pending { color: var(--warning); }
+    .client-stat-value.revenue { color: var(--success-strong); }
+    .client-stat-value.pending { color: var(--warning-strong); }
     .client-stat-label {
       font-size: 0.7rem; color: var(--text-light); font-weight: 700;
       text-transform: uppercase; letter-spacing: 0.4px; margin-top: 2px;
@@ -639,7 +660,7 @@
         </a>
       </nav>
       <div class="sidebar-footer">
-        <a href="#" id="logoutBtn">&#128682; Sign Out</a>
+        <button type="button" id="logoutBtn" class="logout-btn">&#128682; Sign Out</button>
       </div>
     </div>
 

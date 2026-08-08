@@ -10,8 +10,17 @@
     :root {
       --primary: #FF6B35;
       --primary-dark: #E5551F;
+      /* #FF6B35 is only 2.84:1 on white. Text-bearing surfaces (filled
+         buttons, orange-on-white labels) use --primary-strong at 5.18:1;
+         --primary stays for borders, icons and hover glows. */
+      --primary-strong: #C2410C;
+      --primary-strong-dark: #9A3412;
       --secondary: #4ECDC4;
       --secondary-dark: #3AB5AD;
+      /* #4ECDC4 carries white text at only 1.93:1. Filled secondary buttons
+         use --secondary-strong (4.8:1); the bright teal stays decorative. */
+      --secondary-strong: #217F79;
+      --secondary-strong-dark: #146B66;
       --accent: #FFE66D;
       --dark: #2C3E50;
       --dark-light: #34495E;
@@ -23,6 +32,13 @@
       --success: #27AE60;
       --warning: #F39C12;
       --danger: #E74C3C;
+      /* AA-safe variants for surfaces that carry text. Measured against white:
+         success 4.72:1, warning 5.24:1, danger 5.44:1, info 5.39:1. The bright
+         values above stay for decorative fills, dots and borders. */
+      --success-strong: #1E8449;
+      --warning-strong: #946200;
+      --danger-strong: #C0392B;
+      --info-strong: #1F6FA8;
       --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
       --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.12);
       --radius: 16px;
@@ -107,14 +123,14 @@
     .nav-links a:hover { color: var(--primary); }
 
     .nav-links .nav-cta {
-      background: var(--primary);
+      background: var(--primary-strong);
       color: var(--white) !important;
       padding: 10px 24px;
       font-weight: 800;
     }
 
     .nav-links .nav-cta:hover {
-      background: var(--primary-dark);
+      background: var(--primary-strong-dark);
       transform: translateY(-2px);
       box-shadow: 0 4px 15px rgba(255, 107, 53, 0.4);
     }
@@ -134,7 +150,7 @@
     .nav-logout {
       background: none;
       border: 2px solid var(--danger);
-      color: var(--danger);
+      color: var(--danger-strong);
       padding: 6px 16px;
       border-radius: 50px;
       font-family: 'Nunito', sans-serif;
@@ -211,8 +227,8 @@
     }
 
     .auth-tab.active {
-      color: var(--primary);
-      border-bottom-color: var(--primary);
+      color: var(--primary-strong);
+      border-bottom-color: var(--primary-strong);
     }
 
     .auth-tab:hover:not(.active) {
@@ -313,23 +329,23 @@
     }
 
     .btn-primary {
-      background: var(--primary);
+      background: var(--primary-strong);
       color: var(--white);
     }
 
     .btn-primary:hover {
-      background: var(--primary-dark);
+      background: var(--primary-strong-dark);
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(255, 107, 53, 0.4);
     }
 
     .btn-secondary {
-      background: var(--secondary);
+      background: var(--secondary-strong);
       color: var(--white);
     }
 
     .btn-secondary:hover {
-      background: var(--secondary-dark);
+      background: var(--secondary-strong-dark);
       transform: translateY(-2px);
     }
 
@@ -403,14 +419,14 @@
     }
 
     .dash-tab.active {
-      background: var(--primary);
+      background: var(--primary-strong);
       color: var(--white);
-      border-color: var(--primary);
+      border-color: var(--primary-strong);
     }
 
     .dash-tab:hover:not(.active) {
-      border-color: var(--primary);
-      color: var(--primary);
+      border-color: var(--primary-strong);
+      color: var(--primary-strong);
     }
 
     .dash-panel { display: none; }
@@ -507,7 +523,7 @@
 
     .service-option .service-price {
       font-weight: 700;
-      color: var(--primary);
+      color: var(--primary-strong);
       font-size: 0.85rem;
     }
 
@@ -528,10 +544,10 @@
       box-shadow: var(--shadow-lg);
     }
 
-    .booking-card.status-pending { border-left-color: var(--warning); }
+    .booking-card.status-pending { border-left-color: var(--warning-strong); }
     .booking-card.status-confirmed { border-left-color: var(--secondary); }
-    .booking-card.status-completed { border-left-color: var(--success); }
-    .booking-card.status-cancelled { border-left-color: var(--danger); }
+    .booking-card.status-completed { border-left-color: var(--success-strong); }
+    .booking-card.status-cancelled { border-left-color: var(--danger-strong); }
 
     .booking-card-header {
       display: flex;
@@ -826,8 +842,8 @@
       margin-bottom: 16px;
     }
 
-    .payment-section .payment-status-text.paid { color: var(--success); }
-    .payment-section .payment-status-text.unpaid { color: var(--warning); }
+    .payment-section .payment-status-text.paid { color: var(--success-strong); }
+    .payment-section .payment-status-text.unpaid { color: var(--warning-strong); }
     .payment-section .payment-status-text.requested { color: #004085; }
 
     /* Success message */
@@ -988,8 +1004,8 @@
     }
 
     .btn-icon.delete:hover {
-      border-color: var(--danger);
-      color: var(--danger);
+      border-color: var(--danger-strong);
+      color: var(--danger-strong);
       background: #FADBD8;
     }
 
@@ -1053,7 +1069,7 @@
     }
 
     .footer p { font-size: 0.85rem; opacity: 0.7; }
-    .footer a { color: var(--primary); font-weight: 700; }
+    .footer a { color: var(--accent); font-weight: 700; text-decoration: underline; }
     .footer a:hover { text-decoration: underline; }
 
     /* Responsive */

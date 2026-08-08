@@ -16,6 +16,9 @@ const { pool, seed } = require('./database');
 
 const emailLog = [];
 
+// Mirrors Stripe's idempotency behaviour for the refund stub — see below.
+const refundsByIdempotencyKey = new Map();
+
 function assertNotProduction() {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('Test harness must never be loaded in production');
@@ -78,14 +81,24 @@ function install() {
       }
     },
     refunds: {
-      async create({ payment_intent, amount, metadata }) {
-        return {
+      // The idempotency key is honoured, not ignored: the production code
+      // relies on Stripe returning the SAME refund for a retried request, and
+      // a stub that minted a fresh id every time would let a double-refund bug
+      // pass the suite.
+      async create({ payment_intent, amount, metadata }, options = {}) {
+        const key = options.idempotencyKey;
+        if (key && refundsByIdempotencyKey.has(key)) {
+          return refundsByIdempotencyKey.get(key);
+        }
+        const refund = {
           id: `re_test_${Date.now()}_${Math.round(Math.random() * 1e6)}`,
           payment_intent,
           amount,
           metadata,
           status: 'succeeded'
         };
+        if (key) refundsByIdempotencyKey.set(key, refund);
+        return refund;
       }
     },
     paymentIntents: {
@@ -171,6 +184,9 @@ function buildRouter() {
 
   router.post('/db/reset', async (req, res, next) => {
     try {
+      // Booking ids restart at 1, so a stale idempotency key from a previous
+      // spec would otherwise collide with a fresh booking's refund.
+      refundsByIdempotencyKey.clear();
       // Truncate every app table in dependency order. Using CASCADE is safer
       // for FKs, but RESTART IDENTITY resets SERIALs so tests have predictable ids.
       // Every app table. site_settings was previously missing, so a spec that

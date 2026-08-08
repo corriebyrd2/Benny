@@ -162,4 +162,56 @@ test.describe('capacity is enforced, not merely reported', () => {
     const after = await (await request.get(`/api/bookings/availability?date=${DATE}`)).json();
     expect(after.count).toBe(capacity);
   });
+
+  // From the Codex review of PR #75. The lock was keyed on the FIRST date of
+  // the stay, so two overlapping stays that begin on different days took
+  // different locks: both read the capacity for the shared night before either
+  // inserted, and both took the last place. The test above could not catch it
+  // because both of its bookings start on the same date.
+  //
+  // Race tests are timing-dependent by nature. Against the single-date lock,
+  // the long-stay case below reproduces reliably — its five capacity checks
+  // hold the window open — while this two-night case sometimes serialises by
+  // luck. Both assert the correct outcome; the long-stay one is the one that
+  // actually failed before the fix.
+  test('overlapping stays that start on different days still serialise', async ({ request }) => {
+    const day1 = '2026-09-10';
+    const day2 = '2026-09-11';
+    const day3 = '2026-09-12';
+
+    const capacity = (await (await request.get(`/api/bookings/availability?date=${day2}`)).json()).capacity;
+    // Fill day2 to one short, without touching day1 or day3.
+    expect((await book(request, { start: day2, end: day2, dogs: capacity - 1 })).status()).toBe(201);
+
+    // Sep 10-11 and Sep 11-12 share only Sep 11, and each starts on a
+    // different day.
+    const [a, b] = await Promise.all([
+      book(request, { start: day1, end: day2, dogs: 1, email: 'overlap-a@test.local' }),
+      book(request, { start: day2, end: day3, dogs: 1, email: 'overlap-b@test.local' })
+    ]);
+
+    const statuses = [a.status(), b.status()].sort();
+    expect(statuses, `${await safeBody(a)} / ${await safeBody(b)}`).toEqual([201, 409]);
+
+    const after = await (await request.get(`/api/bookings/availability?date=${day2}`)).json();
+    expect(after.count).toBe(capacity);
+  });
+
+  test('a long stay locks every night it occupies', async ({ request }) => {
+    const start = '2026-09-20';
+    const middle = '2026-09-22';
+    const capacity = (await (await request.get(`/api/bookings/availability?date=${middle}`)).json()).capacity;
+    expect((await book(request, { start: middle, end: middle, dogs: capacity - 1 })).status()).toBe(201);
+
+    // A five-night stay overlapping the full night in the middle, raced
+    // against a single-night booking for that same night.
+    const [long, short] = await Promise.all([
+      book(request, { start, end: '2026-09-24', dogs: 1, email: 'long@test.local' }),
+      book(request, { start: middle, end: middle, dogs: 1, email: 'short@test.local' })
+    ]);
+
+    expect([long.status(), short.status()].sort()).toEqual([201, 409]);
+    const after = await (await request.get(`/api/bookings/availability?date=${middle}`)).json();
+    expect(after.count).toBe(capacity);
+  });
 });

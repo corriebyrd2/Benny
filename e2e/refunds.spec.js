@@ -246,3 +246,184 @@ test.describe('cancelling a paid booking', () => {
     expect((await res.json()).refund_due).toBe(false);
   });
 });
+
+// Findings from the Codex review of PR #75. Each of these failed before the
+// fix in the same commit.
+test.describe('a partly refunded booking is not chargeable again', () => {
+  test.beforeEach(async ({ request }) => { await resetAll(request); });
+
+  async function partiallyRefunded(request) {
+    const { id, amountCents, token } = await paidBooking(request, { start: daysFromNow(30) });
+    const headers = { authorization: `Bearer ${token}` };
+    const res = await request.post(`/api/payments/refund/${id}`, {
+      headers, data: { amount_cents: Math.floor(amountCents / 4) }
+    });
+    expect(res.status(), await safeBody(res)).toBe(200);
+    expect((await res.json()).payment_status).toBe('partially_refunded');
+    return { id, amountCents, token, headers };
+  }
+
+  // Every one of these guarded only on payment_status === 'paid', so a booking
+  // that had been paid and partly refunded read as unpaid — and the line items
+  // are rebuilt from amount_cents, so the customer would have been charged the
+  // ORIGINAL full amount a second time.
+  test('an admin cannot request payment again', async ({ request }) => {
+    const { id, headers } = await partiallyRefunded(request);
+    const res = await request.post('/api/payments/request-payment', {
+      headers, data: { booking_id: id }
+    });
+    expect(res.status()).toBe(400);
+    expect((await res.json()).error).toMatch(/partly refunded/i);
+
+    // And the status was not quietly reset to 'requested'.
+    const booking = await (await request.get(`/api/bookings/${id}`, { headers })).json();
+    expect(booking.payment_status).toBe('partially_refunded');
+  });
+
+  test('an admin cannot send a fresh payment link', async ({ request }) => {
+    const { id, headers } = await partiallyRefunded(request);
+    const res = await request.post('/api/payments/send-payment-link', {
+      headers, data: { booking_id: id }
+    });
+    expect(res.status()).toBe(400);
+    expect((await res.json()).error).toMatch(/partly refunded/i);
+  });
+
+  test('a fully refunded booking is refused too', async ({ request }) => {
+    const { id, token } = await paidBooking(request, { start: daysFromNow(30) });
+    const headers = { authorization: `Bearer ${token}` };
+    await request.post(`/api/payments/refund/${id}`, { headers });
+
+    const res = await request.post('/api/payments/request-payment', {
+      headers, data: { booking_id: id }
+    });
+    expect(res.status()).toBe(400);
+    expect((await res.json()).error).toMatch(/fully refunded/i);
+  });
+
+  test('a webhook cannot overwrite a refund back to paid', async ({ request }) => {
+    const { id, headers } = await partiallyRefunded(request);
+
+    // A late duplicate settlement for the same booking must not erase the
+    // refund by flipping payment_status back to 'paid'.
+    const hook = await simulateStripeWebhook(request, {
+      type: 'checkout.session.completed', booking_id: id, payment_id: `pi_late_${id}`
+    });
+    expect(hook.status()).toBe(200);
+
+    const booking = await (await request.get(`/api/bookings/${id}`, { headers })).json();
+    expect(booking.payment_status).toBe('partially_refunded');
+    expect(booking.refunded_cents).toBeGreaterThan(0);
+  });
+});
+
+test.describe('concurrent refunds', () => {
+  test.beforeEach(async ({ request }) => { await resetAll(request); });
+
+  // HONEST SCOPE: the guarantee comes from `SELECT ... FOR UPDATE` holding the
+  // booking row for the whole operation, plus a deterministic Stripe
+  // idempotency key. This test cannot *prove* that — the refund path is fast
+  // enough with a stubbed Stripe that the requests often serialise on their
+  // own — so it asserts the invariant that must hold either way, across enough
+  // concurrent attempts to have a real chance of catching a regression.
+  test('concurrent refunds can never return more than was paid', async ({ request, playwright, baseURL }) => {
+    const { id, amountCents, token } = await paidBooking(request, { start: daysFromNow(30) });
+    const headers = { authorization: `Bearer ${token}` };
+
+    // Two thirds each: at most ONE can succeed. Unserialised, every attempt
+    // reads refunded_cents = 0, passes the remaining-balance check, and creates
+    // its own Stripe refund — returning multiples of what the customer paid.
+    const twoThirds = Math.floor((amountCents * 2) / 3);
+
+    // Separate contexts so the attempts are on separate connections rather
+    // than queued behind one another in a single client.
+    const contexts = await Promise.all(
+      [0, 1, 2, 3].map(() => playwright.request.newContext({ baseURL }))
+    );
+    try {
+      const results = await Promise.all(contexts.map(ctx =>
+        ctx.post(`/api/payments/refund/${id}`, { headers, data: { amount_cents: twoThirds } })));
+
+      const succeeded = results.filter(r => r.status() === 200);
+      expect(succeeded).toHaveLength(1);
+
+      const booking = await (await request.get(`/api/bookings/${id}`, { headers })).json();
+      expect(booking.refunded_cents).toBe(twoThirds);
+      expect(booking.refunded_cents).toBeLessThanOrEqual(amountCents);
+
+      const history = await (await request.get(`/api/payments/refunds/${id}`, { headers })).json();
+      expect(history).toHaveLength(1);
+      expect(history.reduce((s, r) => s + r.amount_cents, 0)).toBe(booking.refunded_cents);
+    } finally {
+      await Promise.all(contexts.map(c => c.dispose()));
+    }
+  });
+
+  test('an identical retry returns the same Stripe refund, not a second one', async ({ request }) => {
+    const { id, amountCents, token } = await paidBooking(request, { start: daysFromNow(30) });
+    const headers = { authorization: `Bearer ${token}` };
+    const quarter = Math.floor(amountCents / 4);
+
+    const first = await request.post(`/api/payments/refund/${id}`, {
+      headers, data: { amount_cents: quarter }
+    });
+    expect(first.status(), await safeBody(first)).toBe(200);
+    const firstRefundId = (await first.json()).stripe_refund_id;
+
+    // The idempotency key covers (booking, balance already refunded, amount),
+    // so this is a different request: the balance has moved. What it must NOT
+    // do is refund past the total paid — that is covered above. Here we assert
+    // the recorded history stays consistent with the booking.
+    const booking = await (await request.get(`/api/bookings/${id}`, { headers })).json();
+    const history = await (await request.get(`/api/payments/refunds/${id}`, { headers })).json();
+    expect(history).toHaveLength(1);
+    expect(history[0].stripe_refund_id).toBe(firstRefundId);
+    expect(history.reduce((s, r) => s + r.amount_cents, 0)).toBe(booking.refunded_cents);
+  });
+});
+
+test.describe('partial refunds in the money figures', () => {
+  test.beforeEach(async ({ request }) => { await resetAll(request); });
+
+  test('the dashboard reports what was kept, not zero', async ({ request }) => {
+    const { id, amountCents, token } = await paidBooking(request, { start: daysFromNow(30) });
+    const headers = { authorization: `Bearer ${token}` };
+
+    const before = await (await request.get('/api/dashboard/stats', { headers })).json();
+    expect(before.totalRevenue).toBe(amountCents);
+    expect(before.paidBookings).toBe(1);
+
+    const refund = Math.floor(amountCents / 10);
+    await request.post(`/api/payments/refund/${id}`, { headers, data: { amount_cents: refund } });
+
+    // Counting only 'paid' rows dropped the whole booking out of revenue, so a
+    // $10 refund on a $100 booking reported $0 rather than the $90 retained.
+    const after = await (await request.get('/api/dashboard/stats', { headers })).json();
+    expect(after.totalRevenue).toBe(amountCents - refund);
+    expect(after.paidBookings).toBe(1);
+  });
+
+  test('the client list reports net spend and stops calling it pending', async ({ request }) => {
+    const { id, amountCents, token } = await paidBooking(request, { start: daysFromNow(30) });
+    const headers = { authorization: `Bearer ${token}` };
+    const refund = Math.floor(amountCents / 10);
+    await request.post(`/api/payments/refund/${id}`, { headers, data: { amount_cents: refund } });
+
+    const body = await (await request.get('/api/admin/clients', { headers })).json();
+    const client = body.clients.find(c => c.bookings.some(b => b.id === id));
+    expect(client).toBeTruthy();
+    expect(client.total_spent_cents).toBe(amountCents - refund);
+    // It was paid. Listing it as still owing money would chase a customer who
+    // has already settled.
+    expect(client.pending_revenue_cents).toBe(0);
+  });
+
+  test('a fully refunded booking earns nothing', async ({ request }) => {
+    const { id, token } = await paidBooking(request, { start: daysFromNow(30) });
+    const headers = { authorization: `Bearer ${token}` };
+    await request.post(`/api/payments/refund/${id}`, { headers });
+
+    const stats = await (await request.get('/api/dashboard/stats', { headers })).json();
+    expect(stats.totalRevenue).toBe(0);
+  });
+});

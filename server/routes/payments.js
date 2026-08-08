@@ -1,14 +1,24 @@
 const express = require('express');
-const { query } = require('../database');
+const { query, getClient } = require('../database');
 const { authenticateToken, requirePermission, logAudit } = require('../auth');
 const { authenticateCustomer } = require('../customerAuth');
 const mailer = require('../email');
 const { getStripe } = require('../stripeClient');
 const { recordBookingEvent } = require('../bookingAudit');
+const { SETTLED, notSettledSql, settledReason } = require('../paymentStatus');
 const metrics = require('../metrics');
 const { quoteBooking, stripeLineItems, refundForCancellation, formatAmount } = require('../pricing');
 
 const router = express.Router();
+
+// Guard for the routes that take money. Returns a message when the booking has
+// already been charged, or null when it is safe to proceed.
+function alreadyCharged(booking) {
+  return settledReason(booking.payment_status);
+}
+
+const notSettled = notSettledSql;
+const SETTLED_PAYMENT_STATUSES = SETTLED;
 
 // Send the right notification once a booking flips to paid. A payment that
 // lands on a CANCELLED booking (e.g. a stale link paid in the race before its
@@ -105,8 +115,8 @@ async function syncBookingFromStripe(stripe, booking) {
        stripe_payment_id = COALESCE(NULLIF($1, ''), stripe_payment_id),
        status = CASE WHEN status = 'pending' THEN 'confirmed' ELSE status END,
        updated_at = NOW()
-     WHERE id = $2 AND payment_status != 'paid'`,
-    [paymentIntentId || '', booking.id]
+     WHERE id = $2 AND ${notSettled(3)}`,
+    [paymentIntentId || '', booking.id, SETTLED_PAYMENT_STATUSES]
   );
 
   if (result.rowCount > 0) {
@@ -134,8 +144,9 @@ router.post('/create-payment-intent', authenticateToken, requirePermission('writ
     return res.status(404).json({ error: 'Booking not found' });
   }
 
-  if (booking.payment_status === 'paid') {
-    return res.status(400).json({ error: 'Booking is already paid' });
+  const charged = alreadyCharged(booking);
+  if (charged) {
+    return res.status(400).json({ error: charged });
   }
 
   const paymentIntent = await stripe.paymentIntents.create({
@@ -203,13 +214,15 @@ router.post('/request-payment', authenticateToken, requirePermission('write'), a
       return res.status(400).json({ error: 'Cannot request payment for a cancelled booking' });
     }
 
-    if (booking.payment_status === 'paid') {
-      return res.status(400).json({ error: 'Booking is already paid' });
+    const charged = alreadyCharged(booking);
+    if (charged) {
+      return res.status(400).json({ error: charged });
     }
 
   await query(
-    `UPDATE bookings SET payment_status = 'requested', updated_at = NOW() WHERE id = $1`,
-    [booking_id]
+    `UPDATE bookings SET payment_status = 'requested', updated_at = NOW()
+       WHERE id = $1 AND ${notSettled(2)}`,
+    [booking_id, SETTLED_PAYMENT_STATUSES]
   );
 
   await logAudit(req.admin.id, req.admin.email, 'request_payment', 'payments', booking_id.toString(), 'success');
@@ -234,8 +247,9 @@ router.post('/send-payment-link', authenticateToken, requirePermission('write'),
   if (booking.status === 'cancelled') {
     return res.status(400).json({ error: 'Cannot send a payment link for a cancelled booking' });
   }
-  if (booking.payment_status === 'paid') {
-    return res.status(400).json({ error: 'Booking is already paid' });
+  const charged = alreadyCharged(booking);
+  if (charged) {
+    return res.status(400).json({ error: charged });
   }
 
   const session = await stripe.checkout.sessions.create({
@@ -253,8 +267,8 @@ router.post('/send-payment-link', authenticateToken, requirePermission('write'),
        stripe_session_id = $2,
        stripe_session_ids = array_append(stripe_session_ids, $2),
        updated_at = NOW()
-     WHERE id = $1 AND payment_status != 'paid'`,
-    [booking_id, session.id]
+     WHERE id = $1 AND ${notSettled(3)}`,
+    [booking_id, session.id, SETTLED_PAYMENT_STATUSES]
   );
 
   await mailer.sendPaymentLinkToCustomer({ booking, checkoutUrl: session.url });
@@ -280,8 +294,9 @@ router.post('/customer-checkout', authenticateCustomer, async (req, res) => {
     return res.status(404).json({ error: 'Booking not found' });
   }
 
-  if (booking.payment_status === 'paid') {
-    return res.status(400).json({ error: 'Booking is already paid' });
+  const charged = alreadyCharged(booking);
+  if (charged) {
+    return res.status(400).json({ error: charged });
   }
 
   if (booking.status === 'cancelled') {
@@ -304,8 +319,8 @@ router.post('/customer-checkout', authenticateCustomer, async (req, res) => {
        stripe_session_id = $2,
        stripe_session_ids = array_append(stripe_session_ids, $2),
        updated_at = NOW()
-     WHERE id = $1 AND payment_status != 'paid'`,
-    [booking.id, session.id]
+     WHERE id = $1 AND ${notSettled(3)}`,
+    [booking.id, session.id, SETTLED_PAYMENT_STATUSES]
   );
 
   res.json({ checkout_url: session.url });
@@ -377,8 +392,8 @@ router.post('/webhook', async (req, res) => {
                stripe_payment_id = $1,
                status = CASE WHEN status = 'cancelled' THEN status ELSE 'confirmed' END,
                updated_at = NOW()
-             WHERE id = $2 AND payment_status != 'paid'`,
-            [session.payment_intent, bookingId]
+             WHERE id = $2 AND ${notSettled(3)}`,
+            [session.payment_intent, bookingId, SETTLED_PAYMENT_STATUSES]
           );
           if (result.rowCount > 0) {
             await recordBookingEvent({
@@ -403,8 +418,8 @@ router.post('/webhook', async (req, res) => {
                payment_status = 'paid',
                stripe_payment_id = $1,
                updated_at = NOW()
-             WHERE id = $2 AND payment_status != 'paid'`,
-            [intent.id, bookingId]
+             WHERE id = $2 AND ${notSettled(3)}`,
+            [intent.id, bookingId, SETTLED_PAYMENT_STATUSES]
           );
           if (result.rowCount > 0) {
             await recordBookingEvent({
@@ -546,11 +561,37 @@ router.get('/refund-quote/:booking_id', authenticateToken, requirePermission('re
 // explicit amount is allowed (an owner may choose to be more generous) but is
 // capped at what was actually paid, so a typo cannot refund more than the
 // customer ever handed over.
+//
+// CONCURRENCY. Reading `refunded_cents`, checking the remaining balance and
+// then calling Stripe is a read-modify-write across a network call. Two
+// admins — or one admin double-clicking — could both read the same
+// `refunded_cents`, both pass the remaining-balance check, and both create a
+// Stripe refund; the second write then overwrote the first, so the booking
+// under-reported the money returned and would allow refunding it AGAIN.
+//
+// Two independent defences, because either alone leaves a gap:
+//   1. The booking row is locked FOR UPDATE for the whole operation, so the
+//      second request waits and re-reads the balance the first one wrote.
+//   2. A deterministic Stripe idempotency key derived from the booking, the
+//      balance already refunded and the amount. If a request is retried after
+//      the lock is released but before we learn the outcome, Stripe returns
+//      the SAME refund rather than creating a second one.
+//
+// The transaction stays open across the Stripe call. That is a deliberate
+// trade — refunds are rare, admin-initiated, and correctness of the amount
+// matters far more here than holding a connection for a second or two.
 router.post('/refund/:booking_id', authenticateToken, requirePermission('write'), async (req, res, next) => {
+  const client = await getClient();
+  let committed = false;
   try {
-    const { rows } = await query('SELECT * FROM bookings WHERE id = $1', [req.params.booking_id]);
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      'SELECT * FROM bookings WHERE id = $1 FOR UPDATE', [req.params.booking_id]);
     const booking = rows[0];
-    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    if (!booking) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Booking not found' });
+    }
 
     const paid = Number(booking.amount_cents) || 0;
     const alreadyRefunded = Number(booking.refunded_cents) || 0;
@@ -559,9 +600,11 @@ router.post('/refund/:booking_id', authenticateToken, requirePermission('write')
     // first answered "this booking has not been paid" — true of the current
     // status, and misleading about what actually happened.
     if (booking.payment_status === 'refunded' || (paid > 0 && alreadyRefunded >= paid)) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: 'This booking has already been fully refunded' });
     }
     if (!['paid', 'partially_refunded'].includes(booking.payment_status)) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: 'This booking has not been paid, so there is nothing to refund' });
     }
 
@@ -571,9 +614,11 @@ router.post('/refund/:booking_id', authenticateToken, requirePermission('write')
       : Math.round(Number(req.body.amount_cents));
 
     if (!Number.isInteger(amount) || amount <= 0) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Refund amount must be a positive number of cents' });
     }
     if (amount + alreadyRefunded > paid) {
+      await client.query('ROLLBACK');
       return res.status(400).json({
         error: `Cannot refund more than was paid. At most ${formatAmount(paid - alreadyRefunded)} remains.`
       });
@@ -581,9 +626,11 @@ router.post('/refund/:booking_id', authenticateToken, requirePermission('write')
 
     const stripe = getStripe();
     if (!stripe) {
+      await client.query('ROLLBACK');
       return res.status(503).json({ error: 'Stripe is not configured, so a refund cannot be issued here' });
     }
     if (!booking.stripe_payment_id) {
+      await client.query('ROLLBACK');
       return res.status(409).json({
         error: 'No payment reference is recorded for this booking. Refund it in the Stripe dashboard and record it here.'
       });
@@ -595,8 +642,13 @@ router.post('/refund/:booking_id', authenticateToken, requirePermission('write')
         payment_intent: booking.stripe_payment_id,
         amount,
         metadata: { booking_id: String(booking.id) }
+      }, {
+        // Same booking, same balance already refunded, same amount => the same
+        // refund. A retry cannot become a second refund.
+        idempotencyKey: `refund-${booking.id}-${alreadyRefunded}-${amount}`
       });
     } catch (err) {
+      await client.query('ROLLBACK');
       console.error('[refund] Stripe refused the refund for booking', booking.id, err.message);
       metrics.increment('benny_payment_failures_total', { operation: 'refund' });
       return res.status(502).json({ error: `The payment provider refused the refund: ${err.message}` });
@@ -607,7 +659,7 @@ router.post('/refund/:booking_id', authenticateToken, requirePermission('write')
 
     // Record the refund before updating the booking: an orphaned refund row is
     // recoverable, a booking that claims a refund with no record is not.
-    await query(
+    await client.query(
       `INSERT INTO refunds (booking_id, amount_cents, reason, tier, stripe_refund_id,
                             stripe_payment_id, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7)
@@ -616,11 +668,14 @@ router.post('/refund/:booking_id', authenticateToken, requirePermission('write')
         refund.id || '', booking.stripe_payment_id, req.admin.email || '']
     );
 
-    await query(
+    await client.query(
       `UPDATE bookings SET refunded_cents = $2, payment_status = $3, updated_at = NOW()
        WHERE id = $1`,
       [booking.id, totalRefunded, newStatus]
     );
+
+    await client.query('COMMIT');
+    committed = true;
 
     await recordBookingEvent({
       bookingId: booking.id,
@@ -650,7 +705,10 @@ router.post('/refund/:booking_id', authenticateToken, requirePermission('write')
       stripe_refund_id: refund.id || null
     });
   } catch (err) {
+    if (!committed) await client.query('ROLLBACK').catch(() => {});
     next(err);
+  } finally {
+    client.release();
   }
 });
 

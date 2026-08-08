@@ -6,6 +6,7 @@ const mailer = require('../email');
 const { getStripe } = require('../stripeClient');
 const { quoteBooking, stripeLineItems } = require('../pricing');
 const { recordBookingEvent, listBookingEvents } = require('../bookingAudit');
+const { SETTLED, notSettledSql } = require('../paymentStatus');
 
 const router = express.Router();
 
@@ -120,8 +121,18 @@ function datesInStay(startDate, endDate) {
  * reported it, and nothing enforced it, so a full day could be booked
  * arbitrarily many times. Checking and then inserting in two statements would
  * still lose a race between two simultaneous requests, so the check and the
- * insert run inside one transaction guarded by an advisory lock keyed on the
- * first date of the stay.
+ * insert run inside one transaction guarded by advisory locks.
+ *
+ * EVERY occupied date is locked, not just the first. Locking only the start
+ * date left overlapping stays that begin on different days unserialised: an
+ * Aug 1-3 booking and an Aug 2-4 booking took different locks, both read the
+ * capacity for Aug 2 before either inserted, and both took the last place.
+ *
+ * The locks are taken in ascending date order, which is the order
+ * `datesInStay` produces. A consistent order across all callers is what makes
+ * this deadlock-free: two overlapping stays always contend on their earliest
+ * shared date first. MAX_NIGHTS bounds how many locks a single request can
+ * take.
  *
  * Returns { booking } or { conflict: { date, booked, capacity, requested } }.
  */
@@ -131,10 +142,12 @@ async function insertBookingWithCapacity({ dates, dogs, insertSql, insertParams 
     await client.query('BEGIN');
 
     if (dates.length > 0) {
-      // Serialise concurrent bookings that touch the same first date.
-      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [dates[0]]);
+      const ordered = [...dates].sort();
+      for (const date of ordered) {
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [date]);
+      }
 
-      for (const date of dates) {
+      for (const date of ordered) {
         const booked = await bookedDogsOn(client, date);
         if (booked + dogs > DAILY_CAPACITY) {
           await client.query('ROLLBACK');
@@ -513,8 +526,8 @@ router.put('/:id', authenticateToken, requirePermission('write'), async (req, re
              stripe_payment_id = COALESCE(NULLIF($1, ''), stripe_payment_id),
              status = CASE WHEN status = 'pending' THEN 'confirmed' ELSE status END,
              updated_at = NOW()
-           WHERE id = $2 AND payment_status != 'paid'`,
-          [paymentIntentId, existingBooking.id]
+           WHERE id = $2 AND ${notSettledSql(3)}`,
+          [paymentIntentId, existingBooking.id, SETTLED]
         );
         return res.status(409).json({
           error: 'Customer just paid via the existing link. Refresh to see the paid status.'
@@ -640,8 +653,8 @@ router.post('/:id/approve', authenticateToken, requirePermission('write'), async
            stripe_session_id = $2,
            stripe_session_ids = array_append(stripe_session_ids, $2),
            updated_at = NOW()
-         WHERE id = $1 AND payment_status != 'paid'`,
-        [booking.id, session.id]
+         WHERE id = $1 AND ${notSettledSql(3)}`,
+        [booking.id, session.id, SETTLED]
       );
     } catch (err) {
       console.error('[approve] failed to create Stripe checkout session:', err.message);

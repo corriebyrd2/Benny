@@ -21,6 +21,11 @@ const mailer = require('./server/email');
 const { sendPasswordResetToCustomer } = mailer;
 const { init: initDb, query } = require('./server/database');
 const sessions = require('./server/sessions');
+const {
+  EARNING: EARNING_PAYMENT_STATUSES,
+  isSettled: isPaymentSettled,
+  netRevenueCents
+} = require('./server/paymentStatus');
 const metrics = require('./server/metrics');
 const assets = require('./server/assets');
 const { newNonce } = require('./server/render');
@@ -721,8 +726,8 @@ app.get('/api/admin/clients', authenticateToken, requirePermission('read'), asyn
                     size_bytes, scan_status, uploaded_at
              FROM dog_documents ORDER BY uploaded_at DESC LIMIT $1`, [MAX_ROWS * 3]),
       query(`SELECT id, owner_name, email, phone, dog_name, service_name, preferred_dates,
-                    status, payment_status, amount_cents, customer_id, start_date, end_date,
-                    dog_count, created_at
+                    status, payment_status, amount_cents, refunded_cents, customer_id,
+                    start_date, end_date, dog_count, created_at
              FROM bookings WHERE status != 'cancelled' ORDER BY created_at DESC LIMIT $1`, [MAX_ROWS * 5])
     ]);
 
@@ -822,6 +827,7 @@ app.get('/api/admin/clients', authenticateToken, requirePermission('read'), asyn
         status: b.status,
         payment_status: b.payment_status,
         amount_cents: Number(b.amount_cents) || 0,
+        refunded_cents: Number(b.refunded_cents) || 0,
         created_at: b.created_at
       });
 
@@ -844,9 +850,12 @@ app.get('/api/admin/clients', authenticateToken, requirePermission('read'), asyn
     }
 
     const clients = Array.from(clientsByEmail.values()).map(client => {
-      const paid = client.bookings.filter(b => b.payment_status === 'paid');
-      const pending = client.bookings.filter(b => b.status !== 'cancelled' && b.payment_status !== 'paid');
-      const total_spent_cents = paid.reduce((s, b) => s + b.amount_cents, 0);
+      // Revenue is NET: a partly refunded booking still earned what was kept,
+      // and counting it as unpaid both erased the retained amount and listed
+      // the customer as still owing the full price.
+      const total_spent_cents = client.bookings.reduce((s, b) => s + netRevenueCents(b), 0);
+      const pending = client.bookings.filter(
+        b => b.status !== 'cancelled' && !isPaymentSettled(b.payment_status));
       const pending_revenue_cents = pending.reduce((s, b) => s + b.amount_cents, 0);
       return {
         ...client,
@@ -930,8 +939,14 @@ app.get('/api/dashboard/stats', authenticateToken, requirePermission('read'), as
     query("SELECT COUNT(*)::int AS count FROM bookings WHERE status = 'confirmed'"),
     query('SELECT COUNT(*)::int AS count FROM photos'),
     query('SELECT COUNT(*)::int AS count FROM services WHERE active = TRUE'),
-    query("SELECT COUNT(*)::int AS count FROM bookings WHERE payment_status = 'paid'"),
-    query("SELECT COALESCE(SUM(amount_cents), 0)::bigint AS total FROM bookings WHERE payment_status = 'paid'"),
+    // A partly refunded booking was still paid for. Counting only 'paid' meant
+    // refunding $10 of a $100 booking dropped the whole $100 off the
+    // dashboard, reporting $0 earned instead of the $90 actually retained.
+    query(`SELECT COUNT(*)::int AS count FROM bookings WHERE payment_status = ANY($1)`,
+      [EARNING_PAYMENT_STATUSES]),
+    query(`SELECT COALESCE(SUM(GREATEST(amount_cents - COALESCE(refunded_cents, 0), 0)), 0)::bigint AS total
+             FROM bookings WHERE payment_status = ANY($1)`,
+      [EARNING_PAYMENT_STATUSES]),
     query('SELECT * FROM bookings ORDER BY created_at DESC LIMIT 5')
   ]);
 

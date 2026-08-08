@@ -328,6 +328,16 @@
       white-space: nowrap;
     }
 
+    /* The "forgot password" and "back to login" links. These were an inline
+       #ff6b9d, which is 2.9:1 on white — below AA for body text. */
+    .auth-link {
+      color: var(--primary-strong);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      font-weight: 600;
+    }
+    .auth-link:hover { color: var(--primary-strong-dark); }
+
     .btn-primary {
       background: var(--primary-strong);
       color: var(--white);
@@ -1146,7 +1156,7 @@
           </div>
           <button type="submit" class="btn btn-primary btn-full" id="loginBtn">Log In</button>
           <p style="text-align:center;margin-top:12px;font-size:14px;">
-            <a href="#" id="forgotPasswordLink" style="color:#ff6b9d;text-decoration:none;">Forgot your password?</a>
+            <a href="#" id="forgotPasswordLink" class="auth-link">Forgot your password?</a>
           </p>
         </form>
 
@@ -1165,7 +1175,7 @@
           </div>
           <button type="submit" class="btn btn-primary btn-full" id="forgotBtn">Send Reset Link</button>
           <p style="text-align:center;margin-top:12px;font-size:14px;">
-            <a href="#" id="backToLoginLink" style="color:#ff6b9d;text-decoration:none;">Back to login</a>
+            <a href="#" id="backToLoginLink" class="auth-link">Back to login</a>
           </p>
         </form>
 
@@ -1635,11 +1645,11 @@
       return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
 
+    // Escapes for BOTH text and attribute contexts — `div.textContent` leaves
+    // quotes alone, and this file interpolates into attributes.
+    const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
     function escapeHtml(str) {
-      if (!str) return '';
-      const div = document.createElement('div');
-      div.textContent = str;
-      return div.innerHTML;
+      return String(str ?? '').replace(/[&<>"']/g, c => HTML_ESCAPES[c]);
     }
 
     function getStatusBadge(status) {

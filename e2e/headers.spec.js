@@ -82,15 +82,30 @@ test.describe('response headers', () => {
 test.describe('content security policy', () => {
   test.beforeEach(async ({ request }) => { await resetAll(request); });
 
-  test('a CSP is sent, and it contains no unsafe directives', async ({ request }) => {
+  const PAGES = ['/', '/legal/privacy', '/services/overnight-boarding', '/my-bookings', '/admin'];
+
+  function directive(csp, name) {
+    const match = csp.split(';').map(s => s.trim())
+      .find(s => s === name || s.startsWith(`${name} `));
+    return match ? match.slice(name.length).trim() : null;
+  }
+
+  test('a CSP is sent, and script can never run inline', async ({ request }) => {
     // CSP was previously disabled outright, on the grounds that the portals'
     // inline scripts would break. Those handlers were converted instead.
-    for (const path of ['/', '/legal/privacy', '/services/overnight-boarding', '/my-bookings', '/admin']) {
+    for (const path of PAGES) {
       const res = await request.get(path);
       const csp = res.headers()['content-security-policy'];
       expect(csp, `${path} has no CSP`).toBeTruthy();
-      expect(csp, `${path} allows unsafe-inline`).not.toContain("'unsafe-inline'");
       expect(csp, `${path} allows unsafe-eval`).not.toContain("'unsafe-eval'");
+
+      // The directive that actually stops injected script.
+      const scriptSrc = directive(csp, 'script-src');
+      expect(scriptSrc, `${path} script-src`).toBeTruthy();
+      expect(scriptSrc, `${path} allows inline script`).not.toContain("'unsafe-inline'");
+      expect(scriptSrc).toMatch(/'nonce-[^']+'/);
+      expect(directive(csp, 'script-src-attr')).toBe("'none'");
+
       expect(csp).toContain("default-src 'self'");
       expect(csp).toContain("object-src 'none'");
       expect(csp).toContain("frame-ancestors 'none'");
@@ -99,6 +114,30 @@ test.describe('content security policy', () => {
       // No wildcard sources anywhere.
       expect(csp).not.toMatch(/(^|[ ;])\*($|[ ;])/);
       expect(csp).not.toContain('http:');
+    }
+  });
+
+  test('stylesheets are nonce-locked even though style attributes are allowed', async ({ request }) => {
+    // A single nonce'd `style-src` silently dropped every style="..." attribute
+    // in the portals — a nonce cannot apply to an attribute — which broke their
+    // layout without any visible error. The policy is split so the half that a
+    // nonce CAN protect stays strict.
+    for (const path of PAGES) {
+      const csp = (await request.get(path)).headers()['content-security-policy'];
+
+      const elem = directive(csp, 'style-src-elem');
+      expect(elem, `${path} style-src-elem`).toBeTruthy();
+      expect(elem, `${path} allows an injected <style> block`).not.toContain("'unsafe-inline'");
+      expect(elem).toMatch(/'nonce-[^']+'/);
+
+      // The deliberate, documented exception — and nothing wider than it.
+      expect(directive(csp, 'style-src-attr')).toBe("'unsafe-inline'");
+
+      // The exfiltration channels an injected style attribute would need are
+      // all same-origin, so the exception cannot leak data off the box.
+      expect(directive(csp, 'img-src')).not.toMatch(/https?:/);
+      expect(directive(csp, 'font-src')).not.toMatch(/https?:/);
+      expect(directive(csp, 'connect-src')).toBe("'self'");
     }
   });
 

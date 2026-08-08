@@ -98,8 +98,31 @@ app.use((req, res, next) => {
 // Security headers.
 //
 // CSP was previously disabled outright ("inline scripts would break"), which
-// left the app with no defence-in-depth against injected script at all. The
-// policy below carries no 'unsafe-inline' and no 'unsafe-eval'.
+// left the app with no defence-in-depth against injected script at all. Script
+// carries no 'unsafe-inline' and no 'unsafe-eval': every inline <script> is
+// nonced per request.
+//
+// STYLE IS SPLIT DELIBERATELY, and this is a stated trade-off rather than an
+// oversight:
+//
+//   style-src-elem  'self' + per-request nonce — no 'unsafe-inline'. This is
+//                   the half that matters: injected <style> blocks and remote
+//                   stylesheets are refused.
+//   style-src-attr  'unsafe-inline'. A nonce CANNOT apply to a style="..."
+//                   attribute — the CSP spec has no mechanism for it, only
+//                   'unsafe-hashes' over every literal value, which is
+//                   unmaintainable across ~90 distinct declarations.
+//
+// A single `style-src` with a nonce silently dropped EVERY style attribute in
+// the admin and customer portals — 40 violations on one page load — which broke
+// grid layouts and left elements meant to start hidden (a cancellation-reason
+// box, success banners) permanently visible. The portals shipped that way
+// unnoticed, because a blocked style attribute fails quietly.
+//
+// What is given up: with an HTML-injection hole an attacker could set style
+// attributes. What that cannot reach: script (nonce-locked), and the CSS
+// exfiltration channels — img-src, font-src and connect-src are all 'self',
+// so an injected `background: url(https://attacker/…)` never leaves the origin.
 //
 // frame-ancestors 'none' is the frame protection (X-Frame-Options is legacy and
 // helmet still emits it alongside). connect-src is same-origin only: the app
@@ -115,7 +138,15 @@ app.use(helmet({
       'frame-ancestors': ["'none'"],
       'form-action': ["'self'"],
       'script-src': ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
-      'style-src': ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
+      'script-src-attr': ["'none'"],
+      // Fallback for browsers predating style-src-elem/attr (Firefox < 75,
+      // Safari < 15.4). Without it those browsers fall through to
+      // default-src 'self', which does not carry the nonce, and the portals
+      // render with no stylesheet at all. Browsers that understand the two
+      // directives below ignore this one for both contexts.
+      'style-src': ["'self'", "'unsafe-inline'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
+      'style-src-elem': ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
+      'style-src-attr': ["'unsafe-inline'"],
       'font-src': ["'self'", 'data:'],
       'img-src': ["'self'", 'data:', 'blob:'],
       'connect-src': ["'self'"],

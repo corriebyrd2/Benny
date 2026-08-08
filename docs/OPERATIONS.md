@@ -51,6 +51,11 @@ outage. The gate is enforced in the deploy pipeline instead (§3).
 | `PGPOOL_MAX` | `10` | Connection pool ceiling. Must stay under the Neon plan's limit |
 | `PG_STATEMENT_TIMEOUT_MS` | `15000` | Caps how long one query can pin a connection |
 | `UPLOAD_DIR`, `DOG_DOC_UPLOAD_DIR` | | Ignored when R2 is configured |
+| `DAILY_CAPACITY` | `10` | Dog places per day. Booking creation enforces it, not just the availability display |
+| `REQUIRE_EMAIL_VERIFICATION` | off | `1` blocks sign-in until the address is confirmed. **Do not turn this on until transactional email is verified working** — it converts a mail misconfiguration into "nobody can sign in" |
+| `CUSTOMER_SESSION_ABSOLUTE_MS` / `_IDLE_MS` | 7d / 48h | Customer session lifetimes |
+| `ADMIN_SESSION_ABSOLUTE_MS` / `_IDLE_MS` | 12h / 1h | Admin session lifetimes — shorter, because an admin session reaches every customer's data |
+| `MALWARE_SCAN_COMMAND` | unset | e.g. `clamscan --no-summary`. Unset means uploads are recorded `not_scanned` |
 | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` | | Payments |
 | `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL` | | Transactional email |
 | `R2_*` | | Object storage |
@@ -66,9 +71,11 @@ configuration back to a client.
 
 ### Rotating `JWT_SECRET`
 
-**This signs out every user, customer and admin, immediately.** There is no
-graceful rotation because sessions are stateless bearer tokens (see the known
-gap in `docs/PRIVACY-INVENTORY.md`).
+Sessions are server-side and do NOT depend on this value, so rotating it no
+longer signs everyone out. It is still used to key HMACs — unsubscribe links,
+and the salted IP hashes on acceptance and enquiry records — so after rotation
+previously issued unsubscribe links stop verifying. Account-level opt-out still
+works.
 
 1. Generate the new value.
 2. Set it in Railway. The service restarts.
@@ -292,6 +299,17 @@ FROM bookings WHERE payment_status = 'requested'
 
 -- Recent booking state changes
 SELECT * FROM booking_events ORDER BY created_at DESC LIMIT 50;
+
+-- Enquiries nobody has answered
+SELECT id, name, email, created_at FROM inquiries
+WHERE status = 'new' AND created_at < NOW() - INTERVAL '2 days';
+
+-- Days at or over capacity in the next fortnight
+SELECT d::date AS day, SUM(GREATEST(b.dog_count, 1))::int AS dogs
+FROM generate_series(CURRENT_DATE, CURRENT_DATE + 14, '1 day') d
+JOIN bookings b ON b.status != 'cancelled'
+  AND b.start_date <= d AND COALESCE(b.end_date, b.start_date) >= d
+GROUP BY 1 HAVING SUM(GREATEST(b.dog_count, 1)) >= 10 ORDER BY 1;
 ```
 
 **Not in place:** metrics, distributed tracing, and an external uptime probe.
@@ -347,7 +365,9 @@ affect customer-facing latency, but it needs pagination before that point.
 1. No automated off-Neon backup, and **no completed restore drill**.
 2. No object versioning on the R2 bucket.
 3. No metrics, tracing or external uptime probe.
-4. Sessions cannot be revoked server-side (see `docs/PRIVACY-INVENTORY.md`).
-5. No dependency/secret scanning in CI (`npm audit` reports advisories today).
-6. No staging environment — changes go from CI straight to production.
-7. `/api/admin/clients` needs pagination before the client count grows.
+4. No dependency/secret scanning in CI (`npm audit` reports advisories today).
+5. No staging environment — changes go from CI straight to production.
+6. `/api/admin/clients` needs pagination before the client count grows.
+7. Expired session rows are never swept. They are harmless (resolveSession
+   rejects them) but the table grows without bound:
+   `DELETE FROM sessions WHERE expires_at < NOW() - INTERVAL '30 days';`

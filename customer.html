@@ -1945,6 +1945,31 @@
       }
     });
 
+    // If the customer arrived via an emailed verification link, confirm the
+    // address before anything else touches the page.
+    (async function maybeVerifyEmail() {
+      const verifyToken = new URLSearchParams(window.location.search).get('verify');
+      if (!verifyToken) return;
+      try {
+        const res = await fetch('/api/customer/verify-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: verifyToken })
+        });
+        const data = await res.json().catch(() => ({}));
+        showToast(res.ok
+          ? 'Email confirmed. You can sign in now.'
+          : (data.error || 'That verification link is no longer valid.'),
+        res.ok ? 'success' : 'error');
+        if (res.ok && data.email) document.getElementById('loginEmail').value = data.email;
+      } catch {
+        showToast('We could not confirm your email. Please try the link again.', 'error');
+      } finally {
+        // Don't leave a single-use token sitting in the address bar or history.
+        history.replaceState(null, '', window.location.pathname);
+      }
+    })();
+
     // If the customer arrived via an email reset link, jump straight to the reset form.
     (function maybeShowResetForm() {
       const resetToken = new URLSearchParams(window.location.search).get('reset');
@@ -1999,13 +2024,18 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Registration failed');
 
-        customer = data.customer;
-        signedIn = true;
-        // Profile data only — never the credential, and cleared when the tab
-        // closes.
-        sessionStorage.setItem('customerProfile', JSON.stringify(customer));
-        showToast('Account created! Welcome, ' + customer.name + '!', 'success');
-        showDashboard();
+        // Registration deliberately does NOT sign you in. It answers the same
+        // way whether or not the address already had an account, so that the
+        // form cannot be used to discover who is a customer. Signing in is the
+        // next step, and it fails generically for someone guessing.
+        // Read the address BEFORE resetting the form, or the prefill is empty.
+        const registeredEmail = document.getElementById('regEmail').value || '';
+        document.getElementById('registerForm').reset();
+        document.querySelectorAll('.auth-tab').forEach(t =>
+          t.classList.toggle('active', t.dataset.tab === 'login'));
+        showAuthForm('loginForm');
+        document.getElementById('loginEmail').value = registeredEmail;
+        showToast(data.message || 'Check your email, then sign in.', 'success');
       } catch (err) {
         regError.textContent = err.message;
         regError.classList.add('visible');

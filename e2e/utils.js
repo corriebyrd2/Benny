@@ -53,9 +53,17 @@ async function registerCustomer(request, overrides = {}) {
     accept_policies: { terms: true, privacy: true },
     ...overrides
   };
+  // Registration deliberately returns 202 with NO session, identically whether
+  // or not the address already exists — that is what closes the enumeration
+  // leak. Signing in is a separate step, so the fixture does both.
   const res = await request.post('/api/customer/register', { data });
-  expect(res.status(), await safeBody(res)).toBe(201);
-  const body = await res.json();
+  expect(res.status(), await safeBody(res)).toBe(202);
+
+  const login = await request.post('/api/customer/login', {
+    data: { email: data.email, password: data.password }
+  });
+  expect(login.status(), await safeBody(login)).toBe(200);
+  const body = await login.json();
   return {
     token: body.token,
     csrfToken: body.csrf_token,

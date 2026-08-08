@@ -151,8 +151,11 @@ test.describe('versioned acceptance', () => {
   test('accepting records the version that was shown', async ({ request }) => {
     const data = registration({ accept_policies: { terms: true, privacy: true } });
     const res = await request.post('/api/customer/register', { data });
-    expect(res.status(), await safeBody(res)).toBe(201);
-    const { token } = await res.json();
+    // 202 with no session — registration is deliberately indistinguishable
+    // whether or not the address already exists.
+    expect(res.status(), await safeBody(res)).toBe(202);
+    const { token } = await (await request.post('/api/customer/login',
+      { data: { email: data.email, password: data.password } })).json();
 
     const acceptances = await (await request.get('/api/legal/my-acceptances', {
       headers: { Authorization: `Bearer ${token}` }
@@ -177,8 +180,9 @@ test.describe('versioned acceptance', () => {
       policy_versions: { terms: '1999-01-01.1' }
     });
     const res = await request.post('/api/customer/register', { data });
-    expect(res.status()).toBe(201);
-    const { token } = await res.json();
+    expect(res.status()).toBe(202);
+    const { token } = await (await request.post('/api/customer/login',
+      { data: { email: data.email, password: data.password } })).json();
     const acceptances = await (await request.get('/api/legal/my-acceptances', {
       headers: { Authorization: `Bearer ${token}` }
     })).json();
@@ -188,13 +192,13 @@ test.describe('versioned acceptance', () => {
   test('marketing consent is separate from contractual acceptance', async ({ request }) => {
     // Accepting the terms alone must NOT subscribe the customer to marketing.
     const withoutMarketing = registration({ accept_policies: { terms: true, privacy: true } });
-    expect((await request.post('/api/customer/register', { data: withoutMarketing })).status()).toBe(201);
+    expect((await request.post('/api/customer/register', { data: withoutMarketing })).status()).toBe(202);
 
     const withMarketing = registration({
       accept_policies: { terms: true, privacy: true },
       marketing_consent: true
     });
-    expect((await request.post('/api/customer/register', { data: withMarketing })).status()).toBe(201);
+    expect((await request.post('/api/customer/register', { data: withMarketing })).status()).toBe(202);
 
     // The newsletter endpoint is the observable side: only the opted-in address
     // is already present, so re-subscribing it is a no-op either way. Assert on
@@ -208,8 +212,12 @@ test.describe('versioned acceptance', () => {
   test('an acceptance record cannot be read by another customer', async ({ request }) => {
     const a = registration({ accept_policies: { terms: true, privacy: true } });
     const b = registration({ accept_policies: { terms: true, privacy: true } });
-    const tokenA = (await (await request.post('/api/customer/register', { data: a })).json()).token;
-    const tokenB = (await (await request.post('/api/customer/register', { data: b })).json()).token;
+    await request.post('/api/customer/register', { data: a });
+    await request.post('/api/customer/register', { data: b });
+    const tokenA = (await (await request.post('/api/customer/login',
+      { data: { email: a.email, password: a.password } })).json()).token;
+    const tokenB = (await (await request.post('/api/customer/login',
+      { data: { email: b.email, password: b.password } })).json()).token;
 
     const forA = await (await request.get('/api/legal/my-acceptances', {
       headers: { Authorization: `Bearer ${tokenA}` }

@@ -178,6 +178,7 @@ function buildRouter() {
           bookings,
           customers,
           password_reset_tokens,
+          email_verification_tokens,
           photos,
           reviews,
           services,

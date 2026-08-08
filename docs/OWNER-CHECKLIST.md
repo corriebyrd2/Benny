@@ -63,8 +63,9 @@ booking form, so a change here moves every surface at once.
 - [ ] **Service perks** ("Private suites", "Evening walk included",
       "Breakfast & dinner", "Supervised group play", "Nap time included",
       "Photo updates") are facility claims. Confirm each is true or edit it.
-- [ ] **Capacity** is hard-coded at 10 dogs per day in the availability check.
-      Confirm or correct.
+- [ ] **Capacity** defaults to 10 dog places per day and is now ENFORCED on
+      booking creation, not merely displayed. Set `DAILY_CAPACITY` to the real
+      number — if it is wrong, you will either turn away business or overbook.
 
 ## 4. Facts still asserted on the site that you should verify
 
@@ -144,3 +145,17 @@ unnoticed in review.
 | DNS access for `bennyandthepetsboardingllc.com` | Setting `PUBLIC_URL`, email domain authentication (SPF/DKIM/DMARC) | Not available |
 | A Google Business Profile | Local search, and a place for genuine reviews | Unknown |
 | Real-user monitoring (e.g. Vercel Analytics, Cloudflare RUM) | Field Core Web Vitals at the 75th percentile — lab measurements cannot substitute | Not configured |
+| A malware scanner (e.g. ClamAV) | Scanning uploaded pet documents; set `MALWARE_SCAN_COMMAND` | Not configured — uploads are recorded `not_scanned` |
+
+## 9. Decisions waiting on you
+
+- [ ] **Turn on email verification?** Registration sends a confirmation link,
+      but sign-in does not require it (`REQUIRE_EMAIL_VERIFICATION=1` enables
+      that). Leave it off until you have confirmed transactional email actually
+      delivers — otherwise a mail problem becomes "nobody can sign in".
+- [ ] **Confirm the refund tiers** in the cancellation policy (full at 48h+,
+      half between 24h and 48h, none inside 24h). The refund calculator
+      implements exactly these, so changing the policy means changing the code.
+- [ ] **Watch the enquiries queue.** The homepage contact form writes to it and
+      the sidebar shows an unanswered count. Enquiries are also emailed, but the
+      queue is the record of truth if email is down.

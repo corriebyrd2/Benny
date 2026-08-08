@@ -63,7 +63,7 @@ test.describe('customer portal UI', () => {
     await expect(page.locator('#dashboard')).not.toHaveClass(/active/);
   });
 
-  test('register → dashboard appears with a welcome message', async ({ page }) => {
+  test('register → asked to sign in, then the dashboard appears', async ({ page }) => {
     await page.goto('/my-bookings');
     const switchLink = page.locator('a, button', { hasText: /sign up|create account|register/i }).first();
     if (await switchLink.count()) await switchLink.click();
@@ -87,8 +87,17 @@ test.describe('customer portal UI', () => {
     const reg = page.waitForResponse((r) => r.url().endsWith('/api/customer/register'));
     await page.locator('#regBtn').click();
     const res = await reg;
-    expect(res.status()).toBe(201);
+    // 202 and no session. Registration answers identically whether or not the
+    // address already exists, so it cannot sign you in for one case only.
+    expect(res.status()).toBe(202);
 
+    // The portal moves to the sign-in tab with the address prefilled.
+    await expect(page.locator('#loginForm')).toBeVisible();
+    await expect(page.locator('#loginEmail')).toHaveValue('penny-ui@test.local');
+    await expect(page.locator('#dashboard')).not.toHaveClass(/active/);
+
+    await page.locator('#loginPassword').fill('uistrongpw1');
+    await page.locator('#loginBtn').click();
     await expect(page.locator('#dashboard')).toHaveClass(/active/);
     await expect(page.locator('#welcomeText')).toContainText('Penny');
   });
@@ -105,7 +114,7 @@ test.describe('customer portal UI', () => {
         accept_policies: { terms: true, privacy: true }
       }
     });
-    expect(reg.status()).toBe(201);
+    expect(reg.status()).toBe(202);
 
     await page.goto('/my-bookings');
     await page.locator('#loginEmail').fill('login-ui@test.local');

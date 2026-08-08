@@ -209,6 +209,60 @@ async function send({ to, subject, html, text, templateId, dynamicTemplateData, 
 // caller treats a failure here as non-fatal.
 // Sent when money goes back. A refund the customer only discovers from their
 // bank statement is a support ticket waiting to happen.
+// Sent on a genuinely new registration.
+async function sendEmailVerificationToCustomer({ to, name, verifyLink }) {
+  await send({
+    to,
+    subject: 'Confirm your email address',
+    text: [
+      `Hi ${name},`,
+      '',
+      'Thanks for creating an account. Confirm your email address here:',
+      verifyLink,
+      '',
+      'The link works for 7 days. If you did not create this account you can ignore this email.'
+    ].join('\n'),
+    html: `
+      <p>Hi ${escapeHtml(name)},</p>
+      <p>Thanks for creating an account. Please confirm your email address:</p>
+      <p><a href="${escapeHtml(verifyLink)}">Confirm my email address</a></p>
+      <p>The link works for 7 days. If you did not create this account you can ignore this email.</p>`
+  });
+}
+
+// Sent when someone tries to register an address that ALREADY has an account.
+//
+// This is what makes the identical registration response safe to give: the
+// person who owns the address finds out, while the person who submitted the
+// form learns nothing. It must never say "your password is X" or reveal
+// anything beyond the fact that an account exists — which the real owner
+// already knows.
+async function sendRegistrationAttemptToExistingCustomer({ to, name, signInLink, resetLink }) {
+  await send({
+    to,
+    subject: 'Someone tried to create an account with your email address',
+    text: [
+      `Hi ${name},`,
+      '',
+      'Someone just tried to sign up with this email address, but you already',
+      'have an account with us.',
+      '',
+      `If that was you, sign in instead: ${signInLink}`,
+      `Forgotten your password? ${resetLink}`,
+      '',
+      'If it was not you, no action is needed — no new account was created and',
+      'nothing about your account has changed.'
+    ].join('\n'),
+    html: `
+      <p>Hi ${escapeHtml(name)},</p>
+      <p>Someone just tried to sign up with this email address, but you already have an account with us.</p>
+      <p>If that was you, <a href="${escapeHtml(signInLink)}">sign in instead</a>.
+      Forgotten your password? <a href="${escapeHtml(resetLink)}">Reset it here</a>.</p>
+      <p>If it was not you, no action is needed &mdash; no new account was created
+      and nothing about your account has changed.</p>`
+  });
+}
+
 async function sendRefundIssuedToCustomer({ booking, amountCents, tier }) {
   if (!booking || !booking.email) return;
   const amount = `$${(Number(amountCents || 0) / 100).toFixed(2)}`;
@@ -504,7 +558,9 @@ async function sendPaymentReceivedToOwner({ booking }) {
 module.exports = {
   setTransport,
   sendInquiryToOwner,
+  sendEmailVerificationToCustomer,
   sendRefundIssuedToCustomer,
+  sendRegistrationAttemptToExistingCustomer,
   sendMarketingCampaign,
   sendNewBookingToOwner,
   sendBookingReceivedToCustomer,

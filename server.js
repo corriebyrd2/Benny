@@ -11,11 +11,14 @@ const {
   registerCustomer,
   loginCustomer,
   authenticateCustomer,
+  createEmailVerificationToken,
   createPasswordResetToken,
   resetPasswordWithToken,
-  validatePassword
+  validatePassword,
+  verifyEmailWithToken
 } = require('./server/customerAuth');
-const { sendPasswordResetToCustomer } = require('./server/email');
+const mailer = require('./server/email');
+const { sendPasswordResetToCustomer } = mailer;
 const { init: initDb, query } = require('./server/database');
 const sessions = require('./server/sessions');
 const assets = require('./server/assets');
@@ -330,6 +333,15 @@ app.post('/api/auth/logout', async (req, res, next) => {
 });
 
 // Customer auth
+// Registration.
+//
+// The response is IDENTICAL whether or not the address is already registered:
+// same status, same body, no session either way. It previously answered
+// 409 "An account with this email already exists", which let anyone test an
+// address list against the site and learn who is a customer.
+//
+// The person who owns the address is told by email that someone tried to sign
+// up with it. The person who submitted the form learns nothing.
 app.post('/api/customer/register', registerLimiter, async (req, res, next) => {
   try {
     const { name, email, password, phone, dog_name, accept_policies, marketing_consent } = req.body;
@@ -352,42 +364,95 @@ app.post('/api/customer/register', registerLimiter, async (req, res, next) => {
       });
     }
 
+    const base = (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
     const result = await registerCustomer(name, email, password, phone, dog_name);
-    if (result.error) {
-      return res.status(409).json({ error: result.error });
+
+    if (result.created) {
+      await recordAcceptance({
+        customerId: result.customer.id,
+        email: result.customer.email,
+        point: 'registration',
+        accepted: accept_policies,
+        req
+      });
+
+      if (marketing_consent === true) {
+        await query(
+          `INSERT INTO subscribers (email, source, consent_at, consent_source)
+           VALUES ($1, $2, NOW(), $2)
+           ON CONFLICT (LOWER(email)) DO UPDATE
+             SET unsubscribed_at = NULL, consent_at = NOW(),
+                 consent_source = EXCLUDED.consent_source`,
+          [result.customer.email, 'registration']
+        ).catch(err => console.error('[register] marketing opt-in failed', err.message));
+      }
+
+      await mailer.sendEmailVerificationToCustomer({
+        to: result.customer.email,
+        name: result.customer.name,
+        verifyLink: `${base}/my-bookings?verify=${encodeURIComponent(result.verificationToken)}`
+      }).catch(err => console.error('[register] verification email failed', err.message));
+    } else {
+      // The address already has an account. Tell its OWNER, and nobody else.
+      await mailer.sendRegistrationAttemptToExistingCustomer({
+        to: result.existingCustomer.email,
+        name: result.existingCustomer.name,
+        signInLink: `${base}/my-bookings`,
+        resetLink: `${base}/my-bookings?forgot=1`
+      }).catch(err => console.error('[register] duplicate-registration notice failed', err.message));
     }
 
-    await recordAcceptance({
-      customerId: result.customer.id,
-      email: result.customer.email,
-      point: 'registration',
-      accepted: accept_policies,
-      req
+    // 202 with no session, in both branches. The client tells the person to
+    // sign in — which succeeds for a new account and fails generically for
+    // someone guessing at an existing one.
+    res.status(202).json({
+      message: 'Check your email. If the address is new, your account is ready — sign in to continue.',
+      next_step: 'sign_in'
     });
-
-    const session = await sessions.createSession({
-      subjectType: 'customer', subjectId: result.customerId, req
-    });
-    sessions.setSessionCookies(res, session);
-    result.token = session.token;
-    result.csrf_token = session.csrfToken;
-
-    if (marketing_consent === true) {
-      await query(
-        `INSERT INTO subscribers (email, source, consent_at, consent_source)
-         VALUES ($1, $2, NOW(), $2)
-         ON CONFLICT (LOWER(email)) DO UPDATE
-           SET unsubscribed_at = NULL, consent_at = NOW(),
-               consent_source = EXCLUDED.consent_source`,
-        [result.customer.email, 'registration']
-      ).catch(err => console.error('[register] marketing opt-in failed', err.message));
-    }
-
-    res.status(201).json(result);
   } catch (err) {
     next(err);
   }
 });
+
+// Confirm an email address from the emailed link.
+app.post('/api/customer/verify-email', authLimiter, async (req, res, next) => {
+  try {
+    const result = await verifyEmailWithToken(req.body?.token);
+    if (result.error) {
+      return res.status(400).json({ error: result.error });
+    }
+    res.json({ ok: true, email: result.customer.email });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Re-send the confirmation link to the signed-in customer.
+app.post('/api/customer/resend-verification', authenticateCustomer, passwordResetRequestLimiter,
+  async (req, res, next) => {
+    try {
+      const { rows } = await query(
+        'SELECT id, name, email, email_verified_at FROM customers WHERE id = $1',
+        [req.customer.id]
+      );
+      const customer = rows[0];
+      if (!customer) return res.status(404).json({ error: 'Customer not found' });
+      if (customer.email_verified_at) {
+        return res.json({ ok: true, already_verified: true });
+      }
+
+      const base = (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+      const { token } = await createEmailVerificationToken(customer.id);
+      await mailer.sendEmailVerificationToCustomer({
+        to: customer.email,
+        name: customer.name,
+        verifyLink: `${base}/my-bookings?verify=${encodeURIComponent(token)}`
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  });
 
 app.post('/api/customer/login', authLimiter, async (req, res, next) => {
   try {
@@ -398,6 +463,12 @@ app.post('/api/customer/login', authLimiter, async (req, res, next) => {
     const result = await loginCustomer(email, password);
     if (!result) {
       return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    if (result.unverified) {
+      return res.status(403).json({
+        error: 'Please confirm your email address first. Check your inbox for the link we sent.',
+        email_verification_required: true
+      });
     }
 
     const session = await sessions.createSession({

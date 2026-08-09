@@ -7,9 +7,12 @@ mostly *not* engineering work.**
 
 The engineering is strong enough to take real money. The business cannot yet
 trade on it: six launch-required business facts are unset, nine of ten legal
-documents are unreviewed drafts, no live payment or email credentials exist, and
-a configuration-validation bug refuses a production boot for anyone who follows
-the deployment documentation.
+documents are unreviewed drafts, and no live payment or email credentials exist.
+
+A configuration-validation bug that refused a production boot for anyone
+following the deployment documentation was found during this assessment and is
+**fixed in this change set** (B1). The grade is unchanged by that fix — the
+remaining blockers are owner and counsel decisions, not code.
 
 Everything below was verified by running it, not read off a document.
 
@@ -19,14 +22,14 @@ Everything below was verified by running it, not read off a document.
 
 | Check | Command | Result |
 |---|---|---|
-| Unit tests | `npm run test:unit` | **24/24 pass** |
+| Unit tests | `npm run test:unit` | **35/35 pass** (24 existing + 11 added with the B1 fix) |
 | End-to-end suite | `playwright test --project=chromium` | **253/253 pass** (3.3 min) |
 | Secret scan | `npm run check:secrets` | Clean, 136 files |
 | Dependency audit | `npm audit --audit-level=high --omit=dev` | **0 vulnerabilities** |
 | Migration reversal drill | `npm run drill:migrations` | Pass — up → down → up schema-identical (`109cce7701e1`) |
 | Backup/restore drill | `npm run drill:restore` | Pass — 62.3 KB dump, 176 ms restore, row counts, FKs, sequences and CHECK constraints intact |
 | Launch gate | `npm run check:launch` | **FAILS** — 6 required business fields missing |
-| Production boot | `NODE_ENV=production node server.js` | **FAILS** with documented configuration (see B1) |
+| Production boot | `NODE_ENV=production node server.js` | Failed with the documented configuration; **fixed in this change set** (see B1) |
 
 A local PostgreSQL 16 instance stood in for Neon. Every claim in
 `docs/OPERATIONS.md`, `docs/LEGAL-REVIEW.md` and `docs/OWNER-CHECKLIST.md` that
@@ -108,32 +111,46 @@ protecting.
 
 ## Blockers — cannot trade until these clear
 
-### B1. Production refuses to boot on the documented configuration ⚠️ *engineering*
+### B1. Production refuses to boot on the documented configuration — ✅ **FIXED in this change set**
 
-`server.js:72-74` requires `DATABASE_URL` unconditionally, immediately after
-`server.js:60-62` has already accepted `NEON_DATABASE_URL` **or**
-`DATABASE_URL`:
+`validateEnv()` required `DATABASE_URL` unconditionally, immediately after
+having already accepted `NEON_DATABASE_URL` **or** `DATABASE_URL`:
 
 ```js
 if (!process.env.NEON_DATABASE_URL && !process.env.DATABASE_URL) { … }   // OK
 …
-if (!process.env.DATABASE_URL) {
+if (!process.env.DATABASE_URL) {                                          // wrong
   problems.push('DATABASE_URL must be set (Neon Postgres connection string)');
 }
 ```
 
 `.env.example`, `DEPLOY.md:58` and `docs/OPERATIONS.md` all document
-`NEON_DATABASE_URL` as the variable to set. An operator following them gets:
+`NEON_DATABASE_URL` as the variable to set. An operator following them got:
 
 ```
 Refusing to start: insecure configuration
   - DATABASE_URL must be set (Neon Postgres connection string)
 ```
 
-Reproduced on this commit. The E2E suite cannot catch it because it runs under
-`NODE_ENV=test`, where the same problems only produce a warning. This is a
-one-line fix (delete the second check, or make it an `&&`), but as it stands the
-first production deploy fails and the failure mode looks like a secret problem.
+— naming a variable no document mentions, so the failure looked like a secrets
+problem rather than a bug in the check.
+
+**The fix.** The redundant check is gone, and the rules moved to
+`server/envCheck.js` as a pure `configProblems(env)` function so they can be
+tested. `server.js` keeps only the decision about what to do with the result:
+exit in production, warn otherwise.
+
+**Why it survived.** No test could reach it. The E2E suite boots the server with
+`NODE_ENV=test`, where the same problems only warn — so a check that wrongly
+refused a *production* boot was invisible to all 253 tests.
+`tests/unit/envCheck.test.js` (11 tests) now covers the surface directly,
+including an explicit assertion that no problem ever demands `DATABASE_URL`
+independently of `NEON_DATABASE_URL`.
+
+Verified after the fix: `NODE_ENV=production` with only `NEON_DATABASE_URL` set
+now reaches `server listening on :3999 (production)`, while still reporting
+`[launch-check] LAUNCH BLOCKED` — which is correct, because an incomplete
+business profile must never be an outage (B2 below).
 
 ### B2. Six launch-required business facts are unset — *owner*
 
@@ -256,7 +273,7 @@ uploading files that admins later download.
 
 **Before taking a single real payment** (days, mostly not engineering):
 
-1. Fix the `DATABASE_URL` validation bug (B1) — one line.
+1. ~~Fix the `DATABASE_URL` validation bug (B1).~~ ✅ Done in this change set.
 2. Owner supplies the six launch fields; `npm run check:launch` exits 0 (B2).
 3. Counsel reviews and clears at minimum Terms, Boarding Agreement, Privacy
    Policy and Emergency Vet Authorization; bump versions, clear `draft` (B3).
@@ -284,12 +301,12 @@ uploading files that admins later download.
 ## Bottom line
 
 **B− (77/100).** The gap between this and a launched business is short, and
-almost none of it is code: one configuration bug, six facts only the owner
-knows, and a lawyer's afternoon. The engineering underneath — exactly-once
-payment processing, defended refunds, WCAG 2.2 AA conformance, 277 passing
-tests, tested backups and reversible migrations — is materially better than the
-median production application, and the project's willingness to write down what
-is *not* done is the strongest signal in the whole repository.
+with B1 fixed, none of what remains is code: six facts only the owner knows,
+and a lawyer's afternoon. The engineering underneath — exactly-once payment
+processing, defended refunds, WCAG 2.2 AA conformance, 288 passing tests,
+tested backups and reversible migrations — is materially better than the median
+production application, and the project's willingness to write down what is
+*not* done is the strongest signal in the whole repository.
 
 The two things that would most change this grade are the ones that lose data or
 money when they fail: scheduled backups, and something that notices when

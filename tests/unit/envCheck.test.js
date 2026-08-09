@@ -10,10 +10,16 @@ const assert = require('node:assert/strict');
 
 const { configProblems } = require('../../server/envCheck');
 
+// A loopback DSN with a throwaway role, matching tests/unit/businessProfile.js.
+// Nothing connects — configProblems only tests for presence — but the value is
+// written this way so it cannot look like a real credential to
+// `npm run check:secrets`, whose connection-string rule allows local addresses.
+const DSN = 'postgresql://unused:unused@127.0.0.1:1/unused?sslmode=disable';
+
 // A configuration that should be accepted, using the variable names the
 // deployment documentation actually tells an operator to set.
 const documented = () => ({
-  NEON_DATABASE_URL: 'postgresql://user:pw@host/db',
+  NEON_DATABASE_URL: DSN,
   JWT_SECRET: 'a'.repeat(96),
   ADMIN_EMAIL: 'owner@example.com',
   ADMIN_PASSWORD: 'a-strong-admin-password'
@@ -28,13 +34,13 @@ test('NEON_DATABASE_URL alone is sufficient — this is what every deploy doc sa
 test('DATABASE_URL alone is also sufficient', () => {
   const env = documented();
   delete env.NEON_DATABASE_URL;
-  env.DATABASE_URL = 'postgresql://user:pw@host/db';
+  env.DATABASE_URL = DSN;
   assert.deepEqual(configProblems(env), []);
 });
 
 test('setting both is accepted', () => {
   const env = documented();
-  env.DATABASE_URL = 'postgresql://user:pw@host/db';
+  env.DATABASE_URL = DSN;
   assert.deepEqual(configProblems(env), []);
 });
 

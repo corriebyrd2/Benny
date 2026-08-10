@@ -54,24 +54,13 @@ if (TEST_MODE) {
   require('./server/testHarness').install();
 }
 
-// Validate required env vars in production; fail fast instead of booting with defaults.
+// Validate required env vars in production; fail fast instead of booting with
+// defaults. The rules themselves live in server/envCheck.js as a pure function
+// so they can be unit tested — this wrapper only decides what to do about them.
+const { configProblems } = require('./server/envCheck');
+
 function validateEnv() {
-  const problems = [];
-  if (!process.env.NEON_DATABASE_URL && !process.env.DATABASE_URL) {
-    problems.push('NEON_DATABASE_URL (or DATABASE_URL) must be set');
-  }
-  if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'benny-pets-default-secret' || process.env.JWT_SECRET === 'change-this-to-a-random-secret-key') {
-    problems.push('JWT_SECRET must be set to a strong random value');
-  }
-  if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD === 'changeme123') {
-    problems.push('ADMIN_PASSWORD must be set (not the default)');
-  }
-  if (!process.env.ADMIN_EMAIL) {
-    problems.push('ADMIN_EMAIL must be set');
-  }
-  if (!process.env.DATABASE_URL) {
-    problems.push('DATABASE_URL must be set (Neon Postgres connection string)');
-  }
+  const problems = configProblems(process.env);
   if (problems.length) {
     if (IS_PROD) {
       console.error('Refusing to start: insecure configuration');

@@ -91,7 +91,11 @@
       color: var(--dark);
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 8px;
+      /* The wordmark is one unit. Left to wrap it broke over two lines and
+         pushed the links off the right edge of a phone. */
+      flex: 0 0 auto;
+      white-space: nowrap;
     }
 
     .logo-img {
@@ -109,6 +113,7 @@
       align-items: center;
       gap: 24px;
       list-style: none;
+      white-space: nowrap;
     }
 
     .nav-links a {
@@ -1092,6 +1097,17 @@
 
     /* Responsive */
     @media (max-width: 768px) {
+      /* The portal navbar had no small-screen handling: at 390px the wordmark
+         wrapped and the links ran past the right edge, scrolling the whole
+         page sideways. Everything is scaled down here instead. */
+      .nav-container { padding: 0 16px; gap: 12px; }
+      .logo { font-size: 1.15rem; }
+      .logo-img { width: 40px; height: 40px; }
+      .nav-links { gap: 4px; }
+      .nav-links a { padding: 8px 10px; }
+      .nav-links .nav-cta { padding: 8px 16px; }
+      .nav-user { gap: 8px; }
+
       .form-row { grid-template-columns: 1fr; }
       .detail-grid { grid-template-columns: 1fr; }
       .booking-card-header { flex-direction: column; gap: 8px; }
@@ -1104,6 +1120,10 @@
     }
 
     @media (max-width: 480px) {
+      /* Below this the wordmark simply has no room next to the links; the
+         logo mark alone still identifies the site and still links home. */
+      .logo > span { display: none; }
+
       .booking-card-details { grid-template-columns: 1fr; }
       .service-select-grid { grid-template-columns: 1fr; }
     }

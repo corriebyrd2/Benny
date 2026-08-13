@@ -133,17 +133,20 @@ img {
 
 .logo {
   font-family: 'Fredoka One', 'Trebuchet MS', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  font-size: 1.5rem;
+  font-size: clamp(1.15rem, 1.7vw, 1.4rem);
   color: var(--dark);
   display: flex;
   align-items: center;
-  gap: 8px;
-  gap: 4px;
+  gap: 10px;
+  /* The wordmark is a single unit: letting it wrap turned a 48px-tall navbar
+     into a 122px one and dropped the links out of horizontal alignment. */
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .logo-img {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   transition: transform var(--transition);
 }
@@ -165,14 +168,22 @@ img {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 32px;
+  /* Fixed 32px gaps forced every label to wrap below ~1200px ("How it
+     works" over three lines, the CTA into a circle). The gap now gives way
+     before the text does. */
+  gap: clamp(12px, 1.6vw, 22px);
+  flex-wrap: nowrap;
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .nav-links a {
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   color: var(--dark);
   position: relative;
+  white-space: nowrap;
   transition: color var(--transition);
 }
 
@@ -229,6 +240,20 @@ img {
   transition: var(--transition);
 }
 
+/* The control sits above the open drawer, so it has to read as "close" while
+   the drawer is open rather than staying an ambiguous three-bar icon. */
+.nav-toggle.is-open span:nth-child(1) {
+  transform: translateY(8px) rotate(45deg);
+}
+
+.nav-toggle.is-open span:nth-child(2) {
+  opacity: 0;
+}
+
+.nav-toggle.is-open span:nth-child(3) {
+  transform: translateY(-8px) rotate(-45deg);
+}
+
 /* --- Buttons --- */
 .btn {
   display: inline-flex;
@@ -239,8 +264,14 @@ img {
   font-family: 'Nunito', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
   font-weight: 800;
   font-size: 1rem;
+  line-height: 1.25;
+  text-align: center;
+  justify-content: center;
   cursor: pointer;
-  border: none;
+  /* Transparent rather than absent: .btn-secondary's 3px border used to make
+     it 6px taller and wider than the .btn-primary beside it, so a pair of
+     buttons never lined up on either edge. Every variant now shares one box. */
+  border: 3px solid transparent;
   transition: all var(--transition);
 }
 
@@ -1131,8 +1162,11 @@ img {
 
 .footer-grid {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1fr 1.5fr;
-  gap: 40px;
+  /* Five children, so five tracks. A four-track grid dropped the newsletter
+     onto a second row beneath the brand and left the right two thirds of the
+     footer empty. */
+  grid-template-columns: 1.4fr 1fr 1fr 1.2fr 1.4fr;
+  gap: 40px 32px;
   padding-bottom: 40px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
@@ -1211,8 +1245,13 @@ img {
 }
 
 .newsletter-form {
+  /* The form holds a field, a consent row, a submit and a status line — it is
+     a stack, not the input+button row this used to be. As a row it squeezed
+     the submit to its minimum width and broke "Subscribe" over nine lines. */
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
 }
 
 .newsletter-form input {
@@ -1236,8 +1275,9 @@ img {
 }
 
 .newsletter-form .btn {
-  padding: 10px 20px;
+  padding: 10px 24px;
   font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 .newsletter-consent {
@@ -1482,9 +1522,13 @@ img {
   align-items: center;
   justify-content: center;
 }
-.footer-links a,
-.nav-links a {
+/* The pill CTA sets its own, wider padding; :not() keeps this rule from
+   flattening it to 8px and squeezing the label against the pill edge. */
+.footer-links a {
   padding: 10px 8px;
+}
+.nav-links a:not(.nav-cta) {
+  padding: 10px 6px;
 }
 .social-link {
   width: 44px;
@@ -1909,11 +1953,17 @@ img, video, table, pre {
 }
 
 /* --- Mobile navigation ---------------------------------------------------
-   The drawer breakpoint matches the layout breakpoint (968px). It was 768px,
-   so 769-968px viewports — landscape phones and portrait tablets — kept the
-   horizontal nav, whose links wrapped onto three rows and produced a 197px
-   tall navbar over a 375px tall viewport. */
-@media (max-width: 968px) {
+   The drawer breakpoint was 768px, so 769-968px viewports — landscape phones
+   and portrait tablets — kept the horizontal nav, whose links wrapped onto
+   three rows and produced a 197px tall navbar over a 375px tall viewport. It
+   was raised to 968px to match the layout breakpoint.
+
+   It is now 1200px. Seven links plus the wordmark need ~1120px of the
+   1152px content box; below that the row either wrapped or ran off the
+   right edge, clipping the "Request a booking" CTA. The drawer takes over
+   while the horizontal row still fits comfortably rather than after it has
+   already broken. */
+@media (max-width: 1200px) {
   .nav-toggle {
     display: flex;
   }
@@ -1945,6 +1995,17 @@ img, video, table, pre {
 
   .nav-links a::after {
     display: none;
+  }
+
+  /* Label left edges line up down the drawer: the pill carries a 24px inset
+     of its own, so the plain links have to match it rather than sit at the
+     6px they use in the horizontal row. */
+  .nav-links a:not(.nav-cta) {
+    padding: 12px 24px;
+  }
+
+  .nav-links .nav-cta {
+    margin-top: 6px;
   }
 
   /* The close affordance must stay above the drawer it controls. */

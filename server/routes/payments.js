@@ -7,7 +7,8 @@ const { getStripe } = require('../stripeClient');
 const { recordBookingEvent } = require('../bookingAudit');
 const { SETTLED, notSettledSql, settledReason } = require('../paymentStatus');
 const metrics = require('../metrics');
-const { quoteBooking, stripeLineItems, refundForCancellation, formatAmount } = require('../pricing');
+const { quoteBooking, stripeLineItems, formatAmount } = require('../pricing');
+const { refundQuoteFor } = require('../refundQuote');
 
 const router = express.Router();
 
@@ -509,40 +510,8 @@ router.post('/sync-admin/:booking_id', authenticateToken, requirePermission('wri
 });
 
 // How much of a booking is still refundable, under the published cancellation
-// policy. Exposed so an admin sees the same figure the customer was promised
-// BEFORE committing to it, rather than typing a number from memory.
-function refundQuoteFor(booking) {
-  const paid = Number(booking.amount_cents) || 0;
-  const alreadyRefunded = Number(booking.refunded_cents) || 0;
-
-  // Hours until the stay begins. A booking with no start date has no deadline
-  // to measure against, so it is treated as a full refund — the customer should
-  // not lose money because we never captured a date.
-  let hoursBeforeStart = Infinity;
-  if (booking.start_date) {
-    // A DATE column comes back from pg as a Date object, whose default string
-    // form is "Mon Sep 01 2026 ..." — slicing that gives "Mon Sep 01", which
-    // parses to NaN and silently produced an "unknown" refund tier.
-    const iso = booking.start_date instanceof Date
-      ? booking.start_date.toISOString().slice(0, 10)
-      : String(booking.start_date).slice(0, 10);
-    const start = Date.parse(`${iso}T00:00:00Z`);
-    if (Number.isFinite(start)) hoursBeforeStart = (start - Date.now()) / 3600000;
-  }
-
-  const policy = refundForCancellation({ amountPaidCents: paid, hoursBeforeStart });
-  const remaining = Math.max(0, policy.refund_cents - alreadyRefunded);
-  return {
-    tier: policy.tier,
-    hours_before_start: Number.isFinite(hoursBeforeStart) ? Math.round(hoursBeforeStart) : null,
-    amount_paid_cents: paid,
-    already_refunded_cents: alreadyRefunded,
-    policy_refund_cents: policy.refund_cents,
-    refundable_now_cents: remaining,
-    retained_cents: policy.retained_cents,
-    summary: `${formatAmount(remaining)} refundable of ${formatAmount(paid)} paid`
-  };
-}
+// policy, lives in ../refundQuote — customer-initiated cancellation quotes the
+// same figure, so there is one implementation rather than two.
 
 // Admin: what the cancellation policy says this booking is owed.
 router.get('/refund-quote/:booking_id', authenticateToken, requirePermission('read'), async (req, res, next) => {

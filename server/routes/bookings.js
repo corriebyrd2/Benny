@@ -4,9 +4,10 @@ const { authenticateToken, requirePermission, logAudit } = require('../auth');
 const { authenticateCustomer } = require('../customerAuth');
 const mailer = require('../email');
 const { getStripe } = require('../stripeClient');
-const { quoteBooking, stripeLineItems } = require('../pricing');
+const { quoteBooking, stripeLineItems, formatAmount } = require('../pricing');
 const { recordBookingEvent, listBookingEvents } = require('../bookingAudit');
-const { SETTLED, notSettledSql } = require('../paymentStatus');
+const { SETTLED, notSettledSql, isSettled } = require('../paymentStatus');
+const { refundQuoteFor, startDateIso } = require('../refundQuote');
 
 const router = express.Router();
 
@@ -54,6 +55,62 @@ async function expireOpenStripeSessions(stripe, booking) {
       console.warn('[cancel] failed to expire session', sid, err.message);
     }
   }
+}
+
+// Whether a customer may still cancel this booking themselves.
+//
+// The published cancellation policy says a customer can cancel "at any time
+// before the stay begins", so the cut-off is the start of the start date, not
+// the refund deadline — cancelling late is allowed, it just earns a smaller
+// refund (or none) under the policy tiers. Dates are compared in UTC, matching
+// how start_date is stored and how the refund quote measures its deadline.
+//
+// A booking with no start date has no moment to be "past", so it stays
+// cancellable; the same reasoning as the refund quote treating it as full.
+// Cancelled and completed bookings are terminal.
+const CANCELLABLE_STATUSES = new Set(['pending', 'confirmed']);
+
+function todayIsoUtc(now = Date.now()) {
+  return new Date(now).toISOString().slice(0, 10);
+}
+
+// What cancelling this booking now would return.
+//
+// refundQuoteFor is pure policy arithmetic over amount_cents — it answers "of
+// this sum, how much does the policy give back", not "was this sum ever
+// taken". An unpaid booking would therefore quote its full price as
+// refundable. The admin refund route never hits that because it rejects
+// unsettled bookings before quoting; this path is reached by any customer with
+// a pending booking, so the settled check has to happen here.
+function cancellationQuote(booking) {
+  if (!isSettled(booking.payment_status)) {
+    return {
+      ...refundQuoteFor({ ...booking, amount_cents: 0, refunded_cents: 0 }),
+      amount_paid_cents: 0,
+      refundable_now_cents: 0
+    };
+  }
+  return refundQuoteFor(booking);
+}
+
+// Returns null when the customer may cancel, or { status, error } describing
+// why not. One function so the list endpoint's `can_cancel` flag and the cancel
+// endpoint's enforcement can never disagree.
+function customerCancelBlock(booking, now = Date.now()) {
+  if (booking.status === 'cancelled') {
+    return { status: 409, error: 'This booking is already cancelled.' };
+  }
+  if (!CANCELLABLE_STATUSES.has(booking.status)) {
+    return { status: 400, error: 'This booking has already taken place and cannot be cancelled online.' };
+  }
+  const start = startDateIso(booking);
+  if (start && start <= todayIsoUtc(now)) {
+    return {
+      status: 400,
+      error: 'This stay has already started. Please contact us directly to make changes.'
+    };
+  }
+  return null;
 }
 
 // Pricing is owned by server/pricing.js — the single authoritative source used
@@ -253,14 +310,135 @@ router.post('/', async (req, res, next) => {
 });
 
 // Authenticated customer: Get my bookings
+//
+// start_date/end_date and cancel_reason are selected because the portal needs
+// them: without the dates it cannot tell the customer whether a stay is still
+// cancellable, and the cancelled-booking banner it already renders was always
+// blank because cancel_reason was never sent.
+//
+// can_cancel and cancellation are derived server-side from the same helpers the
+// cancel endpoint enforces with, so the button the customer sees and the rule
+// the server applies cannot drift apart. The refund figure in particular must
+// never be computed in the browser.
 router.get('/my', authenticateCustomer, async (req, res) => {
   const { rows } = await query(
     `SELECT id, owner_name, email, phone, dog_name, dog_count, service_id, service_name, preferred_dates, message,
-            status, payment_status, amount_cents, created_at, updated_at
+            status, payment_status, amount_cents, refunded_cents, cancel_reason,
+            start_date, end_date, created_at, updated_at
      FROM bookings WHERE customer_id = $1 ORDER BY created_at DESC`,
     [req.customer.id]
   );
-  res.json(rows);
+  res.json(rows.map(booking => {
+    const block = customerCancelBlock(booking);
+    return {
+      ...booking,
+      can_cancel: block === null,
+      cancel_blocked_reason: block ? block.error : null,
+      // What cancelling right now would return, under the published policy.
+      // Only meaningful while the booking is still cancellable.
+      cancellation: block === null ? cancellationQuote(booking) : null
+    };
+  }));
+});
+
+// Authenticated customer: cancel my own booking.
+//
+// Scoped by customer_id in the WHERE clause rather than checked after the
+// fetch, so one customer can neither cancel nor probe for the existence of
+// another's booking — a miss is an indistinguishable 404 either way.
+//
+// This deliberately does NOT issue the refund. Moving money is an
+// admin-permissioned, locked, idempotency-keyed operation (POST
+// /api/payments/refund/:id) and putting a customer-triggered path into it is a
+// larger decision than this change should make on its own. What happens instead
+// is that the customer is told exactly what the policy owes them, and the owner
+// is emailed the same figure, so the refund is a prompt rather than something
+// nobody noticed. See the note in the PR.
+router.post('/my/:id/cancel', authenticateCustomer, async (req, res, next) => {
+  try {
+    const reason = String(req.body.reason || '').trim().slice(0, 500);
+
+    const { rows: existingRows } = await query(
+      'SELECT * FROM bookings WHERE id = $1 AND customer_id = $2',
+      [req.params.id, req.customer.id]
+    );
+    const existing = existingRows[0];
+    if (!existing) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+
+    const block = customerCancelBlock(existing);
+    if (block) {
+      return res.status(block.status).json({ error: block.error });
+    }
+
+    // What the customer is owed, measured BEFORE the row changes — the quote
+    // reads amount_cents and start_date, and the figure the customer is shown
+    // must be the one that applied at the moment they cancelled.
+    const quote = cancellationQuote(existing);
+
+    // Kill any live payment link first, exactly as the admin path does.
+    // Otherwise a customer holding an open Checkout link could still pay for
+    // the booking they just cancelled, and the webhook would record the money.
+    const stripe = getStripe();
+    if (stripe) {
+      await expireOpenStripeSessions(stripe, existing);
+    }
+
+    // The status guard is repeated in the UPDATE so two concurrent requests
+    // (a double-tap, or a customer racing an admin) cannot both count as the
+    // cancellation. The second matches no row and is reported as already done.
+    const { rows } = await query(
+      `UPDATE bookings SET status = 'cancelled', cancel_reason = $1, updated_at = NOW()
+       WHERE id = $2 AND customer_id = $3 AND status = ANY($4::text[])
+       RETURNING *`,
+      [
+        reason ? `Cancelled by customer: ${reason}` : 'Cancelled by customer',
+        req.params.id,
+        req.customer.id,
+        [...CANCELLABLE_STATUSES]
+      ]
+    );
+    const booking = rows[0];
+    if (!booking) {
+      return res.status(409).json({ error: 'This booking is already cancelled.' });
+    }
+
+    await recordBookingEvent({
+      bookingId: booking.id,
+      event: 'cancelled',
+      from: { status: existing.status, payment_status: existing.payment_status },
+      to: { status: 'cancelled', payment_status: booking.payment_status },
+      actorType: 'customer',
+      actorId: req.customer.id,
+      detail: reason || 'cancelled by customer'
+    });
+
+    // Notifications are best-effort: a mail failure must not leave the customer
+    // staring at an error for a cancellation that did in fact happen.
+    await Promise.all([
+      mailer.sendBookingCancelledToCustomer({ booking, reason: reason || '' }),
+      mailer.sendBookingCancelledByCustomerToOwner({ booking, reason: reason || '', quote })
+    ]).catch(err => console.error('[cancel-mine] notification failed:', err.message));
+
+    const refundDue = quote.refundable_now_cents > 0;
+    res.json({
+      message: 'Booking cancelled',
+      booking_id: booking.id,
+      refund_due: refundDue,
+      refund_cents: quote.refundable_now_cents,
+      refund_tier: quote.tier,
+      // Said plainly, because "tier: none" is not something a customer should
+      // have to interpret.
+      refund_message: refundDue
+        ? `Under our cancellation policy you are due a refund of ${formatAmount(quote.refundable_now_cents)}. We'll process it to your original payment method.`
+        : quote.amount_paid_cents > 0
+          ? 'Under our cancellation policy this cancellation is not eligible for a refund. Contact us if you think that is wrong.'
+          : 'Nothing was charged for this booking, so there is nothing to refund.'
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Authenticated customer: Create a booking

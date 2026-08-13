@@ -1472,6 +1472,34 @@
     </div>
   </div>
 
+  <!-- Cancel Booking Modal
+       A confirm() dialog cannot state what the customer is giving up. The
+       refund figure shown here is the server's, never recomputed in the
+       browser, so what the customer agrees to is what the policy actually
+       says. -->
+  <div class="booking-detail-overlay" id="cancelOverlay">
+    <div class="booking-detail-modal" role="dialog" aria-modal="true" aria-labelledby="cancelTitle">
+      <div class="detail-modal-header">
+        <h2 id="cancelTitle">Cancel this booking?</h2>
+        <button class="close-btn" id="cancelClose" aria-label="Close">&#10005;</button>
+      </div>
+      <div class="detail-modal-body">
+        <div id="cancelSummary"></div>
+        <form data-submit="submitCancelBooking" id="cancelForm">
+          <div class="form-group">
+            <label for="cancelReason">Reason (optional)</label>
+            <input type="text" id="cancelReason" maxlength="500" autocomplete="off"
+                   placeholder="Plans changed, found other care, ...">
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:20px;">
+            <button type="submit" class="btn btn-danger" id="cancelConfirmBtn">Yes, cancel booking</button>
+            <button type="button" class="btn btn-outline" data-action="closeCancelModal">Keep booking</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast -->
   <div class="toast" id="toast"></div>
 
@@ -2270,6 +2298,9 @@
               ${booking.payment_status === 'requested' ? `
                 <button class="btn btn-secondary btn-sm" data-action="initiatePayment" data-arg0="${booking.id}" data-stop="1">Pay Now</button>
               ` : ''}
+              ${booking.can_cancel ? `
+                <button class="btn btn-outline btn-sm" data-action="openCancelModal" data-arg0="${booking.id}" data-stop="1">Cancel Booking</button>
+              ` : ''}
               <button class="btn btn-outline btn-sm" data-action="openDetail" data-arg0="${booking.id}" data-stop="1">View Details</button>
             </div>
           </div>
@@ -2350,10 +2381,121 @@
           ` : ''}
           ${booking.payment_status === 'paid' ? '<p style="color:var(--success);font-weight:700;font-size:0.9rem;">Thank you for your payment!</p>' : ''}
         </div>
+        ${booking.can_cancel ? `
+          <div class="payment-section">
+            <h3>Change of plan?</h3>
+            <p style="color:var(--text-light);font-weight:600;font-size:0.9rem;margin-bottom:12px;">
+              You can cancel this booking yourself any time before the stay begins.
+              ${refundSentence(booking)}
+            </p>
+            <button class="btn btn-danger" data-action="openCancelModal" data-arg0="${booking.id}">Cancel Booking</button>
+          </div>
+        ` : booking.cancel_blocked_reason && booking.status !== 'cancelled' ? `
+          <div class="payment-section">
+            <h3>Change of plan?</h3>
+            <p style="color:var(--text-light);font-weight:600;font-size:0.9rem;">
+              ${escapeHtml(booking.cancel_blocked_reason)}
+            </p>
+          </div>
+        ` : ''}
       `;
 
       detailOverlay.classList.add('active');
     }
+
+    // --- Cancel a booking ---
+
+    // The one place the refund consequence is put into words, so the card, the
+    // detail modal and the confirmation dialog cannot describe it differently.
+    // Every figure comes from the server's quote.
+    function refundSentence(booking) {
+      const quote = booking.cancellation;
+      if (!quote || !quote.amount_paid_cents) {
+        return 'Nothing has been charged for this booking yet.';
+      }
+      if (quote.refundable_now_cents >= quote.amount_paid_cents) {
+        return `Cancelling now refunds the full ${formatAmount(quote.amount_paid_cents)} you paid.`;
+      }
+      if (quote.refundable_now_cents > 0) {
+        return `Cancelling now refunds ${formatAmount(quote.refundable_now_cents)} of the `
+          + `${formatAmount(quote.amount_paid_cents)} you paid, under our cancellation policy.`;
+      }
+      return `Cancelling now is outside our refund window, so the ${formatAmount(quote.amount_paid_cents)} `
+        + 'you paid is not refundable.';
+    }
+
+    const cancelOverlay = document.getElementById('cancelOverlay');
+    let cancelBookingId = null;
+
+    function openCancelModal(bookingId) {
+      const booking = bookings.find(b => b.id === bookingId);
+      if (!booking || !booking.can_cancel) return;
+      cancelBookingId = bookingId;
+
+      document.getElementById('cancelReason').value = '';
+      document.getElementById('cancelSummary').innerHTML = `
+        <p style="font-weight:700;color:var(--dark);margin-bottom:8px;">
+          ${escapeHtml(booking.dog_name)}'s ${escapeHtml(booking.service_name)} (booking #${booking.id})
+        </p>
+        <p style="color:var(--text-light);font-weight:600;font-size:0.95rem;">${refundSentence(booking)}</p>
+        <p style="color:var(--text-light);font-weight:600;font-size:0.85rem;margin-top:8px;">
+          Refunds go back to your original payment method and usually take 5&ndash;10 business days.
+          See our <a href="/legal/cancellation-policy" target="_blank" rel="noopener">cancellation policy</a>.
+        </p>
+      `;
+      // Detail and cancel modals share a backdrop; showing both at once stacks
+      // two dialogs over each other.
+      detailOverlay.classList.remove('active');
+      cancelOverlay.classList.add('active');
+      document.getElementById('cancelReason').focus();
+    }
+
+    function closeCancelModal() {
+      cancelOverlay.classList.remove('active');
+      cancelBookingId = null;
+    }
+
+    async function submitCancelBooking(event) {
+      event.preventDefault();
+      if (cancelBookingId === null) return;
+
+      const btn = document.getElementById('cancelConfirmBtn');
+      // Cancelling twice is rejected by the server, but the second attempt
+      // would show the customer an error for something that worked.
+      btn.disabled = true;
+      btn.textContent = 'Cancelling...';
+
+      try {
+        const res = await authedFetch(`/api/bookings/my/${cancelBookingId}/cancel`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ reason: document.getElementById('cancelReason').value.trim() })
+        });
+        const data = await safeJson(res);
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) { logout(); return; }
+          throw new Error(data.error || 'Could not cancel this booking');
+        }
+        closeCancelModal();
+        showToast(data.refund_message || 'Booking cancelled', data.refund_due ? 'success' : '');
+        await loadBookings();
+      } catch (err) {
+        showToast(err.message, 'error');
+        // The booking may have moved on underneath us (an admin cancelled it,
+        // or the stay started); refresh so the buttons match reality.
+        await loadBookings();
+        closeCancelModal();
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Yes, cancel booking';
+      }
+    }
+
+    document.getElementById('cancelClose').addEventListener('click', closeCancelModal);
+    cancelOverlay.addEventListener('click', (e) => { if (e.target === cancelOverlay) closeCancelModal(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && cancelOverlay.classList.contains('active')) closeCancelModal();
+    });
 
     // Close modal
     document.getElementById('detailClose').addEventListener('click', () => detailOverlay.classList.remove('active'));

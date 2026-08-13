@@ -447,6 +447,43 @@ async function sendBookingCancelledToCustomer({ booking, reason }) {
   });
 }
 
+// A customer cancelled their own booking from the portal.
+//
+// The owner needs two things the generic cancellation notice does not carry:
+// that this was the customer's decision rather than theirs, and what the
+// published policy owes back. Cancelling does not itself move money — the
+// refund is issued from the admin portal — so this mail is the prompt that
+// stops a refund from being quietly forgotten.
+async function sendBookingCancelledByCustomerToOwner({ booking, reason, quote }) {
+  if (!OWNER_EMAIL) return;
+  const refundCents = quote ? Number(quote.refundable_now_cents) || 0 : 0;
+  const refundLine = refundCents > 0
+    ? `Refund owed under the cancellation policy: ${formatMoney(refundCents)} (${quote.tier} tier). Issue it from the admin portal.`
+    : 'No refund is owed under the cancellation policy.';
+  return send({
+    to: OWNER_EMAIL,
+    subject: refundCents > 0
+      ? `Customer cancelled booking #${booking.id} — ${formatMoney(refundCents)} refund owed`
+      : `Customer cancelled booking #${booking.id}`,
+    text: [
+      `${booking.owner_name} cancelled booking #${booking.id} from their account.`,
+      reason ? `Reason given: ${reason}` : 'No reason given.',
+      '',
+      refundLine,
+      '',
+      ...bookingSummary(booking),
+      `Customer: ${booking.owner_name} <${booking.email}>`
+    ].filter(Boolean).join('\n'),
+    html: `
+      <p><strong>${escapeHtml(booking.owner_name)}</strong> cancelled booking #${booking.id} from their account.</p>
+      <p>${reason ? `<strong>Reason given:</strong> ${escapeHtml(reason)}` : 'No reason given.'}</p>
+      <p>${refundCents > 0 ? `<strong>${escapeHtml(refundLine)}</strong>` : escapeHtml(refundLine)}</p>
+      ${bookingHtmlBlock(booking)}
+      <p><strong>Customer:</strong> ${escapeHtml(booking.owner_name)} &lt;${escapeHtml(booking.email)}&gt;</p>
+    `
+  });
+}
+
 async function sendPaymentLinkToCustomer({ booking, checkoutUrl }) {
   await send({
     to: booking.email,
@@ -573,6 +610,7 @@ module.exports = {
   sendBookingReceivedToCustomer,
   sendBookingApprovedToCustomer,
   sendBookingCancelledToCustomer,
+  sendBookingCancelledByCustomerToOwner,
   sendPaymentLinkToCustomer,
   sendPaymentReceivedToCustomer,
   sendPaymentReceivedToOwner,

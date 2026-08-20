@@ -16,6 +16,7 @@
 
 const express = require('express');
 const { query } = require('../database');
+const cache = require('../cache');
 const { renderPage, baseUrlFor, escapeHtml } = require('../render');
 const { getBusinessProfile } = require('../businessProfile');
 const { listPolicies, getPolicy } = require('../legal');
@@ -242,15 +243,22 @@ function servicesNoteHtml(list) {
 // state replaces the invented "Max playing fetch" / "Sarah M." placeholders.
 // ---------------------------------------------------------------------------
 
+// The cached read is the query alone. The fallback below stays OUTSIDE it so a
+// transient database failure degrades this one render to an empty gallery
+// rather than pinning an empty gallery in the cache for the whole TTL.
+const readHomepagePhotos = cache.register('photos:homepage', ['photos'], async () => {
+  const { rows } = await query(
+    `SELECT id, filename, caption, layout, section FROM photos
+     WHERE show_on_homepage = TRUE ORDER BY display_order ASC, id ASC LIMIT 60`
+  );
+  // photos.js owns how a stored filename becomes a URL (R2 streaming route
+  // vs local uploads dir); reuse it rather than duplicating the rule here.
+  return rows.map(photos.withUrl);
+});
+
 async function loadPhotos() {
   try {
-    const { rows } = await query(
-      `SELECT id, filename, caption, layout, section FROM photos
-       WHERE show_on_homepage = TRUE ORDER BY display_order ASC, id ASC LIMIT 60`
-    );
-    // photos.js owns how a stored filename becomes a URL (R2 streaming route
-    // vs local uploads dir); reuse it rather than duplicating the rule here.
-    return rows.map(photos.withUrl);
+    return await readHomepagePhotos();
   } catch (err) {
     console.error('[home] could not load photos:', err.message);
     return [];
@@ -292,14 +300,19 @@ function sectionPhotoHtml(photos, section, { aspect }) {
            class="${cls}" width="800" height="1000" decoding="async">`;
 }
 
+// Cached; the fallback stays outside it, for the reason given above loadPhotos.
+const readApprovedReviews = cache.register('reviews:approved', ['reviews'], async () => {
+  const { rows } = await query(
+    `SELECT id, reviewer_name, pet_name, rating, review_text, created_at
+     FROM reviews WHERE status = 'approved'
+     ORDER BY reviewed_at ASC, id ASC LIMIT 24`
+  );
+  return rows;
+});
+
 async function loadApprovedReviews() {
   try {
-    const { rows } = await query(
-      `SELECT id, reviewer_name, pet_name, rating, review_text, created_at
-       FROM reviews WHERE status = 'approved'
-       ORDER BY reviewed_at ASC, id ASC LIMIT 24`
-    );
-    return rows;
+    return await readApprovedReviews();
   } catch (err) {
     console.error('[home] could not load reviews:', err.message);
     return [];

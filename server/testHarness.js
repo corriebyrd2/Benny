@@ -13,6 +13,7 @@ const crypto = require('crypto');
 const mailer = require('./email');
 const stripeClient = require('./stripeClient');
 const { pool, seed } = require('./database');
+const cache = require('./cache');
 
 const emailLog = [];
 
@@ -218,6 +219,11 @@ function buildRouter() {
         RESTART IDENTITY CASCADE
       `);
       await seed();
+      // The TRUNCATE above goes through `pool` directly, so it bypasses the
+      // statement sniffing in server/database.js that normally expires cached
+      // reference data. Without this, one spec's site_settings or services
+      // would still be served to the next.
+      cache.clear();
       res.json({ reset: true });
     } catch (err) {
       next(err);

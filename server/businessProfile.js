@@ -21,6 +21,7 @@
 // anyone logs into the admin panel.
 
 const { query } = require('./database');
+const cache = require('./cache');
 
 // Known placeholder values that shipped as seed data. Treated as absent
 // wherever they still exist, so a stale database cannot publish them.
@@ -132,12 +133,16 @@ function validateValue(field, value) {
   }
 }
 
-async function readSettings() {
+// Cached. The profile is read on EVERY server-rendered page — homepage,
+// service pages, legal pages, the web manifest — and changes only when an
+// administrator edits it, which invalidates this entry through the write in
+// server/routes/settings.js. See server/cache.js.
+const readSettings = cache.register('site_settings', ['site_settings'], async () => {
   const { rows } = await query('SELECT key, value FROM site_settings');
   const out = {};
   for (const r of rows) out[r.key] = r.value;
   return out;
-}
+});
 
 /**
  * Resolve the profile. Returns only fields that are present AND structurally

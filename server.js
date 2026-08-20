@@ -258,7 +258,9 @@ app.get('/metrics', (req, res) => {
 
 // Readiness: is this process able to serve traffic right now? Distinct from
 // liveness — a process that is up but cannot reach its database should be taken
-// out of rotation, not restarted.
+// out of rotation, not restarted. This one DOES query the database, and is the
+// only always-on endpoint that does, so do not point a frequent scheduled probe
+// at it; see the note on /healthz below.
 app.get('/readyz', async (req, res) => {
   try {
     await query('SELECT 1');
@@ -268,14 +270,19 @@ app.get('/readyz', async (req, res) => {
   }
 });
 
-// Health check — hits the database to confirm it's reachable.
-app.get('/healthz', async (req, res, next) => {
-  try {
-    await query('SELECT 1');
-    res.json({ ok: true });
-  } catch (err) {
-    next(err);
-  }
+// Liveness: is this process alive and serving? Deliberately does NOT touch the
+// database. This is the endpoint a host or an uptime monitor polls on a
+// schedule, and a scheduled `SELECT 1` is on its own enough to stop managed
+// Postgres (Neon) from ever suspending an idle compute — a site with no
+// visitors then bills as though it never stops.
+//
+// Nothing is given up by that. Database reachability is proven at boot —
+// bootstrap() runs migrations before app.listen() and exits non-zero if they
+// fail, so a deployment that cannot reach its database never becomes healthy —
+// and on demand through /readyz above. Probe THIS one on a timer; probe
+// /readyz when you want to ask about the database.
+app.get('/healthz', (req, res) => {
+  res.json({ ok: true });
 });
 
 // Content-hashed assets first: /css/style.<hash>.css and /js/main.<hash>.js are

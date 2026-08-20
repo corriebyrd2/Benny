@@ -50,6 +50,7 @@ outage. The gate is enforced in the deploy pipeline instead (§3).
 | `DATABASE_SSL` | `require`-ish | `disable` for a local/CI Postgres, `verify-full` to enforce chain validation |
 | `PGPOOL_MAX` | `10` | Connection pool ceiling. Must stay under the Neon plan's limit |
 | `PG_STATEMENT_TIMEOUT_MS` | `15000` | Caps how long one query can pin a connection |
+| `REFERENCE_CACHE_TTL_MS` | `30000` | How long the business profile, service catalogue, homepage photos and approved reviews are reused between requests. Writes invalidate immediately, so this is only the backstop for changes made outside this process. `0` disables caching |
 | `UPLOAD_DIR`, `DOG_DOC_UPLOAD_DIR` | | Ignored when R2 is configured |
 | `DAILY_CAPACITY` | `10` | Dog places per day. Booking creation enforces it, not just the availability display |
 | `REQUIRE_EMAIL_VERIFICATION` | off | `1` blocks sign-in until the address is confirmed. **Do not turn this on until transactional email is verified working** — it converts a mail misconfiguration into "nobody can sign in" |
@@ -144,7 +145,8 @@ stops a deploy from publishing "123 Pawsome Lane" again.
 ```sh
 BASE=https://bennyandthepetsboardingllc.com
 
-curl -fsS   $BASE/healthz                       # {"ok":true} — hits the database
+curl -fsS   $BASE/healthz                       # {"ok":true} — liveness, no database
+curl -fsS   $BASE/readyz                        # {"ready":true} — proves the database is reachable
 curl -fsS   $BASE/ | grep -q "Request a booking"
 curl -fsS   $BASE/api/services | head -c 200    # catalog resolves
 curl -fsS   $BASE/robots.txt   | grep -q Sitemap
@@ -270,9 +272,27 @@ Enabling object versioning on the bucket is an owner task.
 
 ### What exists
 
-- `GET /healthz` — executes `SELECT 1`, so it fails when the database is
-  unreachable rather than reporting a green process with a dead dependency.
-  Railway is configured to probe it.
+- `GET /healthz` — liveness. Answers from this process alone and never touches
+  the database. Railway is configured to probe it, and it is the endpoint any
+  external uptime monitor should poll.
+
+  **Point scheduled probes here, not at `/readyz`.** Neon suspends an idle
+  compute after a few minutes, and a probe that runs `SELECT 1` on a timer is by
+  itself enough to stop that happening — the database then bills as permanently
+  running even with no visitors. Nothing is lost by keeping liveness cheap: a
+  deployment that cannot reach its database fails at boot, because migrations
+  run before the server starts listening.
+- `GET /readyz` — readiness. Executes `SELECT 1`, so it fails when the database
+  is unreachable rather than reporting a green process with a dead dependency.
+  Call it from a deploy smoke test or when diagnosing, not from a timer.
+- `benny_db_queries_total` in `/metrics` — every statement the application
+  issues. With no traffic this counter should be flat; if it climbs steadily,
+  something is polling the database on a schedule, which is what keeps the Neon
+  compute awake.
+- `benny_reference_cache_total{result="hit"|"miss"}` — the reference-data cache
+  (business profile, service catalogue, homepage photos, approved reviews). A
+  miss rate near 100% under steady traffic means invalidation is firing more
+  than it should.
 - Structured, privacy-safe logging: `[error]`, `[probe]`, `[webhook]`,
   `[sync]`, `[launch-check]`, `[r2]`, `[booking-audit]`. Stack traces, SQL,
   tokens and personal data are never returned to a client; production 500s
@@ -284,6 +304,7 @@ Enabling object versioning on the bucket is an owner task.
 | Signal | Where | Threshold |
 |---|---|---|
 | `/healthz` failing | Railway health check | 2 consecutive |
+| `benny_db_queries_total` climbing with no traffic | `/metrics` | Any sustained rate |
 | 5xx rate | Railway metrics | > 1% over 5 min |
 | `[webhook] processing failed` | Logs | Any occurrence |
 | `stripe_events` rows with `processed_at IS NULL` older than 15 min | Query | Any |
@@ -361,6 +382,14 @@ Thousands would need the items in §9.
 - Rate limits: auth 10/15 min, registration 5/h, password reset 5/h,
   public bookings 30/h, reviews 5/h, newsletter 20/h.
 - Static assets are content-hashed and immutable for a year.
+- Reference data — the business profile, the public service catalogue, the
+  homepage photos and the approved reviews — is cached in-process for
+  `REFERENCE_CACHE_TTL_MS` (default 30 s) and invalidated by any write that
+  touches those tables. Before this, a single homepage render cost four
+  round trips for data that changes a few times a month, and the pages are
+  served `max-age=0, must-revalidate`, so every crawler paid it again.
+  Nothing that decides money is served from the cache: bookings and payments
+  read `services` by id straight from the database.
 
 **Known bottleneck.** `GET /api/admin/clients` loads every customer, dog,
 document and booking and aggregates in memory. It is fine at hundreds of
@@ -384,9 +413,15 @@ Closed since this list was written:
   the drill says so rather than implying otherwise.
 - **Metrics** — `/metrics` serves Prometheus text (request counts, latency
   histogram, 4xx/5xx, auth failures, webhook outcomes, upload rejections, email
-  failures) and `/readyz` is distinct from `/healthz`. No personal data and no
-  per-path labels, so the label set cannot be grown by probing random URLs.
-  Still missing: something to *scrape* it, and an external uptime probe.
+  failures, database statements, reference-cache hits) and `/readyz` is distinct
+  from `/healthz`. No personal data and no per-path labels, so the label set
+  cannot be grown by probing random URLs. Still missing: something to *scrape*
+  it, and an external uptime probe.
+- **Idle database cost** — `/healthz` no longer queries the database, and
+  reference reads are cached, so an idle deployment issues no queries and the
+  Neon compute can actually suspend. `benny_db_queries_total` makes a
+  regression visible: if it climbs while nobody is on the site, something is
+  polling.
 - **Dependency and secret scanning** — CI runs `npm run check:secrets` and
   `npm audit --audit-level=high --omit=dev` before anything else. Both are
   currently clean.
@@ -401,7 +436,8 @@ Still open:
 1. No automated off-Neon backup of the production database (the drill proves
    the *procedure*; nothing is scheduled to produce the dumps).
 2. No object versioning on the R2 bucket.
-3. Nothing scrapes `/metrics`, and there is no external uptime probe.
+3. Nothing scrapes `/metrics`, and there is no external uptime probe. When one
+   is added, point it at `/healthz` — see §6.
 4. No staging environment — changes go from CI straight to production.
 5. No malware scanner is wired up. The integration point exists and both the
    quarantine and scanner-error paths are tested; uploads are recorded honestly

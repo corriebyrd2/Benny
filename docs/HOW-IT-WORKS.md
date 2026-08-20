@@ -313,8 +313,15 @@ Here is every major tool the site relies on and what each one does.
   created and kept up to date automatically when the app starts. On the very
   first run it also seeds the initial admin account and the four default
   services.
-- **Health check** — a `/healthz` address the host pings to confirm the site and
-  database are alive.
+- **Health check** — a `/healthz` address the host pings to confirm the site is
+  alive. It answers on its own without asking the database anything, so the
+  database is allowed to go to sleep when nobody is using the site — which is
+  what keeps its cost down. A second address, `/readyz`, checks the database
+  when someone actually wants to know.
+- **Reused reference data** — the business details, the service list, the
+  homepage photos and the published reviews are held in memory for half a
+  minute at a time instead of being looked up afresh on every single visit.
+  Editing any of them in the admin panel updates the site immediately.
 - **Automated tests (Playwright)** — end‑to‑end tests that exercise the booking
   and payment flows to catch problems before they reach customers.
 

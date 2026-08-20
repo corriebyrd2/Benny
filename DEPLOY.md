@@ -30,7 +30,11 @@ Schema is created automatically on first boot via `server/migrations/*.sql`.
 1. **New Project → Deploy from GitHub repo** → pick `corriebyrd2/benny`.
 2. Railway auto-detects Node via `package.json`. Build via Nixpacks; start via
    `node server.js`. `railway.json` locks this in and wires a health check at
-   `/healthz`.
+   `/healthz`, which answers without touching the database — a probe that
+   queried Postgres on a schedule would stop Neon ever suspending an idle
+   compute. A deployment that cannot reach its database still fails, because
+   migrations run before the server starts listening. Use `/readyz` when you
+   want to ask specifically whether the database is reachable.
 
 ## 3. Attach a persistent volume (uploads only)
 

@@ -2,6 +2,8 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
+const cache = require('./cache');
+const metrics = require('./metrics');
 
 const rawConnectionString = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL;
 if (!rawConnectionString) {
@@ -44,12 +46,44 @@ pool.on('error', (err) => {
   console.error('[pg pool error]', err);
 });
 
-function query(text, params) {
-  return pool.query(text, params);
+// Every statement the application issues goes through here or through a client
+// handed out by getClient(), which makes this the one place that can (a) count
+// what we actually send the database and (b) expire cached reference data when
+// a write lands. Both matter on managed Postgres, where a query is not just
+// latency but a compute that cannot go back to sleep.
+function statementText(text) {
+  if (typeof text === 'string') return text;
+  // pg also accepts a config object, and (for cursors) a Submittable.
+  return text && typeof text.text === 'string' ? text.text : null;
 }
 
-function getClient() {
-  return pool.connect();
+async function query(text, params) {
+  metrics.increment('benny_db_queries_total');
+  const result = await pool.query(text, params);
+  cache.onMutation(statementText(text));
+  return result;
+}
+
+// Marks a checked-out client as already instrumented. Clients are pooled and
+// handed back out, so without this the wrapper would stack on every checkout —
+// double-counting queries and invalidating twice.
+const INSTRUMENTED = Symbol('benny.instrumented');
+
+async function getClient() {
+  const client = await pool.connect();
+  if (!client[INSTRUMENTED]) {
+    const original = client.query.bind(client);
+    client.query = (...args) => {
+      metrics.increment('benny_db_queries_total');
+      // Invalidate on issue rather than on commit: a rolled-back transaction
+      // costs one needless re-read, whereas waiting for a COMMIT we cannot see
+      // from here would leave stale rows published in between.
+      cache.onMutation(statementText(args[0]));
+      return original(...args);
+    };
+    client[INSTRUMENTED] = true;
+  }
+  return client;
 }
 
 async function runMigrations() {

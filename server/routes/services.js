@@ -1,5 +1,6 @@
 const express = require('express');
 const { query } = require('../database');
+const cache = require('../cache');
 const { authenticateToken, requirePermission, logAudit } = require('../auth');
 const {
   BILLING_UNITS,
@@ -40,12 +41,20 @@ function shape(row) {
   return { ...service, perks: parsePerks(service), slug: slugify(service.name) };
 }
 
-async function listPublicServices() {
+// Cached. This is the catalogue behind the marketing cards, the service pages,
+// the footer, the enquiry form's options and the public /api/services — several
+// reads per page view of a table that changes when an administrator edits it,
+// which invalidates this entry (see server/cache.js).
+//
+// Money does NOT come from here. Bookings and payments load the service by id
+// straight from the database, so a price change can never be applied to a
+// charge from a cached row.
+const listPublicServices = cache.register('services:public', ['services'], async () => {
   const { rows } = await query(
     'SELECT * FROM services WHERE active = TRUE ORDER BY display_order ASC, id ASC'
   );
   return rows.map(shape);
-}
+});
 
 async function findPublicServiceBySlug(slug) {
   const services = await listPublicServices();

@@ -91,6 +91,13 @@ function render() {
   lines.push('# TYPE benny_email_failures_total counter');
   lines.push('# HELP benny_upload_rejections_total Uploads refused, by reason.');
   lines.push('# TYPE benny_upload_rejections_total counter');
+  // Managed Postgres bills for a compute that cannot go idle, so the query rate
+  // is an operational signal in its own right: a flat, non-zero rate with no
+  // traffic means something is polling the database on a timer.
+  lines.push('# HELP benny_db_queries_total Statements issued to the database.');
+  lines.push('# TYPE benny_db_queries_total counter');
+  lines.push('# HELP benny_reference_cache_total Reference-data reads, by cache result.');
+  lines.push('# TYPE benny_reference_cache_total counter');
 
   for (const [k, v] of [...counters.entries()].sort()) {
     lines.push(`${k} ${v}`);

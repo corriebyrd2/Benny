@@ -33,16 +33,66 @@ function metricValue(text, prefix) {
 test.describe('health and readiness', () => {
   test.beforeEach(async ({ request }) => { await resetAll(request); });
 
-  test('healthz and readyz both exercise the database', async ({ request }) => {
+  test('healthz answers without touching the database, readyz does touch it', async ({ request }) => {
+    const before = metricValue(await scrape(request), 'benny_db_queries_total');
+
     const health = await request.get('/healthz');
     expect(health.status()).toBe(200);
     expect(await health.json()).toEqual({ ok: true });
 
+    // The point of the assertion: /healthz is what a host and an uptime monitor
+    // poll on a schedule. If it runs even one query, managed Postgres (Neon)
+    // never gets to suspend an idle compute, and a site with no visitors bills
+    // around the clock. Liveness must be answerable from this process alone.
+    const afterHealth = metricValue(await scrape(request), 'benny_db_queries_total');
+    expect(afterHealth, '/healthz must not query the database').toBe(before);
+
     // Readiness is distinct from liveness: a process that is up but cannot
-    // reach its database should leave rotation, not be restarted.
+    // reach its database should leave rotation, not be restarted. That question
+    // cannot be answered without asking the database, which is exactly why it
+    // lives on a separate endpoint nothing polls on a timer.
     const ready = await request.get('/readyz');
     expect(ready.status()).toBe(200);
     expect((await ready.json()).ready).toBe(true);
+    expect(metricValue(await scrape(request), 'benny_db_queries_total'))
+      .toBeGreaterThan(afterHealth);
+  });
+});
+
+test.describe('reference-data cache', () => {
+  test.beforeEach(async ({ request }) => { await resetAll(request); });
+
+  test('a repeated page render is served without re-querying reference data', async ({ request }) => {
+    // First render populates the cache. Warming it through the same code path
+    // the assertion measures keeps the test honest about what is cached.
+    await request.get('/');
+
+    const before = metricValue(await scrape(request), 'benny_db_queries_total');
+    await request.get('/');
+    const after = metricValue(await scrape(request), 'benny_db_queries_total');
+
+    // The homepage reads the business profile, the service catalogue, the
+    // homepage photos and the approved reviews. None of it changes between two
+    // requests a millisecond apart, and paying four round trips for it on every
+    // crawler hit is what kept the database awake.
+    expect(after - before, 'a warm homepage render should issue no queries').toBe(0);
+  });
+
+  test('an administrator edit is visible on the very next render', async ({ request }) => {
+    await request.get('/');
+
+    const token = await loginAdmin(request);
+    const res = await request.put('/api/settings', {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { business_name: 'Cache Invalidation Kennels' }
+    });
+    expect(res.status(), await safeBody(res)).toBe(200);
+
+    // A TTL alone would leave the old name on the homepage for up to half a
+    // minute after the owner changed it. Writes invalidate; the TTL is only the
+    // backstop for changes this process cannot see.
+    const home = await request.get('/');
+    expect(await home.text()).toContain('Cache Invalidation Kennels');
   });
 });
 

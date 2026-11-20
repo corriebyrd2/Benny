@@ -599,6 +599,63 @@ async function sendPaymentReceivedToOwner({ booking }) {
   });
 }
 
+
+async function sendPaymentReminderToCustomer({ booking, checkoutUrl }) {
+  const link = customerPortalLink();
+  await send({
+    to: booking.email,
+    subject: `Reminder: payment still needed for ${booking.dog_name}'s booking`,
+    text: [
+      `Hi ${booking.owner_name || 'there'},`,
+      '',
+      `Your booking is confirmed, but we haven't received payment yet.`,
+      `We'll hold these dates for a limited time. Please pay soon to keep your spot.`,
+      '',
+      ...bookingSummary(booking),
+      '',
+      checkoutUrl ? `Pay ${formatMoney(booking.amount_cents)} securely: ${checkoutUrl}` : null,
+      link ? `View your booking: ${link}` : null
+    ].filter(Boolean).join('\n'),
+    html: `
+      <p>Hi ${escapeHtml(booking.owner_name || 'there')},</p>
+      <p>Your booking is <strong>confirmed</strong>, but we haven't received payment yet.</p>
+      <p>We'll hold these dates for a limited time. Please pay soon to keep your spot.</p>
+      ${bookingHtmlBlock(booking)}
+      ${checkoutUrl ? `<p><a href="${checkoutUrl}" style="display:inline-block;background:#ff6b9d;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600;">Pay ${formatMoney(booking.amount_cents)} now</a></p>` : ''}
+      ${link ? `<p><a href="${link}">View your booking</a></p>` : ''}
+    `,
+    categories: ['booking', 'payment_reminder'],
+    customArgs: { booking_id: String(booking.id), email_type: 'payment_reminder' }
+  });
+}
+
+async function sendPreStayReminderToCustomer({ booking }) {
+  const link = customerPortalLink();
+  await send({
+    to: booking.email,
+    subject: `Your stay with ${booking.dog_name} starts soon`,
+    text: [
+      `Hi ${booking.owner_name || 'there'},`,
+      '',
+      `Just a reminder that ${booking.dog_name}'s stay is coming up.`,
+      `Please bring food, any medication, and up-to-date vaccination records.`,
+      '',
+      ...bookingSummary(booking),
+      '',
+      link ? `View details: ${link}` : null
+    ].filter(Boolean).join('\n'),
+    html: `
+      <p>Hi ${escapeHtml(booking.owner_name || 'there')},</p>
+      <p>Just a reminder that <strong>${escapeHtml(booking.dog_name)}'s</strong> stay is coming up.</p>
+      <p>Please bring food, any medication, and up-to-date vaccination records.</p>
+      ${bookingHtmlBlock(booking)}
+      ${link ? `<p><a href="${link}">View details</a></p>` : ''}
+    `,
+    categories: ['booking', 'pre_stay_reminder'],
+    customArgs: { booking_id: String(booking.id), email_type: 'pre_stay_reminder' }
+  });
+}
+
 module.exports = {
   setTransport,
   sendInquiryToOwner,
@@ -615,5 +672,7 @@ module.exports = {
   sendPaymentReceivedToCustomer,
   sendPaymentReceivedToOwner,
   sendPaymentOnCancelledBookingToOwner,
-  sendPasswordResetToCustomer
+  sendPasswordResetToCustomer,
+  sendPaymentReminderToCustomer,
+  sendPreStayReminderToCustomer
 };

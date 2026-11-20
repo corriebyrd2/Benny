@@ -2346,6 +2346,11 @@
               <button class="btn btn-primary btn-sm" data-action="initiatePayment" data-arg0="${booking.id}" data-stop="1">Pay Now</button>
             </div>
           ` : ''}
+          ${booking.status === 'confirmed' && booking.payment_status === 'paid' ? `
+            <div class="payment-requested-banner" style="background:#D5F5E3;border-color:#82E0AA;color:#1E8449;">
+              <span class="banner-text">&#9989; Confirmed & Paid &mdash; ${escapeHtml(booking.preferred_dates || 'dates confirmed')}. You're all set!</span>
+            </div>
+          ` : ''}
           ${booking.status === 'cancelled' && booking.cancel_reason ? `
             <div style="background:#FADBD8;border:1px solid #F5C6CB;border-radius:8px;padding:10px 14px;margin-top:12px;">
               <span style="font-weight:700;color:#922B21;font-size:0.85rem;">Cancelled: ${escapeHtml(booking.cancel_reason)}</span>
